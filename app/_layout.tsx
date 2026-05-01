@@ -1,11 +1,11 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { DarkTheme, ThemeProvider } from '@react-navigation/native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import 'react-native-reanimated';
 import { useEffect } from 'react';
-import Purchases from 'react-native-purchases';
 import { Platform } from 'react-native';
+import Purchases from 'react-native-purchases';
+import 'react-native-reanimated';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
 
@@ -14,7 +14,7 @@ export const unstable_settings = {
 };
 
 // RevenueCat API Keys (Replace with your actual keys from RevenueCat Dashboard)
-const API_KEY_APPLE = "appl_placeholder_key_here";
+const API_KEY_APPLE = "appl_XPTkcAVgIUmYxQnXXZAVuuYpGfX";
 const API_KEY_GOOGLE = "goog_placeholder_key_here";
 
 export default function RootLayout() {
@@ -23,7 +23,6 @@ export default function RootLayout() {
   useEffect(() => {
     const initRevenueCat = async () => {
       try {
-        Purchases.setLogLevel(Purchases.LOG_LEVEL.DEBUG);
         if (Platform.OS === 'ios') {
           Purchases.configure({ apiKey: API_KEY_APPLE });
         } else if (Platform.OS === 'android') {
