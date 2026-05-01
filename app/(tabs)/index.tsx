@@ -1,98 +1,397 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, Image } from 'react-native';
+import { BlurView } from 'expo-blur';
+import { Calculator, FileText, CheckSquare, Layers, Sparkles, Settings as SettingsIcon, Zap } from 'lucide-react-native';
+import Animated, { FadeIn, FadeInDown, withRepeat, withSequence, withTiming, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
+import { useEffect } from 'react';
+import { router } from 'expo-router';
+import { useStore } from '../../store/useStore';
+import { useProjectsStore } from '../../store/projectsStore';
+import { useThemeColors } from '../../store/useThemeColors';
 
-import { HelloWave } from '@/components/hello-wave';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Link } from 'expo-router';
+const AnimatedBlurView = Animated.createAnimatedComponent(BlurView);
+
+interface ActionCardProps {
+  title: string;
+  icon: React.ReactNode;
+  delay: number;
+  color: string;
+  onPress: () => void;
+}
+
+function ActionCard({ title, icon, delay, color, onPress }: ActionCardProps) {
+  const { colors } = useThemeColors();
+  return (
+    <Animated.View entering={FadeInDown.delay(delay).springify()} style={styles.cardContainer}>
+      <TouchableOpacity activeOpacity={0.8} style={styles.cardTouch} onPress={onPress}>
+        <View style={[styles.cardContent, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <View style={[styles.iconContainer, { backgroundColor: `${color}15` }]}>
+            {icon}
+          </View>
+          <Text style={[styles.cardTitle, { color: colors.text }]}>{title}</Text>
+        </View>
+      </TouchableOpacity>
+    </Animated.View>
+  );
+}
 
 export default function HomeScreen() {
-  return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <Link href="/modal">
-          <Link.Trigger>
-            <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-          </Link.Trigger>
-          <Link.Preview />
-          <Link.Menu>
-            <Link.MenuAction title="Action" icon="cube" onPress={() => alert('Action pressed')} />
-            <Link.MenuAction
-              title="Share"
-              icon="square.and.arrow.up"
-              onPress={() => alert('Share pressed')}
-            />
-            <Link.Menu title="More" icon="ellipsis">
-              <Link.MenuAction
-                title="Delete"
-                icon="trash"
-                destructive
-                onPress={() => alert('Delete pressed')}
-              />
-            </Link.Menu>
-          </Link.Menu>
-        </Link>
+  const glowOpacity = useSharedValue(0.15);
+  const glowScale = useSharedValue(1);
+  const { userName, userPhoto } = useStore();
+  const { projects, reports } = useProjectsStore();
+  const { colors, isDark } = useThemeColors();
 
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return 'Good morning,';
+    if (hour < 18) return 'Good afternoon,';
+    return 'Good evening,';
+  };
+
+  const currentDate = new Date().toLocaleDateString('en-US', {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+  });
+
+  const activeProjectsCount = projects.filter(p => p.status !== 'completed').length;
+  const totalReportsCount = reports.length;
+
+  useEffect(() => {
+    glowOpacity.value = withRepeat(
+      withSequence(
+        withTiming(0.3, { duration: 1500 }),
+        withTiming(0.15, { duration: 1500 })
+      ),
+      -1,
+      true
+    );
+    glowScale.value = withRepeat(
+      withSequence(
+        withTiming(1.02, { duration: 1500 }),
+        withTiming(1, { duration: 1500 })
+      ),
+      -1,
+      true
+    );
+  }, []);
+
+  const animatedGlowStyle = useAnimatedStyle(() => {
+    return {
+      opacity: glowOpacity.value,
+      transform: [{ scale: glowScale.value }],
+    };
+  });
+
+  return (
+    <ScrollView style={[styles.container, { backgroundColor: colors.background }]} contentContainerStyle={styles.content}>
+      <Animated.View entering={FadeIn.duration(1000)} style={styles.header}>
+        <View style={styles.headerProfileRow}>
+          {userPhoto ? (
+            <Image source={{ uri: userPhoto }} style={styles.profileAvatarImage} />
+          ) : (
+            <View style={[styles.profileAvatar, { backgroundColor: colors.avatarBackground }]}>
+              <Text style={[styles.profileText, { color: colors.avatarText }]}>
+                {userName.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()}
+              </Text>
+            </View>
+          )}
+          <View style={styles.headerTextContainer}>
+            <Text style={[styles.greeting, { color: colors.textMuted }]}>{getGreeting()}</Text>
+            <Text style={[styles.name, { color: colors.text }]}>{userName}</Text>
+            <Text style={[styles.dateText, { color: colors.textMuted }]}>{currentDate}</Text>
+          </View>
+        </View>
+        <TouchableOpacity
+          onPress={() => router.push('/settings')}
+          style={[styles.settingsButton, { backgroundColor: colors.card }]}
+          activeOpacity={0.7}
+        >
+          <SettingsIcon color={colors.textMuted} size={24} />
+        </TouchableOpacity>
+      </Animated.View>
+
+      <Animated.View entering={FadeInDown.delay(200).springify()} style={styles.aiCardContainer}>
+        <Animated.View style={[styles.aiGlow, animatedGlowStyle]} />
+        <TouchableOpacity activeOpacity={0.9} onPress={() => router.push('/quick-log')}>
+          <BlurView intensity={Platform.OS === 'ios' ? 40 : 100} tint={isDark ? "dark" : "light"} style={[styles.aiCardInner, { backgroundColor: isDark ? 'rgba(30, 41, 59, 0.7)' : 'rgba(255, 255, 255, 0.7)' }]}>
+            <View style={[styles.aiIconWrapper, { backgroundColor: isDark ? '#1E3A8A' : '#EFF6FF' }]}>
+              <Zap color={isDark ? "#60A5FA" : "#2563EB"} size={24} />
+            </View>
+            <View style={styles.aiTextWrapper}>
+              <Text style={[styles.aiTitle, { color: isDark ? '#FFFFFF' : '#1E3A8A' }]}>Quick Site Log</Text>
+              <Text style={[styles.aiSubtitle, { color: isDark ? '#94A3B8' : '#475569' }]}>Log notes, photos, and voice memos instantly.</Text>
+            </View>
+          </BlurView>
+        </TouchableOpacity>
+      </Animated.View>
+
+      <Animated.Text entering={FadeInDown.delay(300).springify()} style={[styles.sectionTitle, { color: colors.text }]}>
+        Quick Actions
+      </Animated.Text>
+
+      <View style={styles.grid}>
+        <ActionCard
+          title="Calculators"
+          icon={<Calculator color="#2563EB" size={28} />}
+          delay={400}
+          color="#2563EB"
+          onPress={() => router.push('/tools')}
+        />
+        <ActionCard
+          title="Reports"
+          icon={<FileText color="#F59E0B" size={28} />}
+          delay={500}
+          color="#F59E0B"
+          onPress={() => router.push('/projects')}
+        />
+        <ActionCard
+          title="Snagging"
+          icon={<CheckSquare color="#E11D48" size={28} />}
+          delay={600}
+          color="#E11D48"
+          onPress={() => router.push('/projects')}
+        />
+        <ActionCard
+          title="Drawings"
+          icon={<Layers color="#0EA5E9" size={28} />}
+          delay={700}
+          color="#0EA5E9"
+          onPress={() => router.push('/projects')}
+        />
+      </View>
+
+      <Animated.Text entering={FadeInDown.delay(800).springify()} style={[styles.sectionTitle, { color: colors.text, marginTop: 24 }]}>
+        Quick Stats
+      </Animated.Text>
+      
+      <View style={styles.statsContainer}>
+        <Animated.View entering={FadeInDown.delay(900).springify()} style={styles.statCardWrapper}>
+          <TouchableOpacity activeOpacity={0.8} style={styles.statTouch} onPress={() => router.push('/projects')}>
+            <View style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <Layers color="#2563EB" size={24} />
+              <Text style={[styles.statValue, { color: colors.text }]}>{activeProjectsCount}</Text>
+              <Text style={[styles.statLabel, { color: colors.textMuted }]}>Active Projects</Text>
+            </View>
+          </TouchableOpacity>
+        </Animated.View>
+        <Animated.View entering={FadeInDown.delay(1000).springify()} style={styles.statCardWrapper}>
+          <TouchableOpacity activeOpacity={0.8} style={styles.statTouch} onPress={() => router.push('/projects')}>
+            <View style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <FileText color="#F59E0B" size={24} />
+              <Text style={[styles.statValue, { color: colors.text }]}>{totalReportsCount}</Text>
+              <Text style={[styles.statLabel, { color: colors.textMuted }]}>Total Reports</Text>
+            </View>
+          </TouchableOpacity>
+        </Animated.View>
+      </View>
+
+      <View style={{ height: 120 }} />
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
+  container: {
+    flex: 1,
+    backgroundColor: '#F8FAFC', // Very light cool gray/blue
+  },
+  content: {
+    padding: 24,
+    paddingTop: 60,
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 32,
+  },
+  headerProfileRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
   },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
+  profileAvatarImage: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    marginRight: 16,
   },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
+  profileAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#DBEAFE', // Light blue background
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 16,
+  },
+  profileText: {
+    color: '#1E3A8A', // Deep blue
+    fontWeight: 'bold',
+    fontSize: 16,
+  },
+  headerTextContainer: {
+    justifyContent: 'center',
+  },
+  greeting: {
+    fontSize: 14,
+    color: '#64748B', // Slate 500
+    marginBottom: 2,
+    fontWeight: '500',
+  },
+  name: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#0F172A', // Slate 900
+    letterSpacing: -0.5,
+  },
+  dateText: {
+    fontSize: 12,
+    color: '#94A3B8',
+    marginTop: 2,
+    fontWeight: '500',
+  },
+  settingsButton: {
+    padding: 8,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    ...Platform.select({
+      web: { boxShadow: '0px 2px 8px rgba(0,0,0,0.05)' as any },
+      default: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 }
+    }),
+  },
+  aiCardContainer: {
+    marginBottom: 32,
+    position: 'relative',
+    ...Platform.select({
+      web: { boxShadow: '0px 8px 24px rgba(37,99,235,0.1)' as any },
+      default: { shadowColor: '#2563EB', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.1, shadowRadius: 24, elevation: 8 }
+    }),
+  },
+  aiGlow: {
     position: 'absolute',
+    top: -5,
+    left: -5,
+    right: -5,
+    bottom: -5,
+    backgroundColor: '#3B82F6',
+    borderRadius: 24,
+    opacity: 0.15,
   },
+  aiCardInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 24,
+    borderRadius: 20,
+    backgroundColor: Platform.OS === 'ios' ? 'rgba(255, 255, 255, 0.7)' : '#FFFFFF',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.5)',
+    overflow: 'hidden',
+  },
+  aiIconWrapper: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: '#EFF6FF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 16,
+  },
+  aiTextWrapper: {
+    flex: 1,
+  },
+  aiTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1E3A8A',
+    marginBottom: 6,
+    letterSpacing: -0.5,
+  },
+  aiSubtitle: {
+    fontSize: 14,
+    color: '#475569',
+    lineHeight: 20,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#334155',
+    marginBottom: 16,
+    letterSpacing: -0.3,
+  },
+  grid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+  },
+  cardContainer: {
+    width: '48%',
+    marginBottom: 16,
+  },
+  cardTouch: {
+    width: '100%',
+  },
+  cardContent: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 20,
+    height: 140,
+    justifyContent: 'center',
+    alignItems: 'flex-start',
+    ...Platform.select({
+      web: { boxShadow: '0px 4px 12px rgba(0,0,0,0.04)' as any },
+      default: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.04, shadowRadius: 12, elevation: 3 }
+    }),
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
+  },
+  iconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  cardTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#334155',
+    letterSpacing: -0.3,
+  },
+  statsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  statCardWrapper: {
+    width: '48%',
+  },
+  statTouch: {
+    width: '100%',
+  },
+  statCard: {
+    width: '100%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 20,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    ...Platform.select({
+      web: { boxShadow: '0px 2px 8px rgba(0,0,0,0.03)' as any },
+      default: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.03, shadowRadius: 8, elevation: 2 }
+    }),
+  },
+  statValue: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: '#0F172A',
+    marginTop: 12,
+    marginBottom: 4,
+  },
+  statLabel: {
+    fontSize: 14,
+    color: '#64748B',
+    fontWeight: '500',
+  }
 });
