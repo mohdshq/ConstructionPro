@@ -5,6 +5,8 @@ import { Calculator, FileText, ChevronRight, Activity, ArrowRightLeft, Scale, Za
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { router } from 'expo-router';
 import { useThemeColors } from '../../store/useThemeColors';
+import { useStore } from '../../store/useStore';
+import { Alert } from 'react-native';
 
 type ToolCategory = 'civil' | 'structural' | 'mep' | 'plumbing' | 'geotech' | 'productivity' | 'financial' | 'converters';
 
@@ -12,6 +14,7 @@ export default function ToolsScreen() {
     const [activeTab, setActiveTab] = useState<ToolCategory | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
     const { colors, isDark } = useThemeColors();
+    const { isPremium } = useStore();
 
     const civilTools = [
 // ... [kept below]
@@ -116,6 +119,24 @@ export default function ToolsScreen() {
         }
     };
 
+    const checkProAccess = (toolId: string) => {
+        if (isPremium) return true;
+        
+        if (converters.some(c => c.id === toolId)) return true;
+        
+        const isFree = [
+            ...civilTools.slice(0, 2),
+            ...structuralTools.slice(0, 2),
+            ...geotechTools.slice(0, 2),
+            ...mepTools.slice(0, 2),
+            ...plumbingTools.slice(0, 2),
+            ...productivityTools.slice(0, 2),
+            ...financialTools.slice(0, 2)
+        ].some(t => t.id === toolId);
+        
+        return isFree;
+    };
+
     const categories = [
         { id: 'civil' as ToolCategory, label: 'Civil & Architectural', icon: <Home color="#2563EB" size={28} />, count: civilTools.length },
         { id: 'structural' as ToolCategory, label: 'Structural Eng', icon: <Layout color="#991B1B" size={28} />, count: structuralTools.length },
@@ -180,22 +201,45 @@ export default function ToolsScreen() {
                     <ScrollView contentContainerStyle={styles.listContent} showsVerticalScrollIndicator={false}>
                         
 
-                        {getActiveData()?.map((item, index) => (
-                            <Animated.View key={item.id} entering={FadeInDown.delay(index * 50).springify()}>
-                                <TouchableOpacity
-                                    style={[styles.toolCard, { backgroundColor: colors.card, borderColor: colors.border }]}
-                                    activeOpacity={0.7}
-                                    onPress={() => router.push(item.route as any)}
-                                >
-                                    <View style={[styles.iconContainer, { backgroundColor: colors.inputBackground, borderColor: colors.border }]}>{item.icon}</View>
-                                    <View style={styles.textContainer}>
-                                        <Text style={[styles.toolName, { color: colors.text }]}>{item.name}</Text>
-                                        <Text style={[styles.toolDesc, { color: colors.textMuted }]}>{item.desc}</Text>
-                                    </View>
-                                    <ChevronRight size={20} color={colors.textMuted} />
-                                </TouchableOpacity>
-                            </Animated.View>
-                        ))}
+                        {getActiveData()?.map((item, index) => {
+                            const isProFeature = !checkProAccess(item.id);
+                            return (
+                                <Animated.View key={item.id} entering={FadeInDown.delay(index * 50).springify()}>
+                                    <TouchableOpacity
+                                        style={[styles.toolCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+                                        activeOpacity={0.7}
+                                        onPress={() => {
+                                            if (isProFeature) {
+                                                Alert.alert(
+                                                    "Premium Required",
+                                                    "This calculator is reserved for Construction Pro Premium members. Upgrade to access all tools.",
+                                                    [
+                                                        { text: "Cancel", style: "cancel" },
+                                                        { text: "Upgrade", style: "default", onPress: () => router.push('/settings' as any) }
+                                                    ]
+                                                );
+                                                return;
+                                            }
+                                            router.push(item.route as any);
+                                        }}
+                                    >
+                                        <View style={[styles.iconContainer, { backgroundColor: colors.inputBackground, borderColor: colors.border }]}>{item.icon}</View>
+                                        <View style={styles.textContainer}>
+                                            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                                <Text style={[styles.toolName, { color: colors.text }]}>{item.name}</Text>
+                                                {isProFeature && (
+                                                    <View style={{ backgroundColor: '#FEF3C7', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, marginLeft: 8 }}>
+                                                        <Text style={{ color: '#D97706', fontSize: 10, fontWeight: 'bold' }}>PRO</Text>
+                                                    </View>
+                                                )}
+                                            </View>
+                                            <Text style={[styles.toolDesc, { color: colors.textMuted }]}>{item.desc}</Text>
+                                        </View>
+                                        <ChevronRight size={20} color={colors.textMuted} />
+                                    </TouchableOpacity>
+                                </Animated.View>
+                            );
+                        })}
                     </ScrollView>
                 )}
             </View>

@@ -11,11 +11,13 @@ interface AppState {
     userName: string;
     userPhoto: string | null;
     aiApiKey: string;
+    isPremium: boolean;
     setTheme: (theme: ThemeType) => void;
     setUnits: (units: UnitSystem) => void;
     setUserName: (name: string) => void;
     setUserPhoto: (photo: string | null) => void;
     setAiApiKey: (key: string) => void;
+    setIsPremium: (isPremium: boolean) => void;
 }
 
 export const useStore = create<AppState>(
@@ -23,18 +25,32 @@ export const useStore = create<AppState>(
         (set: any): AppState => ({
             theme: 'system',
             units: 'metric',
-            userName: 'Alex Sterling',
+            userName: '',
             userPhoto: null,
             aiApiKey: '',
+            isPremium: false,
             setTheme: (theme) => set({ theme }),
             setUnits: (units) => set({ units }),
             setUserName: (userName) => set({ userName }),
             setUserPhoto: (userPhoto) => set({ userPhoto }),
             setAiApiKey: (aiApiKey) => set({ aiApiKey }),
+            setIsPremium: (isPremium) => set({ isPremium }),
         }),
         {
             name: 'app-storage',
             getStorage: () => AsyncStorage,
+            partialize: (state) => ({
+                theme: state.theme,
+                units: state.units,
+                userName: state.userName,
+                userPhoto: state.userPhoto,
+                aiApiKey: state.aiApiKey,
+            }),
+            merge: (persistedState: any, currentState: any) => ({
+                ...currentState,
+                ...persistedState,
+                isPremium: false, // Force gatewall close on rehydrate
+            }),
         }
     )
 );

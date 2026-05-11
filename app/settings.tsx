@@ -59,6 +59,7 @@ export default function SettingsScreen() {
             const uri = result.assets[0].uri;
             try {
                 const fileName = `profile_${Date.now()}.jpg`;
+                // @ts-ignore
                 const newPath = `${FileSystem.documentDirectory}${fileName}`;
                 await FileSystem.copyAsync({ from: uri, to: newPath });
                 setUserPhoto(newPath);
@@ -80,7 +81,7 @@ export default function SettingsScreen() {
                 const { customerInfo } = await Purchases.purchasePackage(packageToBuy);
                 
                 if (typeof customerInfo.entitlements.active['premium'] !== "undefined") {
-                    Alert.alert("Success", "Welcome to SiteMate Premium!");
+                    Alert.alert("Success", "Welcome to Construction Pro Premium!");
                 }
             } else {
                 Alert.alert(
@@ -242,7 +243,7 @@ export default function SettingsScreen() {
                             <Crown color="#F59E0B" size={40} />
                         </View>
 
-                        <Text style={[styles.planName, { color: isDark ? colors.text : '#1E3A8A' }]}>SiteMate Premium</Text>
+                        <Text style={[styles.planName, { color: isDark ? colors.text : '#1E3A8A' }]}>Construction Pro Premium</Text>
                         <Text style={[styles.price, { color: colors.primary }]}>$19.99<Text style={styles.period}>/month</Text></Text>
 
                         <View style={styles.featuresContainer}>

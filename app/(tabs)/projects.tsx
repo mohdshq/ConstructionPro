@@ -5,6 +5,7 @@ import { useRouter } from 'expo-router';
 import { Image } from 'react-native';
 import { useProjectsStore, Project } from '../../store/projectsStore';
 import { useThemeColors } from '../../store/useThemeColors';
+import { useStore } from '../../store/useStore';
 import { useMemo } from 'react';
 
 const { width } = Dimensions.get('window');
@@ -12,6 +13,7 @@ const { width } = Dimensions.get('window');
 export default function ProjectsScreen() {
     const router = useRouter();
     const { projects, reports, deleteProject } = useProjectsStore();
+    const { isPremium } = useStore();
     const { colors, isDark } = useThemeColors();
 
     const sortedProjects = useMemo(() => {
@@ -86,6 +88,21 @@ export default function ProjectsScreen() {
                 ]
             );
         }
+    };
+
+    const handleCreateProject = () => {
+        if (!isPremium && projects.length >= 1) {
+            Alert.alert(
+                "Premium Required",
+                "Free users can only create 1 project. Upgrade to Construction Pro Premium to create unlimited projects.",
+                [
+                    { text: "Cancel", style: "cancel" },
+                    { text: "Upgrade", style: "default", onPress: () => router.push('/settings' as any) }
+                ]
+            );
+            return;
+        }
+        router.push('/project/create');
     };
 
     const renderProjectCard = ({ item, index }: { item: Project & { displayStatus: string }, index: number }) => {
@@ -171,7 +188,7 @@ export default function ProjectsScreen() {
                     <Text style={[styles.headerTitle, { color: colors.text }]}>Projects</Text>
                     <TouchableOpacity
                         style={[styles.addButton, { position: 'absolute', right: 24, bottom: 12 }]}
-                        onPress={() => router.push('/project/create')}
+                        onPress={handleCreateProject}
                     >
                         <Plus size={20} color="#FFFFFF" />
                         <Text style={styles.addButtonText}>New</Text>
@@ -188,7 +205,7 @@ export default function ProjectsScreen() {
 
                         <TouchableOpacity
                             style={styles.emptyButton}
-                            onPress={() => router.push('/project/create')}
+                            onPress={handleCreateProject}
                             activeOpacity={0.8}
                         >
                             <Text style={styles.emptyButtonText}>Create First Project</Text>

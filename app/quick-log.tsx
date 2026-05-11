@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, SafeAr
 import { ArrowLeft, Mic, MicOff, Camera, MapPin, CheckCircle, Image as ImageIcon, X, Trash2, Zap } from "lucide-react-native";
 import BackButton from "../components/BackButton";
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import * as FileSystem from 'expo-file-system';
 import * as ImagePicker from 'expo-image-picker';
 import { Audio } from 'expo-av';
 import { Image } from 'expo-image';
@@ -139,7 +140,7 @@ export default function QuickLogScreen() {
         return `${m}:${s < 10 ? '0' : ''}${s}`;
     };
 
-    const handleSave = () => {
+    const handleSave = async () => {
         if (!selectedProject) {
             alert('Please select a project first.');
             return;
@@ -150,10 +151,46 @@ export default function QuickLogScreen() {
             return;
         }
 
+        let savedPhotos = [];
+        for (const photo of photos) {
+            if (photo.uri.startsWith('data:') || Platform.OS === 'web') {
+                savedPhotos.push({ uri: photo.uri });
+            } else {
+                try {
+                    const fileName = `photo_${Date.now()}_${Math.random().toString(36).substring(7)}.jpg`;
+                    // @ts-ignore
+                    const newPath = `${FileSystem.documentDirectory}${fileName}`;
+                    await FileSystem.copyAsync({ from: photo.uri, to: newPath });
+                    savedPhotos.push({ uri: newPath });
+                } catch (e) {
+                    console.error("Error saving photo:", e);
+                    savedPhotos.push({ uri: photo.uri });
+                }
+            }
+        }
+
+        let savedAudioUris = [];
+        for (const uri of audioUris) {
+            if (uri.startsWith('data:') || Platform.OS === 'web') {
+                savedAudioUris.push(uri);
+            } else {
+                try {
+                    const fileName = `audio_${Date.now()}_${Math.random().toString(36).substring(7)}.m4a`;
+                    // @ts-ignore
+                    const newPath = `${FileSystem.documentDirectory}${fileName}`;
+                    await FileSystem.copyAsync({ from: uri, to: newPath });
+                    savedAudioUris.push(newPath);
+                } catch (e) {
+                    console.error("Error saving audio:", e);
+                    savedAudioUris.push(uri);
+                }
+            }
+        }
+
         const reportData = {
             notes: notes.trim(),
-            photos,
-            audioUris: audioUris.length > 0 ? audioUris : undefined,
+            photos: savedPhotos,
+            audioUris: savedAudioUris.length > 0 ? savedAudioUris : undefined,
             location: location.trim() || undefined,
         };
 

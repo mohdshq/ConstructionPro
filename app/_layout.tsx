@@ -8,6 +8,7 @@ import 'react-native-reanimated';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useStore } from '@/store/useStore';
 
 export const unstable_settings = {
   anchor: '(tabs)',
@@ -20,14 +21,26 @@ const API_KEY_GOOGLE = "goog_placeholder_key_here";
 export default function RootLayout() {
   const colorScheme = useColorScheme();
 
+  const { setIsPremium } = useStore();
+
   useEffect(() => {
     const initRevenueCat = async () => {
+      setIsPremium(false); // Force close gatewall by default
       try {
         if (Platform.OS === 'ios') {
           Purchases.configure({ apiKey: API_KEY_APPLE });
         } else if (Platform.OS === 'android') {
           Purchases.configure({ apiKey: API_KEY_GOOGLE });
         }
+        
+        // Initial check
+        const customerInfo = await Purchases.getCustomerInfo();
+        setIsPremium(typeof customerInfo.entitlements.active['premium'] !== "undefined");
+        
+        // Listen for updates
+        Purchases.addCustomerInfoUpdateListener((info) => {
+            setIsPremium(typeof info.entitlements.active['premium'] !== "undefined");
+        });
       } catch (e) {
         console.error("Error initializing RevenueCat:", e);
       }

@@ -4,7 +4,7 @@ import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import * as Sharing from 'expo-sharing';
 import { ArrowLeft, CheckCircle, Share2 } from "lucide-react-native";
 import BackButton from "../../../../components/BackButton";
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { ActionSheetIOS, ActivityIndicator, Alert, Modal, Platform, SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { WebView } from 'react-native-webview';
 import * as XLSX from 'xlsx';
@@ -22,9 +22,11 @@ export default function ReportViewerScreen() {
 
     const report = useMemo(() => reportId ? getReport(reportId) : null, [reportId, getReport]);
     const project = useMemo(() => report ? getProject(report.projectId) : null, [report, getProject]);
-    const data = useMemo(() => report ? JSON.parse(report.templateData) : null, [report]);
+    const rawData = useMemo(() => report ? JSON.parse(report.templateData) : null, [report]);
+    const [data, setData] = useState<any>(null);
+    const [htmlContent, setHtmlContent] = useState<string>('');
 
-    if (!report || !project || !data) {
+    if (!report || !project || !rawData) {
         return (
             <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
                 <Stack.Screen options={{ headerShown: false }} />
@@ -607,9 +609,9 @@ export default function ReportViewerScreen() {
                         <div class="audio-badge">
                             🎤 Voice Memos Attached
                         </div>
-                        ${(data.audioUris || (data.audioUri ? [data.audioUri] : [])).map((uri: string) => `
-                            <audio controls src="${uri}" style="width: 100%; margin-top: 15px;"></audio>
-                        `).join('')}
+                        ${(data.audioUris || (data.audioUri ? [data.audioUri] : [])).map((uri: string) => {
+                            return `<audio controls src="${uri}" style="width: 100%; margin-top: 15px;"></audio>`;
+                        }).join('')}
                         ` : ''}
 
                         ${renderPhotos()}
@@ -619,7 +621,80 @@ export default function ReportViewerScreen() {
         `;
     };
 
+    // Load media as Base64 before rendering HTML
+    useEffect(() => {
+        let isMounted = true;
+        const prepareData = async () => {
+            if (!rawData) return;
+            const mappedData = JSON.parse(JSON.stringify(rawData));
+            if (report?.type === 'quick-log') {
+                if (mappedData.photos && mappedData.photos.length > 0) {
+                    for (let i = 0; i < mappedData.photos.length; i++) {
+                        const photo = mappedData.photos[i];
+                        const uri = typeof photo === 'string' ? photo : photo.uri;
+                        if (!uri.startsWith('data:')) {
+                            try {
+                                if (Platform.OS === 'web') {
+                                    const res = await fetch(uri);
+                                    const blob = await res.blob();
+                                    const reader = new FileReader();
+                                    const base64 = await new Promise((resolve) => {
+                                        reader.onloadend = () => resolve(reader.result);
+                                        reader.readAsDataURL(blob);
+                                    });
+                                    mappedData.photos[i] = { uri: base64 };
+                                } else {
+                                    const b64 = await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
+                                    mappedData.photos[i] = { uri: `data:image/jpeg;base64,${b64}` };
+                                }
+                            } catch (e) { console.error("Error embedding photo base64", e); }
+                        }
+                    }
+                }
+                const rawAudio = mappedData.audioUris || (mappedData.audioUri ? [mappedData.audioUri] : []);
+                if (rawAudio.length > 0) {
+                    let base64Audio = [];
+                    for (const uri of rawAudio) {
+                        if (!uri.startsWith('data:')) {
+                            try {
+                                if (Platform.OS === 'web') {
+                                    const res = await fetch(uri);
+                                    const blob = await res.blob();
+                                    const reader = new FileReader();
+                                    const base64 = await new Promise((resolve) => {
+                                        reader.onloadend = () => resolve(reader.result);
+                                        reader.readAsDataURL(blob);
+                                    });
+                                    base64Audio.push(base64);
+                                } else {
+                                    const b64 = await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
+                                    base64Audio.push(`data:audio/m4a;base64,${b64}`);
+                                }
+                            } catch (e) {
+                                console.error("Error embedding audio base64", e);
+                                base64Audio.push(uri);
+                            }
+                        } else {
+                            base64Audio.push(uri);
+                        }
+                    }
+                    mappedData.audioUris = base64Audio;
+                }
+            }
+            if (isMounted) setData(mappedData);
+        };
+        prepareData();
+        return () => { isMounted = false; };
+    }, [rawData, report?.type]);
+
+    useEffect(() => {
+        if (data) {
+            setHtmlContent(generateHTML());
+        }
+    }, [data]);
+
     const generateHTML = (options?: { hideMeta?: boolean }) => {
+        if (!data) return '';
         if (report.type === 'snagging') {
             return generateSnaggingHTML(options);
         }
@@ -1064,88 +1139,147 @@ export default function ReportViewerScreen() {
             const wb = XLSX.utils.book_new();
 
             // 2. Sheet 1: General Info & Meta
-            const wsGeneralData = [
-                ['DAILY PROGRESS REPORT'],
-                ['Project', project.name, 'Date', dateStr],
-                ['Location', project.location],
-                [],
-                ['Dates & Weather'],
-                ['Commencement Date', data.commencementDate || '-'],
-                ['Completion Date', data.completionDate || '-'],
-                ['Anticipated Completion', data.anticipatedCompletionDate || '-'],
-                ['Humidity', data.climateHumidity || '-'],
-                ['Temperature', data.climateTemp || '-'],
-                ['Visibility', data.climateVisibility || '-'],
-                ['Wind Speed', data.climateWindSpeed || '-'],
-                [],
-                ['Manpower Summary'],
-                ['Main Contractor', data.manpowerMainContractor || '0'],
-                ['Subcontractors', data.manpowerSubcontractors || '0'],
-                ['Night Shift / Others', data.manpowerOthers || '0'],
-                ['Total Manpower', data.manpowerTotal || '0'],
-            ];
-            const wsGeneral = XLSX.utils.aoa_to_sheet(wsGeneralData);
-            XLSX.utils.book_append_sheet(wb, wsGeneral, "General Details");
+            if (report.type === 'snagging') {
+                const wsGeneralData = [
+                    ['PROPERTY CONDITION AUDIT (PCA) REPORT'],
+                    ['Project', project.name, 'Date', dateStr],
+                    ['Location', project.location],
+                    [],
+                    ['Property Details'],
+                    ['Property Name', data.propertyName || '-'],
+                    ['Property Address', data.propertyAddress || '-'],
+                    ['City', data.city || '-'],
+                    ['Property Type', data.propertyType || '-'],
+                    ['Inspector', data.inspectorName || '-'],
+                ];
+                const wsGeneral = XLSX.utils.aoa_to_sheet(wsGeneralData);
+                XLSX.utils.book_append_sheet(wb, wsGeneral, "General Details");
 
-            // 3. Sheet 2: Main Contractor Staff
-            if (data.mainContractorStaff && data.mainContractorStaff.length > 0) {
-                const wsMCStaff = XLSX.utils.json_to_sheet(data.mainContractorStaff.map((s: any) => ({
-                    'Role / Description': s.description,
-                    'Count': s.count
-                })));
-                XLSX.utils.book_append_sheet(wb, wsMCStaff, "Main Contractor Staff");
-            }
+                if (data.snags && data.snags.length > 0) {
+                    const wsSnags = XLSX.utils.json_to_sheet(data.snags.map((s: any) => ({
+                        'System': s.system || '-',
+                        'Asset Name': s.assetName || '-',
+                        'Location': s.location || '-',
+                        'Level': s.level || '-',
+                        'Room': s.room || '-',
+                        'Severity': s.severity || '-',
+                        'Issue': s.issue || '-',
+                        'Recommendation': s.recommendation || '-',
+                        'Status': s.status || '-',
+                        'Contractor': s.contractor || '-',
+                        'Target Date': s.targetDate || '-',
+                        'Cost Estimate': s.costEstimate || '-'
+                    })));
+                    XLSX.utils.book_append_sheet(wb, wsSnags, "Observed Issues");
+                }
+            } else if (report.type === 'hse') {
+                const wsGeneralData = [
+                    ['HSE REPORT'],
+                    ['Project', project.name, 'Date', dateStr],
+                    ['Location', project.location],
+                    ['Author', report.author],
+                ];
+                const wsGeneral = XLSX.utils.aoa_to_sheet(wsGeneralData);
+                XLSX.utils.book_append_sheet(wb, wsGeneral, "General Details");
+                
+                if (data.incidents && data.incidents.length > 0) {
+                    const wsIncidents = XLSX.utils.json_to_sheet(data.incidents.map((s: any) => ({
+                        'Type': s.type || '-',
+                        'Location': s.location || '-',
+                        'Description': s.description || '-',
+                        'Action Taken': s.actionTaken || '-'
+                    })));
+                    XLSX.utils.book_append_sheet(wb, wsIncidents, "Incidents");
+                }
+            } else if (report.type === 'quick-log') {
+                const wsGeneralData = [
+                    ['QUICK SITE LOG'],
+                    ['Project', project.name, 'Date', dateStr],
+                    ['Location', data.location || project.location],
+                    ['Author', report.author],
+                    [],
+                    ['Notes', data.notes || 'No notes provided.']
+                ];
+                const wsGeneral = XLSX.utils.aoa_to_sheet(wsGeneralData);
+                XLSX.utils.book_append_sheet(wb, wsGeneral, "Quick Log Details");
+            } else {
+                const wsGeneralData = [
+                    ['DAILY PROGRESS REPORT'],
+                    ['Project', project.name, 'Date', dateStr],
+                    ['Location', project.location],
+                    [],
+                    ['Dates & Weather'],
+                    ['Commencement Date', data.commencementDate || '-'],
+                    ['Completion Date', data.completionDate || '-'],
+                    ['Anticipated Completion', data.anticipatedCompletionDate || '-'],
+                    ['Humidity', data.climateHumidity || '-'],
+                    ['Temperature', data.climateTemp || '-'],
+                    ['Visibility', data.climateVisibility || '-'],
+                    ['Wind Speed', data.climateWindSpeed || '-'],
+                    [],
+                    ['Manpower Summary'],
+                    ['Main Contractor', data.manpowerMainContractor || '0'],
+                    ['Subcontractors', data.manpowerSubcontractors || '0'],
+                    ['Night Shift / Others', data.manpowerOthers || '0'],
+                    ['Total Manpower', data.manpowerTotal || '0'],
+                ];
+                const wsGeneral = XLSX.utils.aoa_to_sheet(wsGeneralData);
+                XLSX.utils.book_append_sheet(wb, wsGeneral, "General Details");
 
-            // 4. Sheet 3: Subcontractor Staff
-            if (data.subcontractorStaff && data.subcontractorStaff.length > 0) {
-                const wsSubStaff = XLSX.utils.json_to_sheet(data.subcontractorStaff.map((s: any) => ({
-                    'Company / Name': s.name,
-                    'Count': s.count
-                })));
-                XLSX.utils.book_append_sheet(wb, wsSubStaff, "Subcontractor Staff");
-            }
+                if (data.mainContractorStaff && data.mainContractorStaff.length > 0) {
+                    const wsMCStaff = XLSX.utils.json_to_sheet(data.mainContractorStaff.map((s: any) => ({
+                        'Role / Description': s.description,
+                        'Count': s.count
+                    })));
+                    XLSX.utils.book_append_sheet(wb, wsMCStaff, "Main Contractor Staff");
+                }
 
-            // 5. Sheet 4: Equipment
-            if (data.equipment && data.equipment.length > 0) {
-                const wsEquip = XLSX.utils.json_to_sheet(data.equipment.map((e: any) => ({
-                    'Equipment Description': e.description,
-                    'Count': e.count
-                })));
-                XLSX.utils.book_append_sheet(wb, wsEquip, "Equipment");
-            }
+                if (data.subcontractorStaff && data.subcontractorStaff.length > 0) {
+                    const wsSubStaff = XLSX.utils.json_to_sheet(data.subcontractorStaff.map((s: any) => ({
+                        'Company / Name': s.name,
+                        'Count': s.count
+                    })));
+                    XLSX.utils.book_append_sheet(wb, wsSubStaff, "Subcontractor Staff");
+                }
 
-            // 6. Sheet 5: Labor
-            if (data.mainContractorLabor && data.mainContractorLabor.length > 0) {
-                const wsLabor = XLSX.utils.json_to_sheet(data.mainContractorLabor.map((l: any) => ({
-                    'Trade': l.trade,
-                    'In House': l.inHouse,
-                    'Supply': l.supply,
-                    'Total': l.total
-                })));
-                XLSX.utils.book_append_sheet(wb, wsLabor, "MC Labor");
-            }
+                if (data.equipment && data.equipment.length > 0) {
+                    const wsEquip = XLSX.utils.json_to_sheet(data.equipment.map((e: any) => ({
+                        'Equipment Description': e.description,
+                        'Count': e.count
+                    })));
+                    XLSX.utils.book_append_sheet(wb, wsEquip, "Equipment");
+                }
 
-            // 7. Sheet 6: Activities Progress
-            if (data.activitiesProgress && data.activitiesProgress.length > 0) {
-                const wsActivities = XLSX.utils.json_to_sheet(data.activitiesProgress.map((a: any) => ({
-                    'Activity Name': a.activityName,
-                    'UOM': a.uom,
-                    'Total Qty': a.totalQty,
-                    'Prev Qty': a.prevQty,
-                    'Today Qty': a.todayQty,
-                    'Balance Qty': a.balanceQty
-                })));
-                XLSX.utils.book_append_sheet(wb, wsActivities, "Progress Activities");
-            }
+                if (data.mainContractorLabor && data.mainContractorLabor.length > 0) {
+                    const wsLabor = XLSX.utils.json_to_sheet(data.mainContractorLabor.map((l: any) => ({
+                        'Trade': l.trade,
+                        'In House': l.inHouse,
+                        'Supply': l.supply,
+                        'Total': l.total
+                    })));
+                    XLSX.utils.book_append_sheet(wb, wsLabor, "MC Labor");
+                }
 
-            // 8. Sheet 7: Areas of Concern
-            if (data.areasOfConcern && data.areasOfConcern.length > 0) {
-                const wsConcerns = XLSX.utils.json_to_sheet(data.areasOfConcern.map((c: any) => ({
-                    'Location': c.location,
-                    'Issue / Concern': c.concern,
-                    'Corrective Action': c.action
-                })));
-                XLSX.utils.book_append_sheet(wb, wsConcerns, "Areas of Concern");
+                if (data.activitiesProgress && data.activitiesProgress.length > 0) {
+                    const wsActivities = XLSX.utils.json_to_sheet(data.activitiesProgress.map((a: any) => ({
+                        'Activity Name': a.activityName,
+                        'UOM': a.uom,
+                        'Total Qty': a.totalQty,
+                        'Prev Qty': a.prevQty,
+                        'Today Qty': a.todayQty,
+                        'Balance Qty': a.balanceQty
+                    })));
+                    XLSX.utils.book_append_sheet(wb, wsActivities, "Progress Activities");
+                }
+
+                if (data.areasOfConcern && data.areasOfConcern.length > 0) {
+                    const wsConcerns = XLSX.utils.json_to_sheet(data.areasOfConcern.map((c: any) => ({
+                        'Location': c.location,
+                        'Issue / Concern': c.concern,
+                        'Corrective Action': c.action
+                    })));
+                    XLSX.utils.book_append_sheet(wb, wsConcerns, "Areas of Concern");
+                }
             }
 
             // Write File
@@ -1153,7 +1287,7 @@ export default function ReportViewerScreen() {
 
             const safeName = project.name.split(' ').join('_');
             const safeDate = dateStr.split('/').join('-');
-            const filename = `Daily_Report_${safeName}_${safeDate}.xlsx`;
+            const filename = `${report.type.toUpperCase()}_Report_${safeName}_${safeDate}.xlsx`;
 
             if (Platform.OS === 'web') {
                 const byteCharacters = atob(wbout);
@@ -1271,15 +1405,21 @@ export default function ReportViewerScreen() {
 
             <View style={[styles.container, { backgroundColor: colors.background }]}>
                 {/* We render exactly the same HTML engine output in the webview to prove it maps 1:1 on the device */}
-                {Platform.OS === 'web' ? (
+                {!htmlContent ? (
+                    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                        <ActivityIndicator size="large" color={colors.primary} />
+                        <Text style={{ marginTop: 12, color: colors.textMuted }}>Loading media...</Text>
+                    </View>
+                ) : Platform.OS === 'web' ? (
                     <iframe
-                        srcDoc={generateHTML()}
+                        srcDoc={htmlContent}
                         style={{ width: '100%', height: '100%', border: 'none', backgroundColor: 'transparent' }}
                         title="Report Preview"
                     />
                 ) : (
                     <WebView
-                        source={{ html: generateHTML() }}
+                        // @ts-ignore
+                        source={{ html: htmlContent }}
                         style={styles.webview}
                         javaScriptEnabled={true}
                         domStorageEnabled={true}

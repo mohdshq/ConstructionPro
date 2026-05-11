@@ -7,6 +7,7 @@ import { useEffect, useState } from 'react';
 import Animated, { FadeInDown, FadeIn } from 'react-native-reanimated';
 import { useProjectsStore, Project, Report } from '../../store/projectsStore';
 import { useThemeColors } from '../../store/useThemeColors';
+import { useStore } from '../../store/useStore';
 
 const REPORT_CATEGORIES = [
     { id: 'daily', title: 'Daily Reports', desc: 'Progress, Weather & Workforce', icon: <FileText size={28} color="#2563EB" />, bg: '#EFF6FF', route: 'daily' },
@@ -22,9 +23,9 @@ export default function ProjectDashboardScreen() {
     const { colors } = useThemeColors();
 
     // Make reports reactive to instantly show newly created ones
-    const reports = useProjectsStore(state =>
-        state.reports.filter(r => r.projectId === id).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-    );
+    const allReports = useProjectsStore(state => state.reports);
+    const reports = allReports.filter(r => r.projectId === id).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    const { isPremium } = useStore();
 
     const [project, setProject] = useState<Project | null>(null);
 
@@ -79,6 +80,21 @@ export default function ProjectDashboardScreen() {
                 ]
             );
         }
+    };
+
+    const checkReportLimit = (): boolean => {
+        if (!isPremium && allReports.length >= 3) {
+            Alert.alert(
+                "Premium Required",
+                "Free users can only create up to 3 reports. Upgrade to Construction Pro Premium to create unlimited reports.",
+                [
+                    { text: "Cancel", style: "cancel" },
+                    { text: "Upgrade", style: "default", onPress: () => router.push('/settings' as any) }
+                ]
+            );
+            return false;
+        }
+        return true;
     };
 
     // Dynamically calculate status if dates exist
@@ -138,7 +154,12 @@ export default function ProjectDashboardScreen() {
                     </View>
                     <TouchableOpacity
                         style={[styles.actionIconSm, { backgroundColor: colors.background }]}
-                        onPress={(e) => { e.stopPropagation(); router.push(`/project/${project.id}/report/create?type=${item.type}&duplicateId=${item.id}` as any); }}
+                        onPress={(e) => { 
+                            e.stopPropagation(); 
+                            if (checkReportLimit()) {
+                                router.push(`/project/${project.id}/report/create?type=${item.type}&duplicateId=${item.id}` as any); 
+                            }
+                        }}
                     >
                         <Plus size={16} color="#2563EB" />
                     </TouchableOpacity>
@@ -270,10 +291,12 @@ export default function ProjectDashboardScreen() {
                             <TouchableOpacity
                                 style={[styles.categoryCard, { backgroundColor: colors.card, borderColor: cat.bg }]}
                                 onPress={() => {
-                                    if (cat.route === 'quick-log') {
-                                        router.push({ pathname: '/quick-log', params: { projectId: project.id } } as any);
-                                    } else {
-                                        router.push(`/project/${project.id}/report/create?type=${cat.route}` as any);
+                                    if (checkReportLimit()) {
+                                        if (cat.route === 'quick-log') {
+                                            router.push({ pathname: '/quick-log', params: { projectId: project.id } } as any);
+                                        } else {
+                                            router.push(`/project/${project.id}/report/create?type=${cat.route}` as any);
+                                        }
                                     }
                                 }}
                                 activeOpacity={0.7}
