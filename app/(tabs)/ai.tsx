@@ -47,16 +47,31 @@ export default function AIScreen() {
         Keyboard.dismiss();
         setIsTyping(true);
 
+        // Built-in AI is launching soon. Until then, gate AI behind a feature flag
+        // and (optionally) an Advanced user-supplied key. No more scary error messages.
+        if (!env.ai.enabled) {
+            setTimeout(() => {
+                setIsTyping(false);
+                addMessage({
+                    id: (Date.now() + 1).toString(),
+                    text: "🚧 Built-in AI assistant is launching soon. We're polishing answers tuned for construction codes (ACI, IBC, AISC), site safety, and report drafting. Stay tuned!",
+                    sender: 'ai',
+                    timestamp: Date.now()
+                });
+            }, 600);
+            return;
+        }
+
         if (!aiApiKey) {
             setTimeout(() => {
                 setIsTyping(false);
                 addMessage({
                     id: (Date.now() + 1).toString(),
-                    text: "⚠️ Please enter your Gemini API Key in the App Settings to enable AI responses. Go to Settings > AI Configuration.",
+                    text: "🚧 Built-in AI is launching soon. If you'd like to preview it early, you can add your own Gemini key under Settings → Advanced.",
                     sender: 'ai',
                     timestamp: Date.now()
                 });
-            }, 800);
+            }, 600);
             return;
         }
 
@@ -101,8 +116,13 @@ export default function AIScreen() {
                         validModelNames = validModels.map((m: any) => m.name.replace('models/', ''));
                     }
                 }
-            } catch (fetchErr) {
-                console.warn("Failed to dynamically fetch models, using fallback.", fetchErr);
+            } catch (fetchErr: any) {
+                telemetry.addBreadcrumb({
+                    category: 'ai',
+                    message: 'Failed to fetch model list, using fallback',
+                    data: { error: fetchErr?.message },
+                    level: 'warning',
+                });
             }
 
             let responseText = "";
