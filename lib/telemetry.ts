@@ -29,7 +29,7 @@ export const telemetry = {
 
         if (!env.sentry.isConfigured) {
             if (__DEV__) {
-                // eslint-disable-next-line no-console
+                 
                 console.log('[telemetry] Sentry DSN not set — running in no-op mode.');
             }
             return;
@@ -67,7 +67,7 @@ export const telemetry = {
     /** Log a handled exception (always prefer this over silent `try/catch`). */
     captureException(error: unknown, context?: Record<string, unknown>) {
         if (__DEV__) {
-            // eslint-disable-next-line no-console
+             
             console.error('[telemetry]', error, context);
         }
         if (!initialized || !env.sentry.isConfigured) return;
@@ -87,7 +87,7 @@ export const telemetry = {
         level: 'info' | 'warning' | 'error' = 'info'
     ) {
         if (__DEV__) {
-            // eslint-disable-next-line no-console
+             
             console.log(`[telemetry:${level}]`, message);
         }
         if (!initialized || !env.sentry.isConfigured) return;

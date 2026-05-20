@@ -2,7 +2,8 @@ import BackButton from "../components/BackButton";
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Platform, TextInput, Image } from 'react-native';
 import { Crown, CheckCircle2, ShieldCheck, Zap, ArrowLeft, Settings2, Moon, Sun, Monitor, Scale, User, Camera } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
-import * as FileSystem from 'expo-file-system';
+// See note in app/quick-log.tsx for why we import from /legacy.
+import * as FileSystem from 'expo-file-system/legacy';
 import Purchases from 'react-native-purchases';
 import Animated, { FadeIn, FadeInDown, useSharedValue, useAnimatedStyle, withRepeat, withTiming, withSequence } from 'react-native-reanimated';
 import { useEffect, useState } from 'react';

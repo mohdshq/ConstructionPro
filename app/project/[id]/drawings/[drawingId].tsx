@@ -5,7 +5,8 @@ import { useState, useMemo, useEffect } from 'react';
 import { ArrowLeft, Share2, Info, AlertCircle, Maximize2, Compass, UploadCloud } from "lucide-react-native";
 import BackButton from "../../../../components/BackButton";
 import { WebView } from 'react-native-webview';
-import * as FileSystem from 'expo-file-system';
+// See note in app/quick-log.tsx for why we import from /legacy.
+import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { useThemeColors } from '../../../../store/useThemeColors';
 

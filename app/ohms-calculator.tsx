@@ -93,7 +93,7 @@ export default function OhmsCalculatorScreen() {
         >
             <View style={[styles.headerBar, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
                 <BackButton style={{ position: "absolute", left: 20, zIndex: 20, bottom: 8 }} />
-                <Text style={[styles.headerBarTitle, { color: colors.text }]}>Ohm's Law</Text>
+                <Text style={[styles.headerBarTitle, { color: colors.text }]}>Ohm&apos;s Law</Text>
                 <TouchableOpacity onPress={clearInputs} style={styles.clearBtn}>
                     <Text style={styles.clearBtnText}>Clear</Text>
                 </TouchableOpacity>
@@ -190,7 +190,7 @@ export default function OhmsCalculatorScreen() {
                 <Animated.View entering={FadeInDown.delay(400).springify()} style={styles.referenceCard}>
                     <View style={styles.refHeader}>
                         <Info color="#DB2777" size={20} />
-                        <Text style={styles.refTitle}>Ohm's Wheel</Text>
+                        <Text style={styles.refTitle}>Ohm&apos;s Wheel</Text>
                     </View>
 
                     <Text style={styles.refDesc}>

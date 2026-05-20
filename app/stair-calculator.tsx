@@ -130,9 +130,9 @@ export default function StairCalculatorScreen() {
 
                     <Text style={styles.refDesc}>
                         IBC (International Building Code) Requirements typically dictate:
-                        {"\n"}• Maximum Riser Height: 7.75" (19.7 cm)
-                        {"\n"}• Minimum Tread Depth: 10.0" (25.4 cm)
-                        {"\n"}• Riser variation within a flight cannot exceed 3/8" (9.5mm)
+                        {"\n"}• Maximum Riser Height: 7.75&quot; (19.7 cm)
+                        {"\n"}• Minimum Tread Depth: 10.0&quot; (25.4 cm)
+                        {"\n"}• Riser variation within a flight cannot exceed 3/8&quot; (9.5mm)
                     </Text>
                 </Animated.View>
 

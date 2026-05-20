@@ -6,7 +6,7 @@ import { useThemeColors } from '../../store/useThemeColors';
 import { searchStandards, StandardRegion, ConstructionStandard, StandardCategory } from '../../store/standardsData';
 import * as WebBrowser from 'expo-web-browser';
 
-const REGIONS: Array<StandardRegion | 'All'> = ['All', 'UAE', 'Gulf', 'International'];
+const REGIONS: (StandardRegion | 'All')[] = ['All', 'UAE', 'Gulf', 'International'];
 
 export default function StandardsScreen() {
     const { colors } = useThemeColors();

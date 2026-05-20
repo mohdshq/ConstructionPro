@@ -1,4 +1,5 @@
-import * as FileSystem from 'expo-file-system';
+// See note in app/quick-log.tsx for why we import from /legacy.
+import * as FileSystem from 'expo-file-system/legacy';
 import * as Print from 'expo-print';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import * as Sharing from 'expo-sharing';
@@ -20,23 +21,31 @@ export default function ReportViewerScreen() {
     const [isGenerating, setIsGenerating] = useState(false);
     const [shareModalVisible, setShareModalVisible] = useState(false);
 
-    const report = useMemo(() => reportId ? getReport(reportId) : null, [reportId, getReport]);
-    const project = useMemo(() => report ? getProject(report.projectId) : null, [report, getProject]);
-    const rawData = useMemo(() => report ? JSON.parse(report.templateData) : null, [report]);
+    const reportRaw = useMemo(() => reportId ? getReport(reportId) : null, [reportId, getReport]);
+    const projectRaw = useMemo(() => reportRaw ? getProject(reportRaw.projectId) : null, [reportRaw, getProject]);
+    // Convenience aliases used throughout this file. They are typed as the
+    // resolved (non-null) value because we early-return below when any of
+    // them is missing — see the `notFound` flag and the corresponding render
+    // guard before the main return. This avoids sprinkling `?.` or `!`
+    // throughout the ~1300 lines of HTML/share helpers below.
+    const report = reportRaw as NonNullable<typeof reportRaw>;
+    const project = projectRaw as NonNullable<typeof projectRaw>;
+    const rawData = useMemo(() => {
+        if (!reportRaw) return null;
+        try {
+            return JSON.parse(reportRaw.templateData);
+        } catch {
+            return null;
+        }
+    }, [reportRaw]);
     const [data, setData] = useState<any>(null);
     const [htmlContent, setHtmlContent] = useState<string>('');
 
-    if (!report || !project || !rawData) {
-        return (
-            <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
-                <Stack.Screen options={{ headerShown: false }} />
-                <View style={[styles.header, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
-                    <BackButton style={{ position: "absolute", left: 20, zIndex: 20, bottom: 8 }} />
-                    <Text style={[styles.headerTitle, { color: colors.text }]}>Report Not Found</Text>
-                </View>
-            </SafeAreaView>
-        );
-    }
+    // NOTE: The "Report Not Found" early-return is intentionally rendered
+    // AT THE END of this component (look for `notFound`) instead of here.
+    // Returning early before the useEffect hooks below would break the
+    // Rules of Hooks (hooks must run in the same order every render).
+    const notFound = !reportRaw || !projectRaw || !rawData;
 
     const generateSnaggingHTML = (options?: { hideMeta?: boolean }) => {
         const snags = data.snags || [];
@@ -1358,13 +1367,28 @@ export default function ReportViewerScreen() {
         }
     };
 
+    // Render the "not found" placeholder AFTER all hooks have run. This is
+    // the deliberate fix for the prior Rules-of-Hooks violation — see the
+    // `notFound` flag computed at the top of the component.
+    if (notFound) {
+        return (
+            <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
+                <Stack.Screen options={{ headerShown: false }} />
+                <View style={[styles.header, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
+                    <BackButton style={{ position: "absolute", left: 20, zIndex: 20, bottom: 8 }} />
+                    <Text style={[styles.headerTitle, { color: colors.text }]}>Report Not Found</Text>
+                </View>
+            </SafeAreaView>
+        );
+    }
+
     return (
         <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
             <Stack.Screen options={{ headerShown: false }} />
             <View style={[styles.header, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
                 <BackButton style={{ position: "absolute", left: 20, zIndex: 20, bottom: 8 }} />
                 <Text style={styles.headerTitle} numberOfLines={1}>{
-                    report.type === 'daily' ? 'Daily Report Preview' : 'Document Viewer'
+                    report!.type === 'daily' ? 'Daily Report Preview' : 'Document Viewer'
                 }</Text>
                 <View style={styles.headerActions}>
                     <TouchableOpacity style={styles.actionIcon} onPress={handleStatusUpdate} disabled={isGenerating}>

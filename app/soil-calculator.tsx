@@ -136,7 +136,7 @@ export default function SoilCalculatorScreen() {
                         </Text>
                     </View>
                     <Text style={styles.refDesc}>
-                        When soil is excavated, it expands. "Bank Volume" is the undisturbed dirt in the ground. "Loose Volume" is the amount you actually have to haul away in trucks.
+                        When soil is excavated, it expands. &quot;Bank Volume&quot; is the undisturbed dirt in the ground. &quot;Loose Volume&quot; is the amount you actually have to haul away in trucks.
                         {"\n\n"}Standard Swell Factors:{"\n"}• Sand/Gravel: 10-15%{"\n"}• Topsoil: 20-25%{"\n"}• Clay: 30-40%
                     </Text>
                 </Animated.View>

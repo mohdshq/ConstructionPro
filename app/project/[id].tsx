@@ -1,8 +1,7 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, SafeAreaView, Platform, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, SafeAreaView, Platform, Alert , Image } from 'react-native';
 import { ArrowLeft, MapPin, Calendar, Clock, FileText, CheckSquare, ShieldAlert, Plus, FolderOpen, DollarSign, Briefcase, Pencil, Trash2, Zap } from "lucide-react-native";
 import BackButton from "../../components/BackButton";
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
-import { Image } from 'react-native';
 import { useEffect, useState } from 'react';
 import Animated, { FadeInDown, FadeIn } from 'react-native-reanimated';
 import { useProjectsStore, Project, Report } from '../../store/projectsStore';

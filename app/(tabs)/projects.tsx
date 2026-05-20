@@ -1,8 +1,7 @@
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, SafeAreaView, Platform, Dimensions, Alert } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, SafeAreaView, Platform, Dimensions, Alert , Image } from 'react-native';
 import { MapPin, Calendar, FolderOpen, Plus, User, FileText, Pencil, Trash2 } from 'lucide-react-native';
 import Animated, { FadeInDown, FadeIn } from 'react-native-reanimated';
 import { useRouter } from 'expo-router';
-import { Image } from 'react-native';
 import { useProjectsStore, Project } from '../../store/projectsStore';
 import { useThemeColors } from '../../store/useThemeColors';
 import { useStore } from '../../store/useStore';
