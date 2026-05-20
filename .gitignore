@@ -30,8 +30,10 @@ yarn-error.*
 .DS_Store
 *.pem
 
-# local env files
-.env*.local
+# Environment / secrets — never commit
+.env
+.env.*
+!.env.example
 
 # typescript
 *.tsbuildinfo
@@ -41,3 +43,34 @@ app-example
 # generated native folders
 /ios
 /android
+
+# Build artifacts (large binaries should never be in git)
+*.ipa
+*.apk
+*.aab
+*.app
+*.dSYM
+*.symbols
+Payload/
+Symbols/
+
+# One-off migration / fix scripts (use scripts/ folder if needed long-term)
+fix_*.js
+fix-*.js
+
+# Editor
+.idea/
+*.swp
+
+# Testing
+coverage/
+.nyc_output/
+
+# Logs
+*.log
+logs/
+
+# Local sandbox / temp
+stitch_ui.html
+tmp/
+.tmp/

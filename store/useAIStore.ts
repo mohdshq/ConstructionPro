@@ -1,5 +1,5 @@
-import create from 'zustand';
-import { persist } from 'zustand/middleware';
+import { create } from 'zustand';
+import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export interface ChatMessage {
@@ -15,30 +15,34 @@ interface AIState {
     clearHistory: () => void;
 }
 
-export const useAIStore = create<AIState>(
+const welcomeMessage = (text: string): ChatMessage => ({
+    id: 'welcome_1',
+    text,
+    sender: 'ai',
+    timestamp: Date.now(),
+});
+
+export const useAIStore = create<AIState>()(
     persist(
-        (set): AIState => ({
+        (set) => ({
             messages: [
-                {
-                    id: 'welcome_1',
-                    text: 'Good morning. I am your AI Assistant. How can I help you with construction standards, codes, or site management today?',
-                    sender: 'ai',
-                    timestamp: Date.now()
-                }
+                welcomeMessage(
+                    'Good morning. I am your AI Assistant. How can I help you with construction standards, codes, or site management today?'
+                ),
             ],
-            addMessage: (msg) => set((state) => ({ messages: [...state.messages, msg] })),
-            clearHistory: () => set({ 
-                messages: [{
-                    id: 'welcome_1',
-                    text: 'Chat history cleared. How can I assist you today?',
-                    sender: 'ai',
-                    timestamp: Date.now()
-                }]
-            }),
+            addMessage: (msg) =>
+                set((state) => ({ messages: [...state.messages, msg] })),
+            clearHistory: () =>
+                set({
+                    messages: [
+                        welcomeMessage('Chat history cleared. How can I assist you today?'),
+                    ],
+                }),
         }),
         {
             name: 'ai-storage',
-            getStorage: () => AsyncStorage,
+            storage: createJSONStorage(() => AsyncStorage),
+            version: 1,
         }
     )
 );

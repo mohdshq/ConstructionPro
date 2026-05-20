@@ -1,8 +1,10 @@
-import create from 'zustand';
-import { persist } from 'zustand/middleware';
+import { create } from 'zustand';
+import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const generateId = () => Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+const generateId = () =>
+    Math.random().toString(36).substring(2, 15) +
+    Math.random().toString(36).substring(2, 15);
 
 export type ProjectStatus = 'planning' | 'active' | 'completed' | 'on-hold';
 export type ReportType = 'daily' | 'snagging' | 'hse' | 'quick-log';
@@ -234,7 +236,7 @@ interface ProjectsState {
     getDrawingsForProject: (projectId: string) => Drawing[];
 }
 
-export const useProjectsStore = create<ProjectsState>(
+export const useProjectsStore = create<ProjectsState>()(
     persist(
         (set, get) => ({
             projects: [],
@@ -356,7 +358,8 @@ export const useProjectsStore = create<ProjectsState>(
         }),
         {
             name: 'construction-pro-projects-storage',
-            getStorage: () => AsyncStorage,
+            storage: createJSONStorage(() => AsyncStorage),
+            version: 1,
         }
     )
 );
