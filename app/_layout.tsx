@@ -2,61 +2,55 @@ import { DarkTheme, ThemeProvider } from '@react-navigation/native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
-import { Platform } from 'react-native';
-import Purchases from 'react-native-purchases';
 import 'react-native-reanimated';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
-import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useStore } from '@/store/useStore';
+import { telemetry } from '@/lib/telemetry';
+import { purchases } from '@/lib/purchases';
 
 export const unstable_settings = {
-  anchor: '(tabs)',
+    anchor: '(tabs)',
 };
 
-// RevenueCat API Keys (Replace with your actual keys from RevenueCat Dashboard)
-const API_KEY_APPLE = "appl_XPTkcAVgIUmYxQnXXZAVuuYpGfX";
-const API_KEY_GOOGLE = "goog_placeholder_key_here";
-
 export default function RootLayout() {
-  const colorScheme = useColorScheme();
+    const setIsPremium = useStore((s) => s.setIsPremium);
 
-  const { setIsPremium } = useStore();
+    // Initialize telemetry as early as possible so we capture init-time crashes.
+    // Safe to call repeatedly (the wrapper is idempotent).
+    useEffect(() => {
+        telemetry.init();
+    }, []);
 
-  useEffect(() => {
-    const initRevenueCat = async () => {
-      setIsPremium(false); // Force close gatewall by default
-      try {
-        if (Platform.OS === 'ios') {
-          Purchases.configure({ apiKey: API_KEY_APPLE });
-        } else if (Platform.OS === 'android') {
-          Purchases.configure({ apiKey: API_KEY_GOOGLE });
-        }
-        
-        // Initial check
-        const customerInfo = await Purchases.getCustomerInfo();
-        setIsPremium(typeof customerInfo.entitlements.active['premium'] !== "undefined");
-        
-        // Listen for updates
-        Purchases.addCustomerInfoUpdateListener((info) => {
-            setIsPremium(typeof info.entitlements.active['premium'] !== "undefined");
+    // Configure RevenueCat and subscribe to entitlement changes.
+    //
+    // IMPORTANT (bugfix v1.0.1): previously we did `setIsPremium(false)` on
+    // every mount, which made paying users briefly lose Premium until the
+    // network call resolved. We now trust the persisted value from the store
+    // (the source of truth at cold start) and only update it when RevenueCat
+    // gives us a new authoritative answer.
+    useEffect(() => {
+        const ok = purchases.configure();
+        if (!ok) return; // web / no key configured — keep cached value
+
+        const unsubscribe = purchases.subscribeEntitlement((isPremium) => {
+            setIsPremium(isPremium);
         });
-      } catch (e) {
-        console.error("Error initializing RevenueCat:", e);
-      }
-    };
-    initRevenueCat();
-  }, []);
+        return unsubscribe;
+    }, [setIsPremium]);
 
-  return (
-    <ThemeProvider value={DarkTheme}>
-      <SafeAreaProvider>
-        <Stack screenOptions={{ headerShown: false }}>
-          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
-        </Stack>
-        <StatusBar style="light" />
-      </SafeAreaProvider>
-    </ThemeProvider>
-  );
+    return (
+        <ThemeProvider value={DarkTheme}>
+            <SafeAreaProvider>
+                <Stack screenOptions={{ headerShown: false }}>
+                    <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+                    <Stack.Screen
+                        name="modal"
+                        options={{ presentation: 'modal', title: 'Modal' }}
+                    />
+                </Stack>
+                <StatusBar style="light" />
+            </SafeAreaProvider>
+        </ThemeProvider>
+    );
 }

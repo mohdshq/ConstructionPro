@@ -5,10 +5,11 @@ import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
 import Purchases from 'react-native-purchases';
 import Animated, { FadeIn, FadeInDown, useSharedValue, useAnimatedStyle, withRepeat, withTiming, withSequence } from 'react-native-reanimated';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { router } from 'expo-router';
 import { useStore, ThemeType, UnitSystem } from '../store/useStore';
 import { useThemeColors } from '../store/useThemeColors';
+import { telemetry } from '../lib/telemetry';
 
 interface FeatureRowProps {
     title: string;
@@ -29,6 +30,11 @@ export default function SettingsScreen() {
     const glowOpacity = useSharedValue(0.15);
     const { theme, units, setTheme, setUnits, userName, userPhoto, setUserName, setUserPhoto, aiApiKey, setAiApiKey } = useStore();
     const { colors, isDark } = useThemeColors();
+
+    // Advanced-AI disclosure: hidden by default (most users should wait for
+    // the hosted proxy). We open it automatically for users who already have
+    // a key set, so they can still find and edit it.
+    const [showAdvancedAI, setShowAdvancedAI] = useState<boolean>(Boolean(aiApiKey));
 
     useEffect(() => {
         glowOpacity.value = withRepeat(
@@ -91,7 +97,7 @@ export default function SettingsScreen() {
             }
         } catch (e: any) {
             if (!e.userCancelled) {
-                console.error(e);
+                telemetry.captureException(e, { where: 'settings.handleSubscribe' });
                 Alert.alert("Error", e.message || "Failed to initialize purchase.");
             }
         }
@@ -166,44 +172,60 @@ export default function SettingsScreen() {
                     </View>
                 </Animated.View>
 
-                {/* AI Configuration Section */}
+                {/*
+                  * AI section
+                  * ----------
+                  * Previously this section asked every user to paste a personal
+                  * Gemini API key — bad UX and confusing for non-technical site
+                  * teams. The hosted AI proxy ships in Phase 2; until then we
+                  * keep the field available behind an "Advanced" disclosure for
+                  * the small number of early adopters who already pasted a key.
+                  *
+                  * Once the proxy ships, this entire block is deleted and the
+                  * `aiApiKey` field is removed from the store.
+                  */}
                 <Animated.View entering={FadeInDown.delay(50).springify()} style={styles.prefSection}>
                     <View style={styles.sectionHeader}>
                         <Zap color={colors.text} size={20} />
-                        <Text style={[styles.sectionTitle, { color: colors.text }]}>AI Configuration</Text>
+                        <Text style={[styles.sectionTitle, { color: colors.text }]}>AI Assistant</Text>
                     </View>
 
                     <View style={[styles.prefCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                        <View style={styles.profileInputContainer}>
-                            <Text style={[styles.prefLabel, { color: colors.textMuted }]}>Gemini API Key</Text>
-                            <TextInput
-                                style={[styles.textInput, { backgroundColor: colors.inputBackground, color: colors.text, marginTop: 8 }]}
-                                value={aiApiKey}
-                                onChangeText={setAiApiKey}
-                                placeholder="AIzaSy..."
-                                placeholderTextColor={colors.textMuted}
-                                secureTextEntry
-                            />
-                            
-                            <View style={{ marginTop: 12, padding: 12, backgroundColor: isDark ? 'rgba(59, 130, 246, 0.1)' : '#EFF6FF', borderRadius: 8, borderWidth: 1, borderColor: '#BFDBFE' }}>
-                                <Text style={{ fontSize: 13, color: isDark ? '#93C5FD' : '#1E40AF', fontWeight: 'bold', marginBottom: 4 }}>
-                                    How to get a FREE API Key:
-                                </Text>
-                                <Text style={{ fontSize: 12, color: isDark ? '#BFDBFE' : '#1E3A8A', lineHeight: 18 }}>
-                                    1. Go to <Text style={{ fontWeight: 'bold' }}>aistudio.google.com</Text> in your browser.{'\n'}
-                                    2. Sign in with your Google account.{'\n'}
-                                    3. Click "Get API Key" (it is 100% free for personal use).{'\n'}
-                                    4. Paste the key above and tap Save.
+                        <Text style={{ fontSize: 14, color: colors.text, lineHeight: 20, fontWeight: '600', marginBottom: 6 }}>
+                            Built-in AI is launching soon.
+                        </Text>
+                        <Text style={{ fontSize: 13, color: colors.textMuted, lineHeight: 18 }}>
+                            We&apos;re finishing the hosted AI assistant so you can ask construction questions, draft reports, and analyse site photos without setting anything up. No key needed.
+                        </Text>
+
+                        <TouchableOpacity
+                            style={{ marginTop: 16, paddingVertical: 10, alignItems: 'flex-start' }}
+                            onPress={() => setShowAdvancedAI((v: boolean) => !v)}
+                            accessibilityRole="button"
+                        >
+                            <Text style={{ fontSize: 13, color: colors.primary, fontWeight: '600' }}>
+                                {showAdvancedAI ? 'Hide advanced options' : 'Advanced options (use your own key)'}
+                            </Text>
+                        </TouchableOpacity>
+
+                        {showAdvancedAI && (
+                            <View style={{ marginTop: 8 }}>
+                                <Text style={[styles.prefLabel, { color: colors.textMuted }]}>Google AI Studio API Key (optional)</Text>
+                                <TextInput
+                                    style={[styles.textInput, { backgroundColor: colors.inputBackground, color: colors.text, marginTop: 8 }]}
+                                    value={aiApiKey}
+                                    onChangeText={setAiApiKey}
+                                    placeholder="AIzaSy..."
+                                    placeholderTextColor={colors.textMuted}
+                                    secureTextEntry
+                                    autoCapitalize="none"
+                                    autoCorrect={false}
+                                />
+                                <Text style={{ marginTop: 8, fontSize: 12, color: colors.textMuted, lineHeight: 18 }}>
+                                    Power users can paste a personal key from aistudio.google.com to test AI features before the hosted version ships. Stored only on this device.
                                 </Text>
                             </View>
-
-                            <TouchableOpacity 
-                                style={{ backgroundColor: colors.primary, paddingVertical: 12, borderRadius: 8, alignItems: 'center', marginTop: 16 }}
-                                onPress={() => Alert.alert("Saved!", "Your AI API Key has been saved securely on your device.")}
-                            >
-                                <Text style={{ color: '#FFFFFF', fontWeight: '600', fontSize: 15 }}>Save Key</Text>
-                            </TouchableOpacity>
-                        </View>
+                        )}
                     </View>
                 </Animated.View>
 

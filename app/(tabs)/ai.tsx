@@ -6,6 +6,8 @@ import { useThemeColors } from '../../store/useThemeColors';
 import { useAIStore, ChatMessage } from '../../store/useAIStore';
 import { useStore } from '../../store/useStore';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { telemetry } from '../../lib/telemetry';
+import { env } from '../../constants/env';
 
 const SUGGESTIONS = [
     { id: '1', text: 'What is the required rebar cover for footings?', icon: <HardHat size={16} /> },
@@ -132,7 +134,12 @@ export default function AIScreen() {
                     break; // Stop loop if successful
                 } catch (e: any) {
                     lastError = e;
-                    console.warn(`Model ${modelName} failed. Falling back to next...`, e.message);
+                    telemetry.addBreadcrumb({
+                        category: 'ai',
+                        message: `Model ${modelName} failed, trying next`,
+                        data: { error: e?.message },
+                        level: 'warning',
+                    });
                 }
             }
 
@@ -148,11 +155,12 @@ export default function AIScreen() {
             });
 
         } catch (error: any) {
+            telemetry.captureException(error, { where: 'ai.handleSend' });
             addMessage({
                 id: (Date.now() + 1).toString(),
-                text: `Error connecting to AI: ${error.message || 'Please check your API key.'}`,
+                text: `Error connecting to AI: ${error.message || 'Please try again in a moment.'}`,
                 sender: 'ai',
-                timestamp: Date.now()
+                timestamp: Date.now(),
             });
         } finally {
             setIsTyping(false);
