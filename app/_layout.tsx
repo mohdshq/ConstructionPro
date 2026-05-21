@@ -1,14 +1,15 @@
 import { DarkTheme, ThemeProvider } from '@react-navigation/native';
-import { Stack } from 'expo-router';
+import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
-import { Platform } from 'react-native';
+import { Platform, View, ActivityIndicator } from 'react-native';
 import Purchases from 'react-native-purchases';
 import 'react-native-reanimated';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useStore } from '@/store/useStore';
+import { useAuthStore } from '@/store/useAuthStore';
 
 export const unstable_settings = {
   anchor: '(tabs)',
@@ -22,6 +23,28 @@ const REVENUECAT_API_KEY_GOOGLE = "goog_placeholder_key_here"; // TODO: Replace 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
   const { setIsPremium } = useStore();
+  
+  const { isInitialized, session, initialize } = useAuthStore();
+  const segments = useSegments();
+  const router = useRouter();
+
+  useEffect(() => {
+    initialize();
+  }, []);
+
+  useEffect(() => {
+    if (!isInitialized) return;
+
+    const inAuthGroup = segments[0] === '(auth)';
+
+    if (!session && !inAuthGroup) {
+      // Redirect to the login page
+      router.replace('/(auth)/login');
+    } else if (session && inAuthGroup) {
+      // Redirect away from the login page
+      router.replace('/(tabs)');
+    }
+  }, [session, isInitialized, segments]);
 
   useEffect(() => {
     const initRevenueCat = async () => {
@@ -50,10 +73,19 @@ export default function RootLayout() {
     initRevenueCat();
   }, []);
 
+  if (!isInitialized) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#0F172A' }}>
+        <ActivityIndicator size="large" color="#2563EB" />
+      </View>
+    );
+  }
+
   return (
     <ThemeProvider value={DarkTheme}>
       <SafeAreaProvider>
         <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="(auth)" options={{ headerShown: false }} />
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
         </Stack>
