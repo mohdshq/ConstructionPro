@@ -1,5 +1,5 @@
-import create from 'zustand';
-import { persist } from 'zustand/middleware';
+import { create } from 'zustand';
+import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export type ThemeType = 'light' | 'dark' | 'system';
@@ -10,46 +10,37 @@ interface AppState {
     units: UnitSystem;
     userName: string;
     userPhoto: string | null;
-    aiApiKey: string;
     isPremium: boolean;
     setTheme: (theme: ThemeType) => void;
     setUnits: (units: UnitSystem) => void;
     setUserName: (name: string) => void;
     setUserPhoto: (photo: string | null) => void;
-    setAiApiKey: (key: string) => void;
     setIsPremium: (isPremium: boolean) => void;
 }
 
-export const useStore = create<AppState>(
+export const useStore = create<AppState>()(
     persist(
-        (set: any): AppState => ({
+        (set): AppState => ({
             theme: 'system',
             units: 'metric',
             userName: '',
             userPhoto: null,
-            aiApiKey: '',
             isPremium: false,
             setTheme: (theme) => set({ theme }),
             setUnits: (units) => set({ units }),
             setUserName: (userName) => set({ userName }),
             setUserPhoto: (userPhoto) => set({ userPhoto }),
-            setAiApiKey: (aiApiKey) => set({ aiApiKey }),
             setIsPremium: (isPremium) => set({ isPremium }),
         }),
         {
             name: 'app-storage',
-            getStorage: () => AsyncStorage,
+            storage: createJSONStorage(() => AsyncStorage),
             partialize: (state) => ({
                 theme: state.theme,
                 units: state.units,
                 userName: state.userName,
                 userPhoto: state.userPhoto,
-                aiApiKey: state.aiApiKey,
-            }),
-            merge: (persistedState: any, currentState: any) => ({
-                ...currentState,
-                ...persistedState,
-                isPremium: false, // Force gatewall close on rehydrate
+                isPremium: state.isPremium, // Now persisted — fix for premium users losing status
             }),
         }
     )

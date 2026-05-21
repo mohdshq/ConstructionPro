@@ -1,8 +1,8 @@
-import create from 'zustand';
-import { persist } from 'zustand/middleware';
+import { create } from 'zustand';
+import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-
-const generateId = () => Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+import 'react-native-get-random-values';
+import { v4 as uuidv4 } from 'uuid';
 
 export type ProjectStatus = 'planning' | 'active' | 'completed' | 'on-hold';
 export type ReportType = 'daily' | 'snagging' | 'hse' | 'quick-log';
@@ -234,7 +234,7 @@ interface ProjectsState {
     getDrawingsForProject: (projectId: string) => Drawing[];
 }
 
-export const useProjectsStore = create<ProjectsState>(
+export const useProjectsStore = create<ProjectsState>()(
     persist(
         (set, get) => ({
             projects: [],
@@ -245,7 +245,7 @@ export const useProjectsStore = create<ProjectsState>(
             addProject: (project) => {
                 const newProject: Project = {
                     ...project,
-                    id: generateId(),
+                    id: uuidv4(),
                     createdAt: new Date().toISOString(),
                     updatedAt: new Date().toISOString(),
                 };
@@ -277,7 +277,7 @@ export const useProjectsStore = create<ProjectsState>(
             addReport: (report) => {
                 const newReport: Report = {
                     ...report,
-                    id: generateId(),
+                    id: uuidv4(),
                     createdAt: new Date().toISOString(),
                     updatedAt: new Date().toISOString(),
                 };
@@ -309,7 +309,7 @@ export const useProjectsStore = create<ProjectsState>(
             addFolder: (folder) => {
                 const newFolder: DrawingFolder = {
                     ...folder,
-                    id: generateId(),
+                    id: uuidv4(),
                     createdAt: new Date().toISOString(),
                 };
                 set((state) => ({ folders: [...state.folders, newFolder] }));
@@ -334,7 +334,7 @@ export const useProjectsStore = create<ProjectsState>(
             addDrawing: (drawing) => {
                 const newDrawing: Drawing = {
                     ...drawing,
-                    id: generateId(),
+                    id: uuidv4(),
                     uploadedAt: new Date().toISOString(),
                 };
                 set((state) => ({ drawings: [...state.drawings, newDrawing] }));
@@ -356,7 +356,7 @@ export const useProjectsStore = create<ProjectsState>(
         }),
         {
             name: 'construction-pro-projects-storage',
-            getStorage: () => AsyncStorage,
+            storage: createJSONStorage(() => AsyncStorage),
         }
     )
 );

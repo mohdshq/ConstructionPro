@@ -27,7 +27,7 @@ function FeatureRow({ title, delay, colors }: FeatureRowProps) {
 
 export default function SettingsScreen() {
     const glowOpacity = useSharedValue(0.15);
-    const { theme, units, setTheme, setUnits, userName, userPhoto, setUserName, setUserPhoto, aiApiKey, setAiApiKey } = useStore();
+    const { theme, units, setTheme, setUnits, userName, userPhoto, setUserName, setUserPhoto } = useStore();
     const { colors, isDark } = useThemeColors();
 
     useEffect(() => {
@@ -166,43 +166,22 @@ export default function SettingsScreen() {
                     </View>
                 </Animated.View>
 
-                {/* AI Configuration Section */}
+                {/* AI Info Section */}
                 <Animated.View entering={FadeInDown.delay(50).springify()} style={styles.prefSection}>
                     <View style={styles.sectionHeader}>
                         <Zap color={colors.text} size={20} />
-                        <Text style={[styles.sectionTitle, { color: colors.text }]}>AI Configuration</Text>
+                        <Text style={[styles.sectionTitle, { color: colors.text }]}>AI Assistant</Text>
                     </View>
 
                     <View style={[styles.prefCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                        <View style={styles.profileInputContainer}>
-                            <Text style={[styles.prefLabel, { color: colors.textMuted }]}>Gemini API Key</Text>
-                            <TextInput
-                                style={[styles.textInput, { backgroundColor: colors.inputBackground, color: colors.text, marginTop: 8 }]}
-                                value={aiApiKey}
-                                onChangeText={setAiApiKey}
-                                placeholder="AIzaSy..."
-                                placeholderTextColor={colors.textMuted}
-                                secureTextEntry
-                            />
-                            
-                            <View style={{ marginTop: 12, padding: 12, backgroundColor: isDark ? 'rgba(59, 130, 246, 0.1)' : '#EFF6FF', borderRadius: 8, borderWidth: 1, borderColor: '#BFDBFE' }}>
-                                <Text style={{ fontSize: 13, color: isDark ? '#93C5FD' : '#1E40AF', fontWeight: 'bold', marginBottom: 4 }}>
-                                    How to get a FREE API Key:
-                                </Text>
-                                <Text style={{ fontSize: 12, color: isDark ? '#BFDBFE' : '#1E3A8A', lineHeight: 18 }}>
-                                    1. Go to <Text style={{ fontWeight: 'bold' }}>aistudio.google.com</Text> in your browser.{'\n'}
-                                    2. Sign in with your Google account.{'\n'}
-                                    3. Click "Get API Key" (it is 100% free for personal use).{'\n'}
-                                    4. Paste the key above and tap Save.
-                                </Text>
+                        <View style={{ padding: 4, alignItems: 'center' }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+                                <Zap color={colors.primary} size={20} />
+                                <Text style={[styles.sectionTitle, { color: colors.text, marginLeft: 8 }]}>AI Powered by ConstructionPro</Text>
                             </View>
-
-                            <TouchableOpacity 
-                                style={{ backgroundColor: colors.primary, paddingVertical: 12, borderRadius: 8, alignItems: 'center', marginTop: 16 }}
-                                onPress={() => Alert.alert("Saved!", "Your AI API Key has been saved securely on your device.")}
-                            >
-                                <Text style={{ color: '#FFFFFF', fontWeight: '600', fontSize: 15 }}>Save Key</Text>
-                            </TouchableOpacity>
+                            <Text style={{ fontSize: 14, color: colors.textMuted, textAlign: 'center', lineHeight: 20 }}>
+                                Your AI Assistant is included with your plan. No API key needed — just open the AI tab and start asking.
+                            </Text>
                         </View>
                     </View>
                 </Animated.View>

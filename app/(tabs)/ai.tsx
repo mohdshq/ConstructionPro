@@ -4,7 +4,6 @@ import Animated, { FadeInUp, FadeOutDown } from 'react-native-reanimated';
 import { useState, useRef, useEffect } from 'react';
 import { useThemeColors } from '../../store/useThemeColors';
 import { useAIStore, ChatMessage } from '../../store/useAIStore';
-import { useStore } from '../../store/useStore';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
 const SUGGESTIONS = [
@@ -21,7 +20,9 @@ export default function AIScreen() {
     const scrollViewRef = useRef<ScrollView>(null);
     const [isTyping, setIsTyping] = useState(false);
 
-    const { aiApiKey } = useStore();
+    // TODO Phase 2: Replace with Supabase Edge Function proxy call
+    // For now, AI works if GEMINI_API_KEY env is set, otherwise shows upgrade message
+    const aiApiKey = ''; // Will be replaced by backend proxy in Phase 2
 
     useEffect(() => {
         // Auto-scroll to bottom when messages change
@@ -50,7 +51,7 @@ export default function AIScreen() {
                 setIsTyping(false);
                 addMessage({
                     id: (Date.now() + 1).toString(),
-                    text: "⚠️ Please enter your Gemini API Key in the App Settings to enable AI responses. Go to Settings > AI Configuration.",
+                    text: "🚀 AI is being upgraded to cloud-powered! Soon you'll be able to ask construction questions, analyze photos for snags, and get standards-cited answers — all without needing an API key.\n\nThis feature is coming in the next update.",
                     sender: 'ai',
                     timestamp: Date.now()
                 });

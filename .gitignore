@@ -41,3 +41,19 @@ app-example
 # generated native folders
 /ios
 /android
+
+# Build artifacts & binaries
+*.ipa
+*.apk
+*.aab
+Payload/
+Symbols/
+
+# Environment & secrets
+.env
+.env.local
+.env.production
+
+# Fix/migration scripts (one-time use)
+fix_*.js
+fix-*.js

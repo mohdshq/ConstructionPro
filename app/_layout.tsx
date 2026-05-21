@@ -14,35 +14,37 @@ export const unstable_settings = {
   anchor: '(tabs)',
 };
 
-// RevenueCat API Keys (Replace with your actual keys from RevenueCat Dashboard)
-const API_KEY_APPLE = "appl_XPTkcAVgIUmYxQnXXZAVuuYpGfX";
-const API_KEY_GOOGLE = "goog_placeholder_key_here";
+// RevenueCat API Keys
+// TODO: Move to .env via expo-constants for production
+const REVENUECAT_API_KEY_APPLE = "appl_XPTkcAVgIUmYxQnXXZAVuuYpGfX";
+const REVENUECAT_API_KEY_GOOGLE = "goog_placeholder_key_here"; // TODO: Replace with actual Play Store key
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
-
   const { setIsPremium } = useStore();
 
   useEffect(() => {
     const initRevenueCat = async () => {
-      setIsPremium(false); // Force close gatewall by default
+      // NOTE: isPremium is now persisted via Zustand — no need to force false.
+      // RevenueCat listener will update it when entitlement status changes.
       try {
         if (Platform.OS === 'ios') {
-          Purchases.configure({ apiKey: API_KEY_APPLE });
+          Purchases.configure({ apiKey: REVENUECAT_API_KEY_APPLE });
         } else if (Platform.OS === 'android') {
-          Purchases.configure({ apiKey: API_KEY_GOOGLE });
+          Purchases.configure({ apiKey: REVENUECAT_API_KEY_GOOGLE });
         }
         
-        // Initial check
+        // Initial check — updates persisted value if entitlement changed
         const customerInfo = await Purchases.getCustomerInfo();
         setIsPremium(typeof customerInfo.entitlements.active['premium'] !== "undefined");
         
-        // Listen for updates
+        // Listen for future updates (purchase, expiry, restore)
         Purchases.addCustomerInfoUpdateListener((info) => {
             setIsPremium(typeof info.entitlements.active['premium'] !== "undefined");
         });
       } catch (e) {
         console.error("Error initializing RevenueCat:", e);
+        // On error, keep the persisted isPremium value — don't reset to false
       }
     };
     initRevenueCat();

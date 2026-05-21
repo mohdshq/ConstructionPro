@@ -1,5 +1,5 @@
-import create from 'zustand';
-import { persist } from 'zustand/middleware';
+import { create } from 'zustand';
+import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export interface ChatMessage {
@@ -15,7 +15,7 @@ interface AIState {
     clearHistory: () => void;
 }
 
-export const useAIStore = create<AIState>(
+export const useAIStore = create<AIState>()(
     persist(
         (set): AIState => ({
             messages: [
@@ -38,7 +38,7 @@ export const useAIStore = create<AIState>(
         }),
         {
             name: 'ai-storage',
-            getStorage: () => AsyncStorage,
+            storage: createJSONStorage(() => AsyncStorage),
         }
     )
 );
