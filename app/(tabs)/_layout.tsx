@@ -3,8 +3,11 @@ import React from 'react';
 import { BlurView } from 'expo-blur';
 import { Home, FolderOpen, Wrench, BookOpen, Bot } from 'lucide-react-native';
 import { StyleSheet, View, Platform } from 'react-native';
+import { usePushNotifications } from '../../lib/usePushNotifications';
 
 export default function TabLayout() {
+  usePushNotifications();
+
   return (
     <Tabs
       screenOptions={{

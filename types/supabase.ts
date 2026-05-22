@@ -14,6 +14,93 @@ export type Database = {
   }
   public: {
     Tables: {
+      activities: {
+        Row: {
+          action: string
+          created_at: string | null
+          entity_id: string | null
+          entity_type: string
+          id: string
+          project_id: string
+          user_id: string
+        }
+        Insert: {
+          action: string
+          created_at?: string | null
+          entity_id?: string | null
+          entity_type: string
+          id?: string
+          project_id: string
+          user_id: string
+        }
+        Update: {
+          action?: string
+          created_at?: string | null
+          entity_id?: string | null
+          entity_type?: string
+          id?: string
+          project_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "activities_profile_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "activities_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      calculations: {
+        Row: {
+          created_at: string | null
+          data: Json
+          id: string
+          project_id: string
+          type: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          data?: Json
+          id?: string
+          project_id: string
+          type: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          data?: Json
+          id?: string
+          project_id?: string
+          type?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "calculations_profile_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "calculations_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       drawing_folders: {
         Row: {
           created_at: string | null
@@ -140,6 +227,45 @@ export type Database = {
         }
         Relationships: []
       }
+      project_members: {
+        Row: {
+          created_at: string | null
+          id: string
+          project_id: string
+          role: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          project_id: string
+          role: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          project_id?: string
+          role?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_members_profile_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_members_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       projects: {
         Row: {
           client: string | null
@@ -238,12 +364,38 @@ export type Database = {
           },
         ]
       }
+      user_tokens: {
+        Row: {
+          platform: string | null
+          push_token: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          platform?: string | null
+          push_token: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          platform?: string | null
+          push_token?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      invite_user_by_email: {
+        Args: { _email: string; _project_id: string; _role: string }
+        Returns: Json
+      }
+      is_project_manager: { Args: { _project_id: string }; Returns: boolean }
+      is_project_member: { Args: { _project_id: string }; Returns: boolean }
     }
     Enums: {
       [_ in never]: never
@@ -376,4 +528,3 @@ export const Constants = {
     Enums: {},
   },
 } as const
-
