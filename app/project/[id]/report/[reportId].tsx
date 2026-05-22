@@ -2,7 +2,7 @@ import * as FileSystem from 'expo-file-system';
 import * as Print from 'expo-print';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import * as Sharing from 'expo-sharing';
-import { ArrowLeft, CheckCircle, Share2 } from "lucide-react-native";
+import { ArrowLeft, CheckCircle, Share2, Sparkles } from "lucide-react-native";
 import BackButton from "../../../../components/BackButton";
 import { useMemo, useState, useEffect } from 'react';
 import { ActionSheetIOS, ActivityIndicator, Alert, Modal, Platform, SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
@@ -15,7 +15,7 @@ import { generateSnaggingHTML } from '../../../../lib/report/templates/SnaggingR
 import { generateHSEHTML } from '../../../../lib/report/templates/HSEReportHTML';
 import { generateQuickLogHTML } from '../../../../lib/report/templates/QuickLogHTML';
 import { getSignedUrl } from '../../../../lib/supabaseSync';
-
+import { supabase } from '../../../../lib/supabase';
 export default function ReportViewerScreen() {
     const { colors } = useThemeColors();
     const { reportId } = useLocalSearchParams<{ reportId: string }>();
@@ -23,6 +23,7 @@ export default function ReportViewerScreen() {
     const { getReport, getProject, updateReport } = useProjectsStore();
 
     const [isGenerating, setIsGenerating] = useState(false);
+    const [isGeneratingAISummary, setIsGeneratingAISummary] = useState(false);
     const [shareModalVisible, setShareModalVisible] = useState(false);
 
     const report = useMemo(() => reportId ? getReport(reportId) : null, [reportId, getReport]);
@@ -461,6 +462,30 @@ export default function ReportViewerScreen() {
         }
     };
 
+    const handleGenerateAISummary = async () => {
+        if (!data) return;
+        try {
+            setIsGeneratingAISummary(true);
+            const { data: resData, error } = await supabase.functions.invoke('ai-report-summary', {
+                body: { reportData: data }
+            });
+            if (error) throw error;
+            if (resData?.error) throw new Error(resData.error);
+            
+            Alert.alert("Executive Summary", resData.summary);
+            
+            // Save to state and store
+            const newData = { ...data, aiSummary: resData.summary };
+            setData(newData);
+            updateReport(report.id, { templateData: JSON.stringify(newData) });
+        } catch (error: any) {
+            console.error('AI Summary Error:', error);
+            Alert.alert('AI Error', error.message || 'Failed to generate summary');
+        } finally {
+            setIsGeneratingAISummary(false);
+        }
+    };
+
     // ─── Render ──────────────────────────────────────────────────────
     return (
         <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
@@ -471,6 +496,9 @@ export default function ReportViewerScreen() {
                     report.type === 'daily' ? 'Daily Report Preview' : 'Document Viewer'
                 }</Text>
                 <View style={styles.headerActions}>
+                    <TouchableOpacity style={styles.actionIcon} onPress={handleGenerateAISummary} disabled={isGeneratingAISummary || !data}>
+                        {isGeneratingAISummary ? <ActivityIndicator size="small" color="#2563EB" /> : <Sparkles size={22} color="#2563EB" />}
+                    </TouchableOpacity>
                     <TouchableOpacity style={styles.actionIcon} onPress={handleStatusUpdate} disabled={isGenerating}>
                         <CheckCircle size={22} color={report.status === 'approved' ? '#22C55E' : report.status === 'submitted' ? '#F59E0B' : '#64748B'} />
                     </TouchableOpacity>

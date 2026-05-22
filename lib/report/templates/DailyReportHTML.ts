@@ -120,6 +120,20 @@ export function generateDailyReportHTML(
                         </tr>
                     </table>
 
+                    ${data.aiSummary ? `
+                    <!-- AI Executive Summary -->
+                    <table>
+                        <tr>
+                            <th class="blue-hdr text-left" style="padding-left: 8px;">✨ AI EXECUTIVE SUMMARY</th>
+                        </tr>
+                        <tr>
+                            <td class="text-left" style="padding: 10px; background-color: #F8FAFC;">
+                                ${data.aiSummary.split('\n').map((line: string) => line.trim() ? `<div style="margin-bottom: 4px;">${line}</div>` : '').join('')}
+                            </td>
+                        </tr>
+                    </table>
+                    ` : ''}
+
                     <!-- Summary Row -->
                     <table>
                         <tr>

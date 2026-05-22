@@ -3,7 +3,7 @@ import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import * as Haptics from 'expo-haptics';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { ArrowLeft, Camera, ChevronDown, Eye, EyeOff, Plus, Save, Trash2 } from "lucide-react-native";
+import { ArrowLeft, Camera, ChevronDown, Eye, EyeOff, Plus, Save, Trash2, Sparkles } from "lucide-react-native";
 import BackButton from "../../../../components/BackButton";
 import { createElement, useEffect, useState } from 'react';
 import { KeyboardAvoidingView, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
@@ -13,6 +13,7 @@ import { useThemeColors } from '../../../../store/useThemeColors';
 import { useStore } from '../../../../store/useStore';
 import { useAuthStore } from '../../../../store/useAuthStore';
 import { uploadPhoto } from '../../../../lib/supabaseSync';
+import { supabase } from '../../../../lib/supabase';
 import { ActivityIndicator } from 'react-native';
 
 export default function CreateReportScreen() {
@@ -33,6 +34,7 @@ export default function CreateReportScreen() {
     const [snagFilterLevel, setSnagFilterLevel] = useState<string>('All');
     const [activeDatePicker, setActiveDatePicker] = useState<string | null>(null);
     const [isSaving, setIsSaving] = useState(false);
+    const [isAutoSnagging, setIsAutoSnagging] = useState(false);
     const userId = useAuthStore((s) => s.user?.id);
 
     useEffect(() => {
@@ -413,6 +415,51 @@ export default function CreateReportScreen() {
                 </View>
             </TouchableOpacity>
         );
+    };
+
+    const handleAutoSnag = async () => {
+        try {
+            let result = await ImagePicker.launchImageLibraryAsync({
+                mediaTypes: ['images'], quality: 0.6, base64: true, allowsMultipleSelection: false,
+            });
+            
+            if (result.canceled || !result.assets || result.assets.length === 0) return;
+            
+            setIsAutoSnagging(true);
+            const base64Image = `data:image/jpeg;base64,${result.assets[0].base64}`;
+            
+            const { data, error } = await supabase.functions.invoke('ai-snag-from-photo', {
+                body: { base64Image, context: formData.propertyType || project?.name }
+            });
+            
+            if (error) throw error;
+            if (data?.error) throw new Error(data.error);
+            
+            const snagResult = data?.snag || {};
+            
+            // Add new snag to form
+            setFormData({
+                ...formData,
+                snags: [...(formData.snags || []), {
+                    id: Date.now().toString(),
+                    system: snagResult.system || '',
+                    assetName: snagResult.assetName || '',
+                    location: '', level: '', room: '',
+                    issue: snagResult.issue || '',
+                    recommendation: snagResult.recommendation || '',
+                    severity: snagResult.severity || 'Moderate',
+                    contractor: '', targetDate: '', status: 'Pending', reinspectionNotes: '',
+                    photoUri: base64Image
+                }]
+            });
+            
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        } catch (error: any) {
+            console.error('Auto-Snag Error:', error);
+            alert(`AI Snagging Failed: ${error.message || 'Unknown error'}`);
+        } finally {
+            setIsAutoSnagging(false);
+        }
     };
 
     const renderDailyFields = () => (
@@ -1148,17 +1195,34 @@ export default function CreateReportScreen() {
                             );
                         })}
 
-                        <TouchableOpacity style={styles.addButton} onPress={() => setFormData({ 
-                            ...formData, 
-                            snags: [...(formData.snags || []), { 
-                                id: Date.now().toString(), 
-                                system: '', assetName: '', location: '', level: '', room: '', issue: '', recommendation: '', 
-                                severity: 'Moderate', contractor: '', targetDate: '', status: 'Pending', reinspectionNotes: '', photoUri: '' 
-                            }] 
-                        })}>
-                            <Plus size={16} color="#2563EB" style={{ marginRight: 6 }} />
-                            <Text style={styles.addBtnText}>Add Snag / Observation</Text>
-                        </TouchableOpacity>
+                        <View style={{ flexDirection: 'row', gap: 12 }}>
+                            <TouchableOpacity style={[styles.addButton, { flex: 1 }]} onPress={() => setFormData({ 
+                                ...formData, 
+                                snags: [...(formData.snags || []), { 
+                                    id: Date.now().toString(), 
+                                    system: '', assetName: '', location: '', level: '', room: '', issue: '', recommendation: '', 
+                                    severity: 'Moderate', contractor: '', targetDate: '', status: 'Pending', reinspectionNotes: '', photoUri: '' 
+                                }] 
+                            })}>
+                                <Plus size={16} color="#2563EB" style={{ marginRight: 6 }} />
+                                <Text style={styles.addBtnText}>Add Snag</Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity 
+                                style={[styles.addButton, { flex: 1, backgroundColor: '#EFF6FF', borderColor: '#BFDBFE' }]} 
+                                onPress={handleAutoSnag}
+                                disabled={isAutoSnagging}
+                            >
+                                {isAutoSnagging ? (
+                                    <ActivityIndicator size="small" color="#2563EB" />
+                                ) : (
+                                    <>
+                                        <Sparkles size={16} color="#2563EB" style={{ marginRight: 6 }} />
+                                        <Text style={styles.addBtnText}>Auto-Snag with AI</Text>
+                                    </>
+                                )}
+                            </TouchableOpacity>
+                        </View>
                     </Animated.View>
                 )}
             </>
