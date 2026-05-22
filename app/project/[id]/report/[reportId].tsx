@@ -10,10 +10,11 @@ import { WebView } from 'react-native-webview';
 import * as XLSX from 'xlsx';
 import { useProjectsStore } from '../../../../store/projectsStore';
 import { useThemeColors } from '../../../../store/useThemeColors';
-import { generateDailyReportHTML } from './templates/DailyReportHTML';
-import { generateSnaggingHTML } from './templates/SnaggingReportHTML';
-import { generateHSEHTML } from './templates/HSEReportHTML';
-import { generateQuickLogHTML } from './templates/QuickLogHTML';
+import { generateDailyReportHTML } from '../../../../lib/report/templates/DailyReportHTML';
+import { generateSnaggingHTML } from '../../../../lib/report/templates/SnaggingReportHTML';
+import { generateHSEHTML } from '../../../../lib/report/templates/HSEReportHTML';
+import { generateQuickLogHTML } from '../../../../lib/report/templates/QuickLogHTML';
+import { getSignedUrl } from '../../../../lib/supabaseSync';
 
 export default function ReportViewerScreen() {
     const { colors } = useThemeColors();
@@ -48,14 +49,25 @@ export default function ReportViewerScreen() {
         const prepareData = async () => {
             if (!rawData) return;
             const mappedData = JSON.parse(JSON.stringify(rawData));
-            if (report?.type === 'quick-log') {
-                if (mappedData.photos && mappedData.photos.length > 0) {
-                    for (let i = 0; i < mappedData.photos.length; i++) {
-                        const photo = mappedData.photos[i];
-                        const uri = typeof photo === 'string' ? photo : photo.uri;
-                        if (!uri.startsWith('data:')) {
+            
+            // Process photos concurrently for ALL report types
+            if (mappedData.photos && mappedData.photos.length > 0) {
+                mappedData.photos = await Promise.all(
+                    mappedData.photos.map(async (photo: any) => {
+                        let uri = typeof photo === 'string' ? photo : photo.uri;
+                        let caption = typeof photo === 'string' ? '' : photo.caption || '';
+
+                        // Resolve Supabase storage paths to signed URLs
+                        if (uri && !uri.startsWith('data:') && !uri.startsWith('file://') && !uri.startsWith('content://') && !uri.startsWith('/') && !uri.startsWith('http')) {
                             try {
-                                if (Platform.OS === 'web') {
+                                const signedUrl = await getSignedUrl('report-photos', uri);
+                                if (signedUrl) uri = signedUrl;
+                            } catch (e) { console.error('Error getting signed URL:', e); }
+                        }
+
+                        if (!uri.startsWith('data:') && Platform.OS !== 'web') {
+                            try {
+                                if (uri.startsWith('http')) {
                                     const res = await fetch(uri);
                                     const blob = await res.blob();
                                     const reader = new FileReader();
@@ -63,22 +75,27 @@ export default function ReportViewerScreen() {
                                         reader.onloadend = () => resolve(reader.result);
                                         reader.readAsDataURL(blob);
                                     });
-                                    mappedData.photos[i] = { uri: base64 };
+                                    uri = base64 as string;
                                 } else {
                                     const b64 = await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
-                                    mappedData.photos[i] = { uri: `data:image/jpeg;base64,${b64}` };
+                                    uri = `data:image/jpeg;base64,${b64}`;
                                 }
                             } catch (e) { console.error("Error embedding photo base64", e); }
                         }
-                    }
-                }
-                const rawAudio = mappedData.audioUris || (mappedData.audioUri ? [mappedData.audioUri] : []);
-                if (rawAudio.length > 0) {
-                    let base64Audio = [];
-                    for (const uri of rawAudio) {
-                        if (!uri.startsWith('data:')) {
+                        
+                        return typeof photo === 'string' ? uri : { ...photo, uri, caption };
+                    })
+                );
+            }
+
+            // Process audio concurrently for ALL report types
+            const rawAudio = mappedData.audioUris || (mappedData.audioUri ? [mappedData.audioUri] : []);
+            if (rawAudio.length > 0) {
+                mappedData.audioUris = await Promise.all(
+                    rawAudio.map(async (uri: string) => {
+                        if (!uri.startsWith('data:') && Platform.OS !== 'web') {
                             try {
-                                if (Platform.OS === 'web') {
+                                if (uri.startsWith('http')) {
                                     const res = await fetch(uri);
                                     const blob = await res.blob();
                                     const reader = new FileReader();
@@ -86,21 +103,19 @@ export default function ReportViewerScreen() {
                                         reader.onloadend = () => resolve(reader.result);
                                         reader.readAsDataURL(blob);
                                     });
-                                    base64Audio.push(base64);
+                                    return base64 as string;
                                 } else {
                                     const b64 = await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
-                                    base64Audio.push(`data:audio/m4a;base64,${b64}`);
+                                    return `data:audio/m4a;base64,${b64}`;
                                 }
                             } catch (e) {
                                 console.error("Error embedding audio base64", e);
-                                base64Audio.push(uri);
+                                return uri;
                             }
-                        } else {
-                            base64Audio.push(uri);
                         }
-                    }
-                    mappedData.audioUris = base64Audio;
-                }
+                        return uri;
+                    })
+                );
             }
             if (isMounted) setData(mappedData);
         };
@@ -140,7 +155,12 @@ export default function ReportViewerScreen() {
             const html = generateHTML({ hideMeta });
 
             if (Platform.OS === 'web') {
-                await Print.printAsync({ html });
+                const iframe = document.getElementById('report-iframe') as HTMLIFrameElement;
+                if (iframe && iframe.contentWindow) {
+                    iframe.contentWindow.print();
+                } else {
+                    window.print();
+                }
             } else {
                 const { uri } = await Print.printToFileAsync({
                     html,
@@ -158,6 +178,53 @@ export default function ReportViewerScreen() {
         } catch (error) {
             console.error(error);
             Alert.alert('Error', 'Failed to generate PDF document.');
+        } finally {
+            setIsGenerating(false);
+        }
+    };
+
+    const handleShareCloudLink = async () => {
+        try {
+            setIsGenerating(true);
+            const html = generateHTML();
+
+            if (Platform.OS === 'web') {
+                window.alert('Cloud link generation is currently supported on mobile devices.');
+                return;
+            }
+
+            const { uri } = await Print.printToFileAsync({
+                html,
+                base64: false,
+                margins: { top: 30, right: 30, bottom: 30, left: 30 }
+            });
+
+            // Convert local file to blob
+            const response = await fetch(uri);
+            const blob = await response.blob();
+            const fileName = `${project.id}/report_${report.id}_${Date.now()}.pdf`;
+
+            // Upload to Supabase Storage
+            const { data, error } = await supabase.storage.from('pdfs').upload(fileName, blob, {
+                contentType: 'application/pdf',
+                upsert: true
+            });
+
+            if (error) throw error;
+
+            // Get public URL
+            const { data: { publicUrl } } = supabase.storage.from('pdfs').getPublicUrl(fileName);
+
+            const canShare = await Sharing.isAvailableAsync();
+            if (canShare) {
+                await Sharing.shareAsync(publicUrl, { dialogTitle: 'Share Daily Report Link' });
+            } else {
+                Alert.alert('Success', `Cloud Link generated: ${publicUrl}`);
+            }
+
+        } catch (error) {
+            console.error(error);
+            Alert.alert('Error', 'Failed to generate Cloud Link.');
         } finally {
             setIsGenerating(false);
         }
@@ -362,13 +429,15 @@ export default function ReportViewerScreen() {
         setShareModalVisible(true);
     };
 
-    const runShareAction = (type: 'pdf' | 'excel' | 'pdf-nometa') => {
+    const runShareAction = async (type: 'pdf' | 'pdf-nometa' | 'excel' | 'cloud-link') => {
         setShareModalVisible(false);
+        // Add a small delay so the modal closing animation finishes before intense processing
         setTimeout(() => {
             if (type === 'pdf') handleSharePDF(false);
             else if (type === 'pdf-nometa') handleSharePDF(true);
-            else handleShareExcel();
-        }, 300);
+            else if (type === 'excel') handleShareExcel();
+            else if (type === 'cloud-link') handleShareCloudLink();
+        }, 100);
     };
 
     const handleStatusUpdate = () => {
@@ -421,6 +490,10 @@ export default function ReportViewerScreen() {
                             <Text style={styles.modalOptionText}>View / Print PDF</Text>
                         </TouchableOpacity>
                         
+                        <TouchableOpacity style={styles.modalOption} onPress={() => runShareAction('cloud-link')}>
+                            <Text style={styles.modalOptionText}>Share Cloud Link</Text>
+                        </TouchableOpacity>
+                        
                         {report.type === 'snagging' && (
                             <TouchableOpacity style={styles.modalOption} onPress={() => runShareAction('pdf-nometa')}>
                                 <Text style={styles.modalOptionText}>Share PDF (Issues Only / No Meta)</Text>
@@ -446,6 +519,7 @@ export default function ReportViewerScreen() {
                     </View>
                 ) : Platform.OS === 'web' ? (
                     <iframe
+                        id="report-iframe"
                         srcDoc={htmlContent}
                         style={{ width: '100%', height: '100%', border: 'none', backgroundColor: 'transparent' }}
                         title="Report Preview"

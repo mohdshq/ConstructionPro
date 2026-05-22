@@ -1,11 +1,16 @@
 import BackButton from "../components/BackButton";
 import { View, Text, StyleSheet, TextInput, ScrollView, TouchableOpacity, KeyboardAvoidingView, Platform } from 'react-native';
 import { useState, useMemo } from 'react';
-import { Scale, ArrowLeft, Ruler, Hash, Info, Table as TableIcon, ChevronDown, ChevronUp } from 'lucide-react-native';
+import { Scale, ArrowLeft, Ruler, Hash, Info, Table as TableIcon, ChevronDown, ChevronUp, Save } from 'lucide-react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { router } from 'expo-router';
 import { useStore } from '../store/useStore';
 import { useThemeColors } from '../store/useThemeColors';
+import { useProjectsStore } from '../store/projectsStore';
+import { useAuthStore } from '../store/useAuthStore';
+import SaveCalculationModal from '../components/SaveCalculationModal';
+import { useLocalSearchParams } from 'expo-router';
+import { useEffect } from 'react';
 
 const metricSchedule = [
     { size: '6mm', weight: '0.222 kg/m' },
@@ -30,18 +35,33 @@ const imperialSchedule = [
 ];
 
 export default function RebarCalculatorScreen() {
+    const { calcId } = useLocalSearchParams<{ calcId: string }>();
     const { units } = useStore();
     const { colors } = useThemeColors();
+    const { projects, calculations, addCalculation } = useProjectsStore();
+    const { user } = useAuthStore();
     const [diameter, setDiameter] = useState('12');
     const [length, setLength] = useState('12');
     const [quantity, setQuantity] = useState('100');
     const [showSchedule, setShowSchedule] = useState(false);
+    const [projectModalVisible, setProjectModalVisible] = useState(false);
 
     const isMetric = units === 'metric';
     const diamLabel = isMetric ? 'mm' : 'inches';
     const lenLabel = isMetric ? 'meters' : 'feet';
     const weightUnit = isMetric ? 'kg' : 'lbs';
     const totalUnit = isMetric ? 'Tons' : 'Short Tons';
+
+    useEffect(() => {
+        if (calcId) {
+            const calc = calculations.find(c => c.id === calcId);
+            if (calc && calc.data) {
+                if (calc.data.diameter) setDiameter(calc.data.diameter.toString());
+                if (calc.data.length) setLength(calc.data.length.toString());
+                if (calc.data.quantity) setQuantity(calc.data.quantity.toString());
+            }
+        }
+    }, [calcId, calculations]);
 
     const result = useMemo(() => {
         const d = parseFloat(diameter);
@@ -185,7 +205,34 @@ export default function RebarCalculatorScreen() {
                     </Animated.View>
                 )}
 
+                {/* Save to Project Button */}
+                <Animated.View entering={FadeInDown.delay(700).springify()} style={{ marginTop: 24 }}>
+                    <TouchableOpacity 
+                        style={[styles.saveBtn, { backgroundColor: colors.primary }]}
+                        onPress={() => setProjectModalVisible(true)}
+                    >
+                        <Save size={20} color="#FFFFFF" style={{ marginRight: 8 }} />
+                        <Text style={styles.saveBtnText}>Save to Project</Text>
+                    </TouchableOpacity>
+                </Animated.View>
             </ScrollView>
+
+            <SaveCalculationModal 
+                visible={projectModalVisible}
+                onClose={() => setProjectModalVisible(false)}
+                calculationType="rebar"
+                calculationData={{
+                    diameter,
+                    length,
+                    quantity,
+                    weight: result.weight,
+                    weightUnit,
+                    total: result.total,
+                    totalUnit,
+                    diamLabel,
+                    lenLabel
+                }}
+            />
         </KeyboardAvoidingView>
     );
 }
@@ -400,4 +447,21 @@ const styles = StyleSheet.create({
         color: '#334155',
         fontWeight: '500',
     },
+    saveBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 16,
+        borderRadius: 12,
+        shadowColor: '#2563EB',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.2,
+        shadowRadius: 8,
+        elevation: 4,
+    },
+    saveBtnText: {
+        color: '#FFFFFF',
+        fontSize: 16,
+        fontWeight: '600',
+    }
 });

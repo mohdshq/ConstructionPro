@@ -1,4 +1,4 @@
-import { Report, Project } from '../../../../../store/projectsStore';
+import { Report, Project } from '../../../store/projectsStore';
 
 /**
  * Generates the HSE (Health, Safety & Environment) HTML report.
@@ -108,14 +108,14 @@ export function generateHSEHTML(
         return `
             <div style="page-break-before: always; margin-top: 20px;">
                 <h2 style="border-bottom: 2px solid #000; padding-bottom: 5px; margin-top:0;">Photographic Evidence</h2>
-                <div style="display: flex; flex-wrap: wrap; gap: 15px;">
+                <div class="photo-grid">
                     ${data.photos.filter((p: any) => { const u = typeof p === 'string' ? p : p.uri; return u && typeof u === 'string' && u.length > 100; }).map((photo: any) => {
                         const uri = typeof photo === 'string' ? photo : photo.uri;
                         const caption = typeof photo === 'string' ? '' : (photo.caption || '');
                         return `
-                            <div style="width: calc(33.333% - 10px); display: flex; flex-direction: column; page-break-inside: avoid; margin-bottom: 15px;">
-                                <div style="width: 100%; aspect-ratio: 4/3; border: 1px solid #ccc; background-image: url('${uri}'); background-size: contain; background-repeat: no-repeat; background-position: center; background-color: #f8fafc; border-radius: 4px;"></div>
-                                ${caption ? `<div style="font-size: 11px; text-align: center; margin-top: 6px; font-weight: 500;">${caption}</div>` : ''}
+                            <div class="photo-wrapper">
+                                <div class="photo-item" style="background-image: url('${uri}'); background-size: contain; background-repeat: no-repeat; background-position: center;"></div>
+                                ${caption ? `<div class="photo-caption">${caption}</div>` : ''}
                             </div>
                         `;
                     }).join('')}

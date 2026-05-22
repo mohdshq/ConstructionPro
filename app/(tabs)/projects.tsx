@@ -1,20 +1,31 @@
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, SafeAreaView, Platform, Dimensions, Alert } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, SafeAreaView, Platform, Dimensions, Alert, RefreshControl } from 'react-native';
 import { MapPin, Calendar, FolderOpen, Plus, User, FileText, Pencil, Trash2 } from 'lucide-react-native';
 import Animated, { FadeInDown, FadeIn } from 'react-native-reanimated';
 import { useRouter } from 'expo-router';
-import { Image } from 'react-native';
+import ProjectImage from '../../components/ProjectImage';
 import { useProjectsStore, Project } from '../../store/projectsStore';
 import { useThemeColors } from '../../store/useThemeColors';
 import { useStore } from '../../store/useStore';
-import { useMemo } from 'react';
+import { useMemo, useCallback, useState } from 'react';
+import ConnectionBadge from '../../components/ConnectionBadge';
 
 const { width } = Dimensions.get('window');
 
 export default function ProjectsScreen() {
     const router = useRouter();
-    const { projects, reports, deleteProject } = useProjectsStore();
+    const { projects, reports, deleteProject, initialSync, isSyncing } = useProjectsStore();
     const { isPremium } = useStore();
     const { colors, isDark } = useThemeColors();
+    const [refreshing, setRefreshing] = useState(false);
+
+    const onRefresh = useCallback(async () => {
+        setRefreshing(true);
+        try {
+            await initialSync();
+        } finally {
+            setRefreshing(false);
+        }
+    }, [initialSync]);
 
     const sortedProjects = useMemo(() => {
         return [...projects].map(p => {
@@ -92,14 +103,23 @@ export default function ProjectsScreen() {
 
     const handleCreateProject = () => {
         if (!isPremium && projects.length >= 1) {
-            Alert.alert(
-                "Premium Required",
-                "Free users can only create 1 project. Upgrade to Construction Pro Premium to create unlimited projects.",
-                [
-                    { text: "Cancel", style: "cancel" },
-                    { text: "Upgrade", style: "default", onPress: () => router.push('/settings' as any) }
-                ]
-            );
+            if (Platform.OS === 'web') {
+                const wantsUpgrade = window.confirm(
+                    "Free users can only create 1 project. Would you like to upgrade to Construction Pro Premium for unlimited projects?"
+                );
+                if (wantsUpgrade) {
+                    router.push('/settings' as any);
+                }
+            } else {
+                Alert.alert(
+                    "Premium Required",
+                    "Free users can only create 1 project. Upgrade to Construction Pro Premium to create unlimited projects.",
+                    [
+                        { text: "Cancel", style: "cancel" },
+                        { text: "Upgrade", style: "default", onPress: () => router.push('/settings' as any) }
+                    ]
+                );
+            }
             return;
         }
         router.push('/project/create');
@@ -117,7 +137,7 @@ export default function ProjectsScreen() {
                 >
                     {/* Project Image Banner */}
                     {item.photoUri ? (
-                        <Image source={{ uri: item.photoUri }} style={styles.cardImage} resizeMode="cover" />
+                        <ProjectImage photoUri={item.photoUri} style={styles.cardImage} />
                     ) : (
                         <View style={[styles.cardImagePlaceholder, { backgroundColor: isDark ? colors.background : '#F8FAFC' }]}>
                             <FolderOpen size={32} color={colors.textMuted} />
@@ -195,6 +215,10 @@ export default function ProjectsScreen() {
                     </TouchableOpacity>
                 </View>
 
+                <View style={{ alignItems: 'center', paddingVertical: 6 }}>
+                    <ConnectionBadge />
+                </View>
+
                 {sortedProjects.length === 0 ? (
                     <Animated.View entering={FadeIn.duration(500)} style={styles.emptyState}>
                         <View style={[styles.emptyIconCircle, { backgroundColor: colors.inputBackground }]}>
@@ -219,6 +243,14 @@ export default function ProjectsScreen() {
                         contentContainerStyle={styles.listContent}
                         showsVerticalScrollIndicator={false}
                         numColumns={1}
+                        refreshControl={
+                            <RefreshControl
+                                refreshing={refreshing}
+                                onRefresh={onRefresh}
+                                tintColor={colors.primary || '#2563EB'}
+                                colors={['#2563EB']}
+                            />
+                        }
                     />
                 )}
             </View>

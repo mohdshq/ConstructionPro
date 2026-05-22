@@ -1,6 +1,7 @@
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
+import * as Haptics from 'expo-haptics';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ArrowLeft, Camera, ChevronDown, Eye, EyeOff, Plus, Save, Trash2 } from "lucide-react-native";
 import BackButton from "../../../../components/BackButton";
@@ -10,6 +11,9 @@ import Animated, { FadeIn } from 'react-native-reanimated';
 import { DailyReportData, ReportType, useProjectsStore } from '../../../../store/projectsStore';
 import { useThemeColors } from '../../../../store/useThemeColors';
 import { useStore } from '../../../../store/useStore';
+import { useAuthStore } from '../../../../store/useAuthStore';
+import { uploadPhoto } from '../../../../lib/supabaseSync';
+import { ActivityIndicator } from 'react-native';
 
 export default function CreateReportScreen() {
     const { colors } = useThemeColors();
@@ -28,6 +32,8 @@ export default function CreateReportScreen() {
     const [snagFilterContractor, setSnagFilterContractor] = useState<string>('All');
     const [snagFilterLevel, setSnagFilterLevel] = useState<string>('All');
     const [activeDatePicker, setActiveDatePicker] = useState<string | null>(null);
+    const [isSaving, setIsSaving] = useState(false);
+    const userId = useAuthStore((s) => s.user?.id);
 
     useEffect(() => {
         const project = getProject(id);
@@ -279,27 +285,86 @@ export default function CreateReportScreen() {
         }
     };
 
-    const handleSave = () => {
-        if (!author.trim()) return;
-
-        if (editId) {
-            updateReport(editId, {
-                author: author.trim(),
-                templateData: JSON.stringify(formData),
-                // Keep existing status
-            });
-        } else {
-            addReport({
-                projectId: id,
-                type: type,
-                date: new Date().toISOString(),
-                author: author.trim(),
-                templateData: JSON.stringify(formData),
-                status: 'draft' // Duplicate forces draft
-            });
+    const handleSave = async () => {
+        console.log('[handleSave] called, author:', JSON.stringify(author), 'isSaving:', isSaving);
+        if (!author.trim() || isSaving) {
+            console.log('[handleSave] blocked: author empty or already saving');
+            return;
         }
 
-        router.back();
+        setIsSaving(true);
+        try {
+            // Upload photos to Supabase Storage (replace local URIs with storage paths)
+            let finalFormData = { ...formData };
+
+            if (userId && finalFormData.photos && finalFormData.photos.length > 0) {
+                const uploadedPhotos: any[] = [];
+                for (const photoItem of finalFormData.photos) {
+                    // Photos can be strings or {uri, caption} objects
+                    const photoUri = typeof photoItem === 'string' ? photoItem : photoItem?.uri;
+                    const caption = typeof photoItem === 'string' ? '' : (photoItem?.caption || '');
+
+                    if (!photoUri) {
+                        uploadedPhotos.push(photoItem);
+                        continue;
+                    }
+
+                    // Skip already-uploaded paths (storage paths don't start with file:// or content://)
+                    if (!photoUri.startsWith('file://') && !photoUri.startsWith('content://') && !photoUri.startsWith('data:') && !photoUri.startsWith('/')) {
+                        uploadedPhotos.push(caption ? { uri: photoUri, caption } : photoUri);
+                        continue;
+                    }
+                    try {
+                        const storagePath = await uploadPhoto(
+                            'report-photos',
+                            userId,
+                            photoUri,
+                            { projectId: id, prefix: type }
+                        );
+                        uploadedPhotos.push(caption ? { uri: storagePath, caption } : storagePath);
+                    } catch (uploadError) {
+                        console.error('Failed to upload photo:', uploadError);
+                        // Keep original as fallback
+                        uploadedPhotos.push(photoItem);
+                    }
+                }
+                finalFormData = { ...finalFormData, photos: uploadedPhotos };
+            }
+
+            console.log('[handleSave] projectId:', id, 'type:', type, 'editId:', editId);
+
+            if (editId) {
+                await updateReport(editId, {
+                    author: author.trim(),
+                    templateData: JSON.stringify(finalFormData),
+                });
+                console.log('[handleSave] report updated:', editId);
+            } else {
+                await addReport({
+                    projectId: id,
+                    type: type,
+                    date: new Date().toISOString(),
+                    author: author.trim(),
+                    templateData: JSON.stringify(finalFormData),
+                    status: 'draft'
+                });
+                console.log('[handleSave] report added successfully');
+            }
+            
+            // Haptic feedback on success
+            if (Platform.OS !== 'web') {
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            }
+
+            router.back();
+        } catch (error: any) {
+            console.error('Error saving report:', error);
+            if (Platform.OS === 'web') {
+                window.alert(`Failed to save report: ${error?.message || 'Unknown error'}`);
+            }
+        } finally {
+            setIsSaving(false);
+        }
     };
 
     const getHeaderTitle = () => {
@@ -1281,9 +1346,18 @@ export default function CreateReportScreen() {
                 <View style={[styles.header, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
                     <BackButton style={{ position: "absolute", left: 20, zIndex: 20, bottom: 8 }} />
                     <Text style={styles.headerTitle} numberOfLines={1}>{getHeaderTitle()}</Text>
-                    <TouchableOpacity onPress={handleSave} style={[styles.saveButton, !author.trim() && styles.saveButtonDisabled]} disabled={!author.trim()}>
-                        <Save size={18} color="#FFFFFF" style={{ marginRight: 6 }} />
-                        <Text style={styles.saveButtonText}>Save</Text>
+                    <TouchableOpacity onPress={handleSave} style={[styles.saveButton, (!author.trim() || isSaving) && styles.saveButtonDisabled]} disabled={!author.trim() || isSaving}>
+                        {isSaving ? (
+                            <>
+                                <ActivityIndicator size={16} color="#FFFFFF" style={{ marginRight: 6 }} />
+                                <Text style={styles.saveButtonText}>Saving...</Text>
+                            </>
+                        ) : (
+                            <>
+                                <Save size={18} color="#FFFFFF" style={{ marginRight: 6 }} />
+                                <Text style={styles.saveButtonText}>Save</Text>
+                            </>
+                        )}
                     </TouchableOpacity>
                 </View>
 

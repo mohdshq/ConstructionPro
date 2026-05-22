@@ -1,22 +1,44 @@
 import BackButton from "../components/BackButton";
-import { View, Text, StyleSheet, TextInput, ScrollView, TouchableOpacity, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, StyleSheet, TextInput, ScrollView, TouchableOpacity, KeyboardAvoidingView, Platform, Modal, Alert } from 'react-native';
 import { useState, useMemo } from 'react';
-import { Calculator, ArrowLeft, Ruler, Info, Image as ImageIcon } from 'lucide-react-native';
+import { Calculator, ArrowLeft, Ruler, Info, Image as ImageIcon, Save } from 'lucide-react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { router } from 'expo-router';
 import { useStore } from '../store/useStore';
 import { useThemeColors } from '../store/useThemeColors';
+import { useProjectsStore } from '../store/projectsStore';
+import { useAuthStore } from '../store/useAuthStore';
+import SaveCalculationModal from '../components/SaveCalculationModal';
+import { useLocalSearchParams } from 'expo-router';
+import { useEffect } from 'react';
 
 export default function ConcreteCalculatorScreen() {
+    const { calcId } = useLocalSearchParams<{ calcId: string }>();
     const { units } = useStore();
     const { colors } = useThemeColors();
+    const { projects, calculations, addCalculation } = useProjectsStore();
+    const { user } = useAuthStore();
+    
     const [length, setLength] = useState('10');
     const [width, setWidth] = useState('5');
     const [depth, setDepth] = useState('0.15');
 
+    const [projectModalVisible, setProjectModalVisible] = useState(false);
+
     const isMetric = units === 'metric';
     const unitLabel = isMetric ? 'meters' : 'feet';
     const resultUnit = isMetric ? 'm³' : 'yd³';
+
+    useEffect(() => {
+        if (calcId) {
+            const calc = calculations.find(c => c.id === calcId);
+            if (calc && calc.data) {
+                if (calc.data.length) setLength(calc.data.length.toString());
+                if (calc.data.width) setWidth(calc.data.width.toString());
+                if (calc.data.depth) setDepth(calc.data.depth.toString());
+            }
+        }
+    }, [calcId, calculations]);
 
     // Instant Calculation
     const result = useMemo(() => {
@@ -132,7 +154,34 @@ export default function ConcreteCalculatorScreen() {
                     <Text style={styles.diagramText}>Slab Diagram Visualization</Text>
                 </Animated.View>
 
+                {/* Save to Project Button */}
+                <Animated.View entering={FadeInDown.delay(700).springify()} style={{ marginTop: 24 }}>
+                    <TouchableOpacity 
+                        style={[styles.saveBtn, { backgroundColor: colors.primary }]}
+                        onPress={() => setProjectModalVisible(true)}
+                    >
+                        <Save size={20} color="#FFFFFF" style={{ marginRight: 8 }} />
+                        <Text style={styles.saveBtnText}>Save to Project</Text>
+                    </TouchableOpacity>
+                </Animated.View>
+
             </ScrollView>
+
+            {/* Project Selection Modal */}
+            <SaveCalculationModal 
+                visible={projectModalVisible}
+                onClose={() => setProjectModalVisible(false)}
+                calculationType="concrete"
+                calculationData={{
+                    length,
+                    width,
+                    depth,
+                    unit: unitLabel,
+                    result: result,
+                    resultUnit: resultUnit,
+                    wasteResult: wasteResult
+                }}
+            />
         </KeyboardAvoidingView>
     );
 }
@@ -303,5 +352,58 @@ const styles = StyleSheet.create({
         fontSize: 14,
         color: '#64748B',
         fontWeight: '500',
+    },
+    saveBtn: {
+        flexDirection: 'row',
+        padding: 16,
+        borderRadius: 12,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    saveBtnText: {
+        color: '#FFFFFF',
+        fontSize: 16,
+        fontWeight: '600',
+    },
+    modalOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.5)',
+        justifyContent: 'flex-end',
+    },
+    modalContent: {
+        borderTopLeftRadius: 24,
+        borderTopRightRadius: 24,
+        padding: 24,
+        maxHeight: '80%',
+    },
+    modalHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 16,
+    },
+    modalTitle: {
+        fontSize: 20,
+        fontWeight: '700',
+    },
+    projectList: {
+        maxHeight: 400,
+    },
+    projectItem: {
+        paddingVertical: 16,
+        borderBottomWidth: 1,
+    },
+    projectName: {
+        fontSize: 16,
+        fontWeight: '600',
+        marginBottom: 4,
+    },
+    projectClient: {
+        fontSize: 14,
+    },
+    emptyText: {
+        textAlign: 'center',
+        padding: 20,
+        fontSize: 15,
     }
 });

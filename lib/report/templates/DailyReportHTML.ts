@@ -1,4 +1,4 @@
-import { Report, Project } from '../../../../../store/projectsStore';
+import { Report, Project } from '../../../store/projectsStore';
 
 /**
  * Generates the Daily Progress Report HTML.
@@ -30,7 +30,7 @@ export function generateDailyReportHTML(
     const renderPhotos = () => {
         if (!data.photos || data.photos.length === 0) return '';
         return `
-            <div style="page-break-before: always; margin-top: 20px;">
+            <div style="page-break-inside: avoid; margin-top: 20px;">
                 <h2 style="border-bottom: 2px solid #000; padding-bottom: 5px; margin-top:0;">Photographic Evidence</h2>
                 <div class="photo-grid">
                     ${data.photos.filter((p: any) => { const u = typeof p === 'string' ? p : p.uri; return u && typeof u === 'string' && u.length > 100 && !u.includes('undefined'); }).map((photo: any) => {
@@ -79,15 +79,19 @@ export function generateDailyReportHTML(
                     .progress-bar-fill { height: 100%; background-color: #3B82F6; }
                     .progress-text { position: absolute; width: 100%; text-align: center; top: 0; left: 0; font-size: 10px; color: #000; line-height: 14px; font-weight: bold; }
 
-                    .photo-grid { display: flex; flex-wrap: wrap; gap: 15px; }
-                    .photo-wrapper { width: calc(33.333% - 10px); display: flex; flex-direction: column; page-break-inside: avoid; margin-bottom: 15px; }
+                    .photo-grid { display: block; }
+                    .photo-wrapper { width: calc(33.333% - 15px); display: inline-block; vertical-align: top; page-break-inside: avoid; margin-bottom: 15px; margin-right: 10px; }
                     .photo-item { width: 100%; aspect-ratio: 4/3; border: 1px solid #ccc; background-color: #f8fafc; display: block; }
                     .photo-caption { font-size: 11px; text-align: center; margin-top: 6px; font-weight: 500; color: #334155; word-wrap: break-word; }
 
                     @media print {
-                        @page { size: auto; margin: 10mm; }
-                        html, body { padding: 0; margin: 0; overflow: visible !important; }
-                        .layout { width: 100%; max-width: 100%; margin: 0; overflow: visible !important; page-break-after: auto; }
+                        @page { margin: 10mm; }
+                        html, body { height: auto; overflow: visible !important; }
+                        .layout { display: block; width: 100%; height: auto; overflow: visible !important; }
+                        table { page-break-inside: auto; }
+                        tr { page-break-inside: avoid; page-break-after: auto; }
+                        thead { display: table-header-group; }
+                        tfoot { display: table-footer-group; }
                     }
                 </style>
             </head>

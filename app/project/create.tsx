@@ -7,6 +7,10 @@ import * as ImagePicker from 'expo-image-picker';
 import { Image } from 'expo-image';
 import { useProjectsStore } from '../../store/projectsStore';
 import { useThemeColors } from '../../store/useThemeColors';
+import { useAuthStore } from '../../store/useAuthStore';
+import { uploadPhoto } from '../../lib/supabaseSync';
+import { ActivityIndicator, Alert } from 'react-native';
+import ProjectImage from '../../components/ProjectImage';
 
 export default function CreateProjectScreen() {
     const router = useRouter();
@@ -23,6 +27,8 @@ export default function CreateProjectScreen() {
     const [endDate, setEndDate] = useState('');
     const [projectManager, setProjectManager] = useState('');
     const [photoUri, setPhotoUri] = useState<string | null>(null);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const { user } = useAuthStore();
 
     // Pre-fill if editing
     useEffect(() => {
@@ -55,8 +61,22 @@ export default function CreateProjectScreen() {
         }
     };
 
-    const handleCreate = () => {
+    const handleCreate = async () => {
         if (!name.trim()) return;
+        setIsSubmitting(true);
+
+        let finalPhotoUri = photoUri;
+        if (photoUri && (photoUri.includes('://') || photoUri.startsWith('data:') || photoUri.startsWith('blob:'))) {
+            try {
+                if (user?.id) {
+                    finalPhotoUri = await uploadPhoto('report-photos', user.id, photoUri, { prefix: 'project_cover' });
+                }
+            } catch (e: any) {
+                Alert.alert('Upload Failed', 'Failed to upload project cover image. ' + e.message);
+                setIsSubmitting(false);
+                return;
+            }
+        }
 
         const projectData = {
             name: name.trim(),
@@ -67,7 +87,7 @@ export default function CreateProjectScreen() {
             startDate: startDate.trim() || undefined,
             endDate: endDate.trim() || undefined,
             projectManager: projectManager.trim() || undefined,
-            photoUri: photoUri || undefined,
+            photoUri: finalPhotoUri || undefined,
         };
 
         if (id) {
@@ -76,6 +96,7 @@ export default function CreateProjectScreen() {
             addProject({ ...projectData, status: 'planning' });
         }
 
+        setIsSubmitting(false);
         router.back();
     };
 
@@ -90,18 +111,22 @@ export default function CreateProjectScreen() {
                     <BackButton style={{ position: "absolute", left: 20, zIndex: 20, bottom: 8 }} />
                     <Text style={[styles.headerTitle, { color: colors.text }]}>{id ? 'Edit Project' : 'New Project'}</Text>
                     <TouchableOpacity
-                        style={[styles.saveButton, !name.trim() && { backgroundColor: colors.border }]}
+                        style={[styles.saveButton, (!name.trim() || isSubmitting) && { backgroundColor: colors.border }]}
                         onPress={handleCreate}
-                        disabled={!name.trim()}
+                        disabled={!name.trim() || isSubmitting}
                     >
-                        <Text style={[styles.saveButtonText, !name.trim() && { color: colors.textMuted }]}>{id ? 'Save' : 'Create'}</Text>
+                        {isSubmitting ? (
+                            <ActivityIndicator size="small" color={colors.textMuted} />
+                        ) : (
+                            <Text style={[styles.saveButtonText, !name.trim() && { color: colors.textMuted }]}>{id ? 'Save' : 'Create'}</Text>
+                        )}
                     </TouchableOpacity>
                 </View>
 
                 <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
                     <TouchableOpacity style={[styles.photoPickerContainer, { backgroundColor: colors.card, borderColor: colors.border }]} onPress={handlePickImage} activeOpacity={0.8}>
                         {photoUri ? (
-                            <Image source={{ uri: photoUri }} style={styles.photoPreview} contentFit="cover" />
+                            <ProjectImage photoUri={photoUri} style={styles.photoPreview} resizeMode="cover" />
                         ) : (
                             <View style={[styles.photoPlaceholder, { backgroundColor: colors.background }]}>
                                 <View style={styles.photoIconCircle}>

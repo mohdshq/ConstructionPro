@@ -1,4 +1,4 @@
-import { Report, Project } from '../../../../../store/projectsStore';
+import { Report, Project } from '../../../store/projectsStore';
 
 /**
  * Generates the Quick Log HTML report.
@@ -14,10 +14,14 @@ export function generateQuickLogHTML(
         return `
             <div style="margin-top: 30px;">
                 <h3 style="color: #10B981; border-bottom: 1px solid #10B981; padding-bottom: 8px;">Attached Photos</h3>
-                <div style="display: flex; flex-wrap: wrap; gap: 15px; margin-top: 15px;">
+                <div class="photo-grid">
                     ${data.photos.map((photo: any) => {
                         const uri = typeof photo === 'string' ? photo : photo.uri;
-                        return `<div style="width: calc(50% - 10px); aspect-ratio: 4/3; background-image: url('${uri}'); background-size: cover; background-position: center; border-radius: 8px; border: 1px solid #CBD5E1;"></div>`;
+                        return `
+                            <div class="photo-wrapper">
+                                <div class="photo-item" style="background-image: url('${uri}');"></div>
+                            </div>
+                        `;
                     }).join('')}
                 </div>
             </div>
@@ -42,6 +46,15 @@ export function generateQuickLogHTML(
                     .notes-section { background: #F1F5F9; padding: 20px; border-radius: 8px; border: 1px solid #E2E8F0; }
                     .notes-section h3 { margin-top: 0; color: #10B981; font-size: 16px; }
                     .audio-badge { display: inline-block; padding: 8px 16px; background: #DBEAFE; color: #1D4ED8; border-radius: 20px; font-weight: bold; font-size: 14px; margin-top: 20px; }
+                    .photo-grid { display: block; margin-top: 15px; }
+                    .photo-wrapper { width: calc(50% - 15px); display: inline-block; vertical-align: top; page-break-inside: avoid; margin-bottom: 15px; margin-right: 10px; }
+                    .photo-item { width: 100%; aspect-ratio: 4/3; border: 1px solid #CBD5E1; border-radius: 8px; background-size: cover; background-position: center; display: block; }
+                    
+                    @media print {
+                        @page { margin: 10mm; }
+                        html, body { height: auto; overflow: visible !important; }
+                        .page { display: block; width: 100%; height: auto; overflow: visible !important; }
+                    }
                 </style>
             </head>
             <body>

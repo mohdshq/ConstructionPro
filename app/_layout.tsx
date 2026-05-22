@@ -10,6 +10,9 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useStore } from '@/store/useStore';
 import { useAuthStore } from '@/store/useAuthStore';
+import { useProjectsStore } from '@/store/projectsStore';
+import { useRealtimeSync } from '@/lib/useRealtimeSync';
+import { usePushNotifications } from '@/lib/usePushNotifications';
 
 export const unstable_settings = {
   anchor: '(tabs)',
@@ -25,8 +28,15 @@ export default function RootLayout() {
   const { setIsPremium } = useStore();
   
   const { isInitialized, session, initialize } = useAuthStore();
+  const { initialSync } = useProjectsStore();
   const segments = useSegments();
   const router = useRouter();
+
+  // Subscribe to Realtime changes when authenticated
+  useRealtimeSync();
+
+  // Register for push notifications
+  usePushNotifications();
 
   useEffect(() => {
     initialize();
@@ -43,6 +53,11 @@ export default function RootLayout() {
     } else if (session && inAuthGroup) {
       // Redirect away from the login page
       router.replace('/(tabs)');
+    }
+
+    // Sync data from Supabase when user is authenticated
+    if (session && isInitialized) {
+      initialSync();
     }
   }, [session, isInitialized, segments]);
 

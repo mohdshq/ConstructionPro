@@ -153,16 +153,28 @@ export default function ToolsScreen() {
             <View style={[styles.container, { backgroundColor: colors.background }]}>
                 <View style={[styles.header, { backgroundColor: colors.card }]}>
                     
-                    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", marginBottom: 16, minHeight: 40 }}>
-                        {activeTab && (
-                            <BackButton 
-                                onPress={() => setActiveTab(null)} 
-                                style={{ position: 'absolute', left: -8, zIndex: 10, width: 40, height: 40 }} 
-                            />
+                    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 16, minHeight: 40 }}>
+                        <View style={{ flexDirection: "row", alignItems: "center" }}>
+                            {activeTab && (
+                                <BackButton 
+                                    onPress={() => setActiveTab(null)} 
+                                    style={{ position: 'relative', marginRight: 8, width: 40, height: 40 }} 
+                                />
+                            )}
+                            <Text style={[styles.headerTitle, { color: colors.text }]} numberOfLines={1}>
+                                {activeTab ? categories.find(c => c.id === activeTab)?.label : "Tools Hub"}
+                            </Text>
+                        </View>
+                        
+                        {!activeTab && (
+                            <TouchableOpacity 
+                                style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.primary + '15', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 }}
+                                onPress={() => router.push('/saved-calculations' as any)}
+                            >
+                                <Activity size={16} color={colors.primary} style={{ marginRight: 4 }} />
+                                <Text style={{ color: colors.primary, fontWeight: '600', fontSize: 13 }}>History</Text>
+                            </TouchableOpacity>
                         )}
-                        <Text style={[styles.headerTitle, { color: colors.text, paddingHorizontal: 30 }]} numberOfLines={1}>
-                            {activeTab ? categories.find(c => c.id === activeTab)?.label : "Tools Hub"}
-                        </Text>
                     </View>
 
 

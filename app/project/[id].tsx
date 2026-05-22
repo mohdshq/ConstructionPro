@@ -1,13 +1,14 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, SafeAreaView, Platform, Alert } from 'react-native';
-import { ArrowLeft, MapPin, Calendar, Clock, FileText, CheckSquare, ShieldAlert, Plus, FolderOpen, DollarSign, Briefcase, Pencil, Trash2, Zap } from "lucide-react-native";
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, SafeAreaView, Platform, Alert, RefreshControl } from 'react-native';
+import { ArrowLeft, MapPin, Calendar, Clock, FileText, CheckSquare, ShieldAlert, Plus, FolderOpen, DollarSign, Briefcase, Pencil, Trash2, Zap, Users, Activity, Calculator } from "lucide-react-native";
 import BackButton from "../../components/BackButton";
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { Image } from 'react-native';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import Animated, { FadeInDown, FadeIn } from 'react-native-reanimated';
 import { useProjectsStore, Project, Report } from '../../store/projectsStore';
 import { useThemeColors } from '../../store/useThemeColors';
 import { useStore } from '../../store/useStore';
+import ProjectImage from '../../components/ProjectImage';
 
 const REPORT_CATEGORIES = [
     { id: 'daily', title: 'Daily Reports', desc: 'Progress, Weather & Workforce', icon: <FileText size={28} color="#2563EB" />, bg: '#EFF6FF', route: 'daily' },
@@ -19,7 +20,7 @@ const REPORT_CATEGORIES = [
 export default function ProjectDashboardScreen() {
     const { id } = useLocalSearchParams<{ id: string }>();
     const router = useRouter();
-    const { getProject, deleteProject, deleteReport } = useProjectsStore();
+    const { getProject, deleteProject, getReportsForProject, deleteReport, initialSync } = useProjectsStore();
     const { colors } = useThemeColors();
 
     // Make reports reactive to instantly show newly created ones
@@ -28,6 +29,15 @@ export default function ProjectDashboardScreen() {
     const { isPremium } = useStore();
 
     const [project, setProject] = useState<Project | null>(null);
+    const [refreshing, setRefreshing] = useState(false);
+
+    const onRefresh = useCallback(async () => {
+        setRefreshing(true);
+        if (initialSync) {
+            await initialSync();
+        }
+        setRefreshing(false);
+    }, [initialSync]);
 
     useEffect(() => {
         if (id) {
@@ -83,7 +93,7 @@ export default function ProjectDashboardScreen() {
     };
 
     const checkReportLimit = (): boolean => {
-        if (!isPremium && allReports.length >= 3) {
+        if (!isPremium && reports.length >= 3) {
             Alert.alert(
                 "Premium Required",
                 "Free users can only create up to 3 reports. Upgrade to Construction Pro Premium to create unlimited reports.",
@@ -196,11 +206,15 @@ export default function ProjectDashboardScreen() {
                 </View>
             </View>
 
-            <ScrollView style={[styles.container, { backgroundColor: colors.background }]} showsVerticalScrollIndicator={false}>
+            <ScrollView 
+                style={[styles.container, { backgroundColor: colors.background }]} 
+                showsVerticalScrollIndicator={false}
+                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
+            >
                 {/* Hero Section */}
                 <View style={[styles.heroSection, { backgroundColor: colors.card }]}>
                     {project.photoUri ? (
-                        <Image source={{ uri: project.photoUri }} style={styles.heroImage} resizeMode="cover" />
+                        <ProjectImage photoUri={project.photoUri} style={styles.heroImage} resizeMode="cover" />
                     ) : (
                         <View style={[styles.heroPlaceholder, { backgroundColor: colors.card }]}>
                             <FolderOpen size={48} color={colors.textMuted} />
@@ -262,7 +276,7 @@ export default function ProjectDashboardScreen() {
                     <Text style={[styles.sectionTitle, { color: colors.text }]}>Project Features</Text>
                 </View>
 
-                <View style={{ paddingHorizontal: 20, marginBottom: 24 }}>
+                <View style={{ paddingHorizontal: 20, marginBottom: 24, gap: 12 }}>
                     <Animated.View entering={FadeInDown.delay(100).springify()}>
                         <TouchableOpacity 
                             style={[styles.categoryCard, { backgroundColor: colors.card, borderColor: '#E0F2FE', flexDirection: 'row', alignItems: 'center', minHeight: 'auto', padding: 20 }]}
@@ -275,6 +289,54 @@ export default function ProjectDashboardScreen() {
                             <View style={{ flex: 1 }}>
                                 <Text style={[styles.categoryTitle, { color: colors.text, fontSize: 18 }]}>Drawings & Documents</Text>
                                 <Text style={[styles.categoryDesc, { color: colors.textMuted }]}>Manage blueprints, plans, and site files</Text>
+                            </View>
+                        </TouchableOpacity>
+                    </Animated.View>
+
+                    <Animated.View entering={FadeInDown.delay(150).springify()}>
+                        <TouchableOpacity 
+                            style={[styles.categoryCard, { backgroundColor: colors.card, borderColor: '#F3E8FF', flexDirection: 'row', alignItems: 'center', minHeight: 'auto', padding: 20 }]}
+                            onPress={() => router.push(`/project/${project.id}/team` as any)}
+                            activeOpacity={0.7}
+                        >
+                            <View style={[styles.categoryIconCircle, { backgroundColor: '#F3E8FF', marginRight: 16, width: 56, height: 56, borderRadius: 28 }]}>
+                                <Users size={32} color="#9333EA" />
+                            </View>
+                            <View style={{ flex: 1 }}>
+                                <Text style={[styles.categoryTitle, { color: colors.text, fontSize: 18 }]}>Team Members</Text>
+                                <Text style={[styles.categoryDesc, { color: colors.textMuted }]}>Manage project access and roles</Text>
+                            </View>
+                        </TouchableOpacity>
+                    </Animated.View>
+
+                    <Animated.View entering={FadeInDown.delay(200).springify()}>
+                        <TouchableOpacity 
+                            style={[styles.categoryCard, { backgroundColor: colors.card, borderColor: '#FEF9C3', flexDirection: 'row', alignItems: 'center', minHeight: 'auto', padding: 20 }]}
+                            onPress={() => router.push(`/project/${project.id}/activity` as any)}
+                            activeOpacity={0.7}
+                        >
+                            <View style={[styles.categoryIconCircle, { backgroundColor: '#FEF9C3', marginRight: 16, width: 56, height: 56, borderRadius: 28 }]}>
+                                <Activity size={32} color="#CA8A04" />
+                            </View>
+                            <View style={{ flex: 1 }}>
+                                <Text style={[styles.categoryTitle, { color: colors.text, fontSize: 18 }]}>Project Activity</Text>
+                                <Text style={[styles.categoryDesc, { color: colors.textMuted }]}>View recent updates from the team</Text>
+                            </View>
+                        </TouchableOpacity>
+                    </Animated.View>
+
+                    <Animated.View entering={FadeInDown.delay(250).springify()}>
+                        <TouchableOpacity 
+                            style={[styles.categoryCard, { backgroundColor: colors.card, borderColor: '#DCFCE7', flexDirection: 'row', alignItems: 'center', minHeight: 'auto', padding: 20 }]}
+                            onPress={() => router.push(`/saved-calculations?projectId=${project.id}` as any)}
+                            activeOpacity={0.7}
+                        >
+                            <View style={[styles.categoryIconCircle, { backgroundColor: '#DCFCE7', marginRight: 16, width: 56, height: 56, borderRadius: 28 }]}>
+                                <Calculator size={32} color="#16A34A" />
+                            </View>
+                            <View style={{ flex: 1 }}>
+                                <Text style={[styles.categoryTitle, { color: colors.text, fontSize: 18 }]}>Calculations History</Text>
+                                <Text style={[styles.categoryDesc, { color: colors.textMuted }]}>View saved calculations for this project</Text>
                             </View>
                         </TouchableOpacity>
                     </Animated.View>

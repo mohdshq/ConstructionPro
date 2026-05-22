@@ -4,7 +4,7 @@ import Animated, { FadeInUp, FadeOutDown } from 'react-native-reanimated';
 import { useState, useRef, useEffect } from 'react';
 import { useThemeColors } from '../../store/useThemeColors';
 import { useAIStore, ChatMessage } from '../../store/useAIStore';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { supabase } from '../../lib/supabase';
 
 const SUGGESTIONS = [
     { id: '1', text: 'What is the required rebar cover for footings?', icon: <HardHat size={16} /> },
@@ -19,10 +19,6 @@ export default function AIScreen() {
     const [input, setInput] = useState('');
     const scrollViewRef = useRef<ScrollView>(null);
     const [isTyping, setIsTyping] = useState(false);
-
-    // TODO Phase 2: Replace with Supabase Edge Function proxy call
-    // For now, AI works if GEMINI_API_KEY env is set, otherwise shows upgrade message
-    const aiApiKey = ''; // Will be replaced by backend proxy in Phase 2
 
     useEffect(() => {
         // Auto-scroll to bottom when messages change
@@ -46,100 +42,24 @@ export default function AIScreen() {
         Keyboard.dismiss();
         setIsTyping(true);
 
-        if (!aiApiKey) {
-            setTimeout(() => {
-                setIsTyping(false);
-                addMessage({
-                    id: (Date.now() + 1).toString(),
-                    text: "🚀 AI is being upgraded to cloud-powered! Soon you'll be able to ask construction questions, analyze photos for snags, and get standards-cited answers — all without needing an API key.\n\nThis feature is coming in the next update.",
-                    sender: 'ai',
-                    timestamp: Date.now()
-                });
-            }, 800);
-            return;
-        }
-
         try {
-            const genAI = new GoogleGenerativeAI(aiApiKey);
-            const systemInstruction = "You are an expert construction site assistant. You specialize in construction standards (ACI, IBC, AISC), drafting daily reports, identifying safety hazards, and calculating materials. Be concise, professional, and practical.";
-            
-            // Convert store messages to Gemini format, skipping the default welcome message
-            const history = messages
-                .filter(m => m.id !== 'welcome_1')
-                .map(m => ({
-                    role: m.sender === 'user' ? 'user' : 'model',
-                    parts: [{ text: m.text }]
-                }));
+            // Call the Supabase Edge Function (server-side AI proxy)
+            const { data, error } = await supabase.functions.invoke('ai-chat', {
+                body: {
+                    messages: messages,
+                    userMessage: textToSend.trim(),
+                },
+            });
 
-            // Dynamically fetch available models for this specific API key to avoid 404s
-            let validModelNames: string[] = ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-pro']; 
-            try {
-                const modelsResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${aiApiKey}`);
-                const modelsData = await modelsResponse.json();
-                
-                if (modelsData.models && modelsData.models.length > 0) {
-                    const validModels = modelsData.models.filter((m: any) => 
-                        m.supportedGenerationMethods && 
-                        m.supportedGenerationMethods.includes("generateContent") &&
-                        !m.name.includes("vision") && 
-                        !m.name.includes("embedding")
-                    );
-                    
-                    if (validModels.length > 0) {
-                        // Sort models to prioritize 'flash', then 'pro', then others
-                        validModels.sort((a: any, b: any) => {
-                            const aIsFlash = a.name.includes('flash') ? 1 : 0;
-                            const bIsFlash = b.name.includes('flash') ? 1 : 0;
-                            if (aIsFlash !== bIsFlash) return bIsFlash - aIsFlash;
-                            
-                            const aIsPro = a.name.includes('pro') ? 1 : 0;
-                            const bIsPro = b.name.includes('pro') ? 1 : 0;
-                            return bIsPro - aIsPro;
-                        });
-                        
-                        validModelNames = validModels.map((m: any) => m.name.replace('models/', ''));
-                    }
-                }
-            } catch (fetchErr) {
-                console.warn("Failed to dynamically fetch models, using fallback.", fetchErr);
+            if (error) {
+                throw new Error(error.message || 'Failed to connect to AI');
             }
 
-            let responseText = "";
-            let success = false;
-            let lastError = null;
-
-            for (const modelName of validModelNames) {
-                try {
-                    // If the selected model is an older gemini-pro (1.0), it does not support systemInstruction
-                    const useSystemDoc = !modelName.match(/^gemini-pro$/i);
-                    
-                    const model = genAI.getGenerativeModel(
-                        useSystemDoc 
-                            ? { model: modelName, systemInstruction } 
-                            : { model: modelName }
-                    );
-
-                    // Handle gemini-pro (1.0) system instruction injection
-                    let currentHistory = [...history];
-                    if (!useSystemDoc && currentHistory.length === 0) {
-                        currentHistory.push({ role: 'user', parts: [{ text: systemInstruction + "\n\nUser: Hello" }] });
-                        currentHistory.push({ role: 'model', parts: [{ text: "Hello! How can I help you on site today?" }] });
-                    }
-
-                    const chat = model.startChat({ history: currentHistory });
-                    const result = await chat.sendMessage(textToSend.trim());
-                    responseText = result.response.text();
-                    success = true;
-                    break; // Stop loop if successful
-                } catch (e: any) {
-                    lastError = e;
-                    console.warn(`Model ${modelName} failed. Falling back to next...`, e.message);
-                }
+            if (data?.error) {
+                throw new Error(data.error);
             }
 
-            if (!success) {
-                throw lastError || new Error("All models failed to respond.");
-            }
+            const responseText = data?.response || 'No response received.';
 
             addMessage({
                 id: (Date.now() + 1).toString(),
@@ -147,11 +67,20 @@ export default function AIScreen() {
                 sender: 'ai',
                 timestamp: Date.now()
             });
-
         } catch (error: any) {
+            const errorMessage = error.message || 'An unexpected error occurred';
+            
+            // Provide a user-friendly message based on common errors
+            let displayMessage = `⚠️ ${errorMessage}`;
+            if (errorMessage.includes('not configured') || errorMessage.includes('GEMINI_API_KEY')) {
+                displayMessage = "🔑 The AI service hasn't been configured yet. Your admin needs to set the GEMINI_API_KEY secret in the Supabase Dashboard.";
+            } else if (errorMessage.includes('unauthorized') || errorMessage.includes('JWT')) {
+                displayMessage = "🔒 Please sign in again to use the AI assistant.";
+            }
+
             addMessage({
                 id: (Date.now() + 1).toString(),
-                text: `Error connecting to AI: ${error.message || 'Please check your API key.'}`,
+                text: displayMessage,
                 sender: 'ai',
                 timestamp: Date.now()
             });

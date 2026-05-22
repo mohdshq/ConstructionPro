@@ -1,18 +1,39 @@
 import { View, Text, StyleSheet, TextInput, ScrollView, TouchableOpacity, KeyboardAvoidingView, Platform } from 'react-native';
 import { useState, useMemo } from 'react';
-import { ArrowLeft, Users, Clock, DollarSign, Info } from "lucide-react-native";
+import { ArrowLeft, Users, Clock, DollarSign, Info, Save } from "lucide-react-native";
 import BackButton from "../components/BackButton";
 import Animated, { FadeInDown } from 'react-native-reanimated';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useThemeColors } from '../store/useThemeColors';
+import { useProjectsStore } from '../store/projectsStore';
+import { useAuthStore } from '../store/useAuthStore';
+import SaveCalculationModal from '../components/SaveCalculationModal';
+import { useEffect } from 'react';
 
 export default function LaborCalculatorScreen() {
+    const { calcId } = useLocalSearchParams<{ calcId: string }>();
     const { colors, isDark } = useThemeColors();
+    const { calculations } = useProjectsStore();
+
     const [totalQuantity, setTotalQuantity] = useState('1000');
     const [productivityRate, setProductivityRate] = useState('10'); // units per hour per worker
     const [crewSize, setCrewSize] = useState('4');
     const [hourlyRate, setHourlyRate] = useState('45'); // average cost per worker per hour
     const [hoursPerDay, setHoursPerDay] = useState('8');
+    const [projectModalVisible, setProjectModalVisible] = useState(false);
+
+    useEffect(() => {
+        if (calcId) {
+            const calc = calculations.find(c => c.id === calcId);
+            if (calc && calc.data) {
+                if (calc.data.totalQuantity) setTotalQuantity(calc.data.totalQuantity.toString());
+                if (calc.data.productivityRate) setProductivityRate(calc.data.productivityRate.toString());
+                if (calc.data.crewSize) setCrewSize(calc.data.crewSize.toString());
+                if (calc.data.hourlyRate) setHourlyRate(calc.data.hourlyRate.toString());
+                if (calc.data.hoursPerDay) setHoursPerDay(calc.data.hoursPerDay.toString());
+            }
+        }
+    }, [calcId, calculations]);
 
     const result = useMemo(() => {
         const qty = parseFloat(totalQuantity);
@@ -155,7 +176,34 @@ export default function LaborCalculatorScreen() {
                     </Text>
                 </Animated.View>
 
+                {/* Save to Project Button */}
+                <Animated.View entering={FadeInDown.delay(700).springify()} style={{ marginBottom: 40 }}>
+                    <TouchableOpacity 
+                        style={[styles.saveBtn, { backgroundColor: colors.primary }]}
+                        onPress={() => setProjectModalVisible(true)}
+                    >
+                        <Save size={20} color="#FFFFFF" style={{ marginRight: 8 }} />
+                        <Text style={styles.saveBtnText}>Save to Project</Text>
+                    </TouchableOpacity>
+                </Animated.View>
+
             </ScrollView>
+
+            <SaveCalculationModal 
+                visible={projectModalVisible}
+                onClose={() => setProjectModalVisible(false)}
+                calculationType="labor"
+                calculationData={{
+                    totalQuantity,
+                    productivityRate,
+                    crewSize,
+                    hourlyRate,
+                    hoursPerDay,
+                    totalHours: result.totalHours,
+                    totalDays: result.totalDays,
+                    totalCost: result.totalCost
+                }}
+            />
         </KeyboardAvoidingView>
     );
 }
@@ -310,5 +358,22 @@ const styles = StyleSheet.create({
         fontSize: 14,
         color: '#3730A3',
         lineHeight: 22,
+    },
+    saveBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 16,
+        borderRadius: 12,
+        shadowColor: '#2563EB',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.2,
+        shadowRadius: 8,
+        elevation: 4,
+    },
+    saveBtnText: {
+        color: '#FFFFFF',
+        fontSize: 16,
+        fontWeight: '600',
     }
 });

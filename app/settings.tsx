@@ -1,14 +1,17 @@
 import BackButton from "../components/BackButton";
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Platform, TextInput, Image } from 'react-native';
-import { Crown, CheckCircle2, ShieldCheck, Zap, ArrowLeft, Settings2, Moon, Sun, Monitor, Scale, User, Camera } from 'lucide-react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Platform, TextInput, Image, ActivityIndicator } from 'react-native';
+import { Crown, CheckCircle2, ShieldCheck, Zap, ArrowLeft, Settings2, Moon, Sun, Monitor, Scale, User, Camera, LogOut } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
 import Purchases from 'react-native-purchases';
 import Animated, { FadeIn, FadeInDown, useSharedValue, useAnimatedStyle, withRepeat, withTiming, withSequence } from 'react-native-reanimated';
-import { useEffect } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { router } from 'expo-router';
 import { useStore, ThemeType, UnitSystem } from '../store/useStore';
 import { useThemeColors } from '../store/useThemeColors';
+import { useAuthStore } from '../store/useAuthStore';
+import { uploadAvatar, getPublicUrl } from '../lib/supabaseSync';
+import { compressThumbnail } from '../lib/imageUtils';
 
 interface FeatureRowProps {
     title: string;
@@ -27,8 +30,63 @@ function FeatureRow({ title, delay, colors }: FeatureRowProps) {
 
 export default function SettingsScreen() {
     const glowOpacity = useSharedValue(0.15);
-    const { theme, units, setTheme, setUnits, userName, userPhoto, setUserName, setUserPhoto } = useStore();
+    const { theme, units, setTheme, setUnits } = useStore();
     const { colors, isDark } = useThemeColors();
+    const { signOut, user, profile, updateProfile, isLoadingProfile } = useAuthStore();
+
+    // Local state for profile editing
+    const [displayName, setDisplayName] = useState(profile?.full_name || '');
+    const [avatarUri, setAvatarUri] = useState<string | null>(null);
+    const [isSavingProfile, setIsSavingProfile] = useState(false);
+    const nameDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    // Sync local state when profile loads
+    useEffect(() => {
+        if (profile?.full_name && !displayName) {
+            setDisplayName(profile.full_name);
+        }
+        if (profile?.avatar_url) {
+            const publicUrl = getPublicUrl('avatars', profile.avatar_url);
+            setAvatarUri(publicUrl || profile.avatar_url);
+        }
+    }, [profile]);
+
+    // Debounced name sync to Supabase
+    const handleNameChange = useCallback((text: string) => {
+        setDisplayName(text);
+        if (nameDebounceRef.current) clearTimeout(nameDebounceRef.current);
+        nameDebounceRef.current = setTimeout(async () => {
+            if (text.trim() && text.trim() !== profile?.full_name) {
+                try {
+                    await updateProfile({ full_name: text.trim() });
+                } catch (e) {
+                    console.error('Failed to sync name:', e);
+                }
+            }
+        }, 1000);
+    }, [profile?.full_name, updateProfile]);
+
+    const handleSignOut = () => {
+        const doSignOut = async () => {
+            await signOut();
+            router.replace('/(auth)/login' as any);
+        };
+
+        if (Platform.OS === 'web') {
+            if (window.confirm('Are you sure you want to sign out?')) {
+                doSignOut();
+            }
+        } else {
+            Alert.alert(
+                'Sign Out',
+                'Are you sure you want to sign out?',
+                [
+                    { text: 'Cancel', style: 'cancel' },
+                    { text: 'Sign Out', style: 'destructive', onPress: doSignOut },
+                ]
+            );
+        }
+    };
 
     useEffect(() => {
         glowOpacity.value = withRepeat(
@@ -57,15 +115,21 @@ export default function SettingsScreen() {
 
         if (!result.canceled && result.assets && result.assets.length > 0) {
             const uri = result.assets[0].uri;
-            try {
-                const fileName = `profile_${Date.now()}.jpg`;
-                // @ts-ignore
-                const newPath = `${FileSystem.documentDirectory}${fileName}`;
-                await FileSystem.copyAsync({ from: uri, to: newPath });
-                setUserPhoto(newPath);
-            } catch (err) {
-                console.error('Failed to save profile photo', err);
-                setUserPhoto(uri); // Fallback
+            setAvatarUri(uri); // Show preview immediately
+
+            if (user) {
+                setIsSavingProfile(true);
+                try {
+                    // Compress and upload to Supabase Storage
+                    const compressedUri = await compressThumbnail(uri);
+                    const storagePath = `${user.id}/avatar.jpg`;
+                    await uploadAvatar(storagePath, compressedUri);
+                    await updateProfile({ avatar_url: storagePath });
+                } catch (err) {
+                    console.error('Failed to upload avatar:', err);
+                } finally {
+                    setIsSavingProfile(false);
+                }
             }
         }
     };
@@ -141,26 +205,35 @@ export default function SettingsScreen() {
                     <View style={[styles.prefCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
                         <View style={styles.profileRow}>
                             <TouchableOpacity onPress={pickImage} style={styles.profileImageContainer}>
-                                {userPhoto ? (
-                                    <Image source={{ uri: userPhoto }} style={styles.profileImage} />
+                                {avatarUri ? (
+                                    <Image source={{ uri: avatarUri }} style={styles.profileImage} />
                                 ) : (
                                     <View style={[styles.profileImagePlaceholder, { backgroundColor: colors.avatarBackground }]}>
-                                        <Text style={[styles.profileInitials, { color: colors.avatarText }]}>{userName.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()}</Text>
+                                        <Text style={[styles.profileInitials, { color: colors.avatarText }]}>
+                                            {(displayName || user?.email || '').split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() || '?'}
+                                        </Text>
                                     </View>
                                 )}
                                 <View style={[styles.cameraBadge, { backgroundColor: colors.primary }]}>
-                                    <Camera color="#FFFFFF" size={12} />
+                                    {isSavingProfile ? (
+                                        <ActivityIndicator size={10} color="#FFFFFF" />
+                                    ) : (
+                                        <Camera color="#FFFFFF" size={12} />
+                                    )}
                                 </View>
                             </TouchableOpacity>
                             <View style={styles.profileInputContainer}>
                                 <Text style={[styles.prefLabel, { color: colors.textMuted }]}>Name</Text>
                                 <TextInput
                                     style={[styles.textInput, { backgroundColor: colors.inputBackground, color: colors.text }]}
-                                    value={userName}
-                                    onChangeText={setUserName}
+                                    value={displayName}
+                                    onChangeText={handleNameChange}
                                     placeholder="Enter your name"
                                     placeholderTextColor={colors.textMuted}
                                 />
+                                {user?.email && (
+                                    <Text style={{ fontSize: 12, color: colors.textMuted, marginTop: 6 }}>{user.email}</Text>
+                                )}
                             </View>
                         </View>
                     </View>
@@ -245,6 +318,23 @@ export default function SettingsScreen() {
                 <Animated.View entering={FadeInDown.delay(1000).springify()} style={styles.footer}>
                     <ShieldCheck color="#94A3B8" size={16} />
                     <Text style={styles.footerText}>Secure billing handled by RevenueCat</Text>
+                </Animated.View>
+
+                {/* Sign Out Section */}
+                <Animated.View entering={FadeInDown.delay(1100).springify()} style={styles.prefSection}>
+                    <TouchableOpacity
+                        style={[styles.signOutButton, { backgroundColor: isDark ? '#7F1D1D' : '#FEE2E2', borderColor: isDark ? '#991B1B' : '#FECACA' }]}
+                        onPress={handleSignOut}
+                        activeOpacity={0.8}
+                    >
+                        <LogOut size={20} color={isDark ? '#FCA5A5' : '#DC2626'} />
+                        <Text style={[styles.signOutText, { color: isDark ? '#FCA5A5' : '#DC2626' }]}>Sign Out</Text>
+                    </TouchableOpacity>
+                    {user?.email && (
+                        <Text style={{ fontSize: 12, color: colors.textMuted, textAlign: 'center', marginTop: 8 }}>
+                            Signed in as {user.email}
+                        </Text>
+                    )}
                 </Animated.View>
 
                 <View style={{ height: 100 }} />
@@ -519,5 +609,18 @@ const styles = StyleSheet.create({
         fontSize: 14,
         color: '#94A3B8',
         marginLeft: 8,
-    }
+    },
+    signOutButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 16,
+        borderRadius: 16,
+        borderWidth: 1,
+    },
+    signOutText: {
+        fontSize: 16,
+        fontWeight: '600',
+        marginLeft: 10,
+    },
 });

@@ -1,12 +1,15 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, Image } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, Image, RefreshControl } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { Calculator, FileText, CheckSquare, Layers, Sparkles, Settings as SettingsIcon, Zap } from 'lucide-react-native';
 import Animated, { FadeIn, FadeInDown, withRepeat, withSequence, withTiming, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
-import { useEffect } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { router } from 'expo-router';
 import { useStore } from '../../store/useStore';
 import { useProjectsStore } from '../../store/projectsStore';
 import { useThemeColors } from '../../store/useThemeColors';
+import { useAuthStore } from '../../store/useAuthStore';
+import { getPublicUrl } from '../../lib/supabaseSync';
+import ConnectionBadge from '../../components/ConnectionBadge';
 
 const AnimatedBlurView = Animated.createAnimatedComponent(BlurView);
 
@@ -38,8 +41,22 @@ export default function HomeScreen() {
   const glowOpacity = useSharedValue(0.15);
   const glowScale = useSharedValue(1);
   const { userName, userPhoto } = useStore();
-  const { projects, reports } = useProjectsStore();
+  const { projects, reports, initialSync } = useProjectsStore();
   const { colors, isDark } = useThemeColors();
+  const { profile, user } = useAuthStore();
+  const [refreshing, setRefreshing] = useState(false);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await initialSync();
+    setRefreshing(false);
+  }, [initialSync]);
+
+  // Prefer Supabase profile data, fallback to local store
+  const displayName = profile?.full_name || userName || user?.email?.split('@')[0] || 'Engineer';
+  const avatarUrl = profile?.avatar_url
+    ? getPublicUrl('avatars', profile.avatar_url)
+    : userPhoto;
 
   const getGreeting = () => {
     const hour = new Date().getHours();
@@ -84,21 +101,25 @@ export default function HomeScreen() {
   });
 
   return (
-    <ScrollView style={[styles.container, { backgroundColor: colors.background }]} contentContainerStyle={styles.content}>
+    <ScrollView 
+        style={[styles.container, { backgroundColor: colors.background }]} 
+        contentContainerStyle={styles.content}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
+    >
       <Animated.View entering={FadeIn.duration(1000)} style={styles.header}>
         <View style={styles.headerProfileRow}>
-          {userPhoto ? (
-            <Image source={{ uri: userPhoto }} style={styles.profileAvatarImage} />
+          {avatarUrl ? (
+            <Image source={{ uri: avatarUrl }} style={styles.profileAvatarImage} />
           ) : (
             <View style={[styles.profileAvatar, { backgroundColor: colors.avatarBackground }]}>
               <Text style={[styles.profileText, { color: colors.avatarText }]}>
-                {userName.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()}
+                {displayName.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()}
               </Text>
             </View>
           )}
           <View style={styles.headerTextContainer}>
             <Text style={[styles.greeting, { color: colors.textMuted }]}>{getGreeting()}</Text>
-            <Text style={[styles.name, { color: colors.text }]}>{userName}</Text>
+            <Text style={[styles.name, { color: colors.text }]}>{displayName}</Text>
             <Text style={[styles.dateText, { color: colors.textMuted }]}>{currentDate}</Text>
           </View>
         </View>
@@ -125,6 +146,10 @@ export default function HomeScreen() {
           </BlurView>
         </TouchableOpacity>
       </Animated.View>
+
+      <View style={{ alignItems: 'center', marginBottom: 12 }}>
+        <ConnectionBadge />
+      </View>
 
       <Animated.Text entering={FadeInDown.delay(300).springify()} style={[styles.sectionTitle, { color: colors.text }]}>
         Quick Actions

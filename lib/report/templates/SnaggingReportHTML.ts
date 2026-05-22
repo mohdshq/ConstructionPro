@@ -1,4 +1,4 @@
-import { Report, Project } from '../../../../../store/projectsStore';
+import { Report, Project } from '../../../store/projectsStore';
 
 /**
  * Generates the Snagging / Property Condition Audit HTML report.
@@ -194,7 +194,7 @@ export function generateSnaggingHTML(
             let severityColor = snag.severity === 'High' ? '#DC2626' : (snag.severity === 'Low' ? '#16A34A' : '#EA580C');
 
             html += `
-                <div class="detail-row" style="${index > 0 && index % 3 === 0 ? 'page-break-before: always;' : ''}">
+                <div class="detail-row" style="page-break-inside: avoid;">
                     <div class="detail-photo">
                         ${snag.photoUri 
                             ? `<div style="width: 100%; height: 100%; background-image: url('${snag.photoUri}'); background-size: cover; background-position: center; border: 1px solid #CBD5E1;"></div>`
@@ -256,15 +256,19 @@ export function generateSnaggingHTML(
                     .detail-row { display: flex; width: 100%; margin-bottom: 30px; gap: 10px; page-break-inside: avoid; }
                     .detail-photo { width: 200px; height: 150px; flex-shrink: 0; }
                     .detail-info { flex: 1; }
-                    .detail-table { width: 100%; border-collapse: collapse; border: 1px solid #CBD5E1; }
-                    .detail-table th, .detail-table td { border: 1px solid #CBD5E1; padding: 6px; font-size: 11px; vertical-align: top; }
-                    .detail-header { background-color: #94A3B8; color: #000; text-align: left; font-weight: bold; }
-                    .detail-label { background-color: #F1F5F9; font-weight: bold; }
-                    
+                    .photo-grid { display: block; margin-top: 10px; }
+                    .photo-wrapper { width: calc(50% - 15px); display: inline-block; vertical-align: top; page-break-inside: avoid; margin-bottom: 10px; margin-right: 10px; }
+                    .photo-item { width: 100%; aspect-ratio: 4/3; border: 1px solid #ccc; background-color: #f8fafc; display: block; }
+                    .photo-caption { font-size: 11px; text-align: center; margin-top: 6px; font-weight: 500; color: #334155; word-wrap: break-word; }
+
                     @media print {
-                        @page { size: auto; margin: 0; }
-                        html, body { padding: 0; margin: 0; }
-                        .page { page-break-after: always; padding: 15mm; }
+                        @page { margin: 10mm; }
+                        html, body { height: auto; overflow: visible !important; }
+                        .layout { display: block; width: 100%; height: auto; overflow: visible !important; }
+                        table { page-break-inside: auto; }
+                        tr { page-break-inside: avoid; page-break-after: auto; }
+                        thead { display: table-header-group; }
+                        tfoot { display: table-footer-group; }
                     }
                 </style>
             </head>

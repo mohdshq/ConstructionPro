@@ -1,15 +1,21 @@
 import BackButton from "../components/BackButton";
 import { View, Text, StyleSheet, TextInput, ScrollView, TouchableOpacity, KeyboardAvoidingView, Platform } from 'react-native';
 import { useState, useMemo } from 'react';
-import { Calculator, ArrowLeft, Ruler, LayoutGrid, Info } from 'lucide-react-native';
+import { Calculator, ArrowLeft, Ruler, LayoutGrid, Info, Save } from 'lucide-react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useStore } from '../store/useStore';
 import { useThemeColors } from '../store/useThemeColors';
+import { useProjectsStore } from '../store/projectsStore';
+import { useAuthStore } from '../store/useAuthStore';
+import SaveCalculationModal from '../components/SaveCalculationModal';
+import { useEffect } from 'react';
 
 export default function BlockCalculatorScreen() {
+    const { calcId } = useLocalSearchParams<{ calcId: string }>();
     const { units } = useStore();
     const { colors } = useThemeColors();
+    const { calculations } = useProjectsStore();
 
     // Default values based on units
     const isMetric = units === 'metric';
@@ -24,9 +30,23 @@ export default function BlockCalculatorScreen() {
     const [blockLength, setBlockLength] = useState(defaultBlockL);
     const [blockHeight, setBlockHeight] = useState(defaultBlockH);
     const [mortarJoint, setMortarJoint] = useState(defaultMortar);
+    const [projectModalVisible, setProjectModalVisible] = useState(false);
 
     const wallLabel = isMetric ? 'meters' : 'feet';
     const blockLabel = isMetric ? 'mm' : 'inches';
+
+    useEffect(() => {
+        if (calcId) {
+            const calc = calculations.find(c => c.id === calcId);
+            if (calc && calc.data) {
+                if (calc.data.wallLength) setWallLength(calc.data.wallLength.toString());
+                if (calc.data.wallHeight) setWallHeight(calc.data.wallHeight.toString());
+                if (calc.data.blockLength) setBlockLength(calc.data.blockLength.toString());
+                if (calc.data.blockHeight) setBlockHeight(calc.data.blockHeight.toString());
+                if (calc.data.mortarJoint) setMortarJoint(calc.data.mortarJoint.toString());
+            }
+        }
+    }, [calcId, calculations]);
 
     const result = useMemo(() => {
         const wl = parseFloat(wallLength);
@@ -169,7 +189,35 @@ export default function BlockCalculatorScreen() {
                     </Text>
                 </Animated.View>
 
+                {/* Save to Project Button */}
+                <Animated.View entering={FadeInDown.delay(600).springify()} style={{ marginTop: 24 }}>
+                    <TouchableOpacity 
+                        style={[styles.saveBtn, { backgroundColor: colors.primary }]}
+                        onPress={() => setProjectModalVisible(true)}
+                    >
+                        <Save size={20} color="#FFFFFF" style={{ marginRight: 8 }} />
+                        <Text style={styles.saveBtnText}>Save to Project</Text>
+                    </TouchableOpacity>
+                </Animated.View>
+
             </ScrollView>
+
+            <SaveCalculationModal 
+                visible={projectModalVisible}
+                onClose={() => setProjectModalVisible(false)}
+                calculationType="block"
+                calculationData={{
+                    wallLength,
+                    wallHeight,
+                    blockLength,
+                    blockHeight,
+                    mortarJoint,
+                    result,
+                    wasteResult,
+                    wallLabel,
+                    blockLabel
+                }}
+            />
         </KeyboardAvoidingView>
     );
 }
@@ -339,5 +387,22 @@ const styles = StyleSheet.create({
         fontSize: 14,
         color: '#B45309',
         lineHeight: 22,
+    },
+    saveBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 16,
+        borderRadius: 12,
+        shadowColor: '#2563EB',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.2,
+        shadowRadius: 8,
+        elevation: 4,
+    },
+    saveBtnText: {
+        color: '#FFFFFF',
+        fontSize: 16,
+        fontWeight: '600',
     }
 });
