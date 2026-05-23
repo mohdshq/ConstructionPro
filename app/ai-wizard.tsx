@@ -8,6 +8,7 @@ import { Mic, Square, Camera, Image as ImageIcon, ChevronRight, X, Loader2, Spar
 import { useProjectsStore, Project, ReportType } from '../store/projectsStore';
 import { supabase } from '../lib/supabase';
 import * as FileSystem from 'expo-file-system';
+import * as ImageManipulator from 'expo-image-manipulator';
 import { useThemeColors } from '../store/useThemeColors';
 import { useStore } from '../store/useStore';
 import Animated, { FadeIn, SlideInRight, SlideOutLeft } from 'react-native-reanimated';
@@ -55,7 +56,7 @@ export default function AIWizardScreen() {
                 playsInSilentModeIOS: true,
             });
             const { recording } = await Audio.Recording.createAsync(
-                Audio.RecordingOptionsPresets.HIGH_QUALITY
+                Audio.RecordingOptionsPresets.LOW_QUALITY
             );
             setRecording(recording);
             setIsRecording(true);
@@ -149,7 +150,29 @@ export default function AIWizardScreen() {
             setStep('processing');
             setProcessingText('Analyzing photo...');
             
-            const base64Image = `data:image/jpeg;base64,${result.assets[0].base64}`;
+            // Resize image to reduce payload size and speed up AI processing
+            const manipResult = await ImageManipulator.manipulateAsync(
+                result.assets[0].uri,
+                [{ resize: { width: 800 } }],
+                { compress: 0.5, format: ImageManipulator.SaveFormat.JPEG, base64: true }
+            );
+            
+            let base64String = manipResult.base64;
+            if (!base64String && Platform.OS === 'web') {
+                const response = await fetch(manipResult.uri);
+                const blob = await response.blob();
+                base64String = await new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = () => {
+                        const dataUrl = reader.result as string;
+                        resolve(dataUrl.split(',')[1]);
+                    };
+                    reader.onerror = reject;
+                    reader.readAsDataURL(blob);
+                });
+            }
+
+            const base64Image = `data:image/jpeg;base64,${base64String}`;
             
             const payload = {
                 imageBase64: base64Image,
