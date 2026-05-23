@@ -9,12 +9,14 @@ import { useProjectsStore, Project, ReportType } from '../store/projectsStore';
 import { supabase } from '../lib/supabase';
 import * as FileSystem from 'expo-file-system';
 import { useThemeColors } from '../store/useThemeColors';
+import { useStore } from '../store/useStore';
 import Animated, { FadeIn, SlideInRight, SlideOutLeft } from 'react-native-reanimated';
 
 export default function AIWizardScreen() {
     const { colors } = useThemeColors();
     const router = useExpoRouter();
     const { projects } = useProjectsStore();
+    const { isPremium } = useStore();
 
     const [step, setStep] = useState<'project' | 'type' | 'snag-context' | 'snag-capture' | 'daily-capture' | 'processing'>('project');
     const [selectedProject, setSelectedProject] = useState<Project | null>(null);
@@ -86,7 +88,23 @@ export default function AIWizardScreen() {
         setProcessingText('Analyzing voice...');
 
         try {
-            const base64Audio = await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
+            let base64Audio;
+            if (Platform.OS === 'web') {
+                const response = await fetch(uri);
+                const blob = await response.blob();
+                base64Audio = await new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = () => {
+                        const dataUrl = reader.result as string;
+                        const base64 = dataUrl.split(',')[1];
+                        resolve(base64);
+                    };
+                    reader.onerror = reject;
+                    reader.readAsDataURL(blob);
+                });
+            } else {
+                base64Audio = await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
+            }
             
             const payload = {
                 audioBase64: `data:audio/m4a;base64,${base64Audio}`,
@@ -200,6 +218,32 @@ export default function AIWizardScreen() {
         }
     };
 
+    const handleCreateProject = () => {
+        if (!isPremium && projects.length >= 1) {
+            if (Platform.OS === 'web') {
+                const wantsUpgrade = window.confirm(
+                    "Free users can only create 1 project. Would you like to upgrade to Construction Pro Premium for unlimited projects?"
+                );
+                if (wantsUpgrade) {
+                    router.back();
+                    router.push('/settings' as any);
+                }
+            } else {
+                Alert.alert(
+                    "Premium Required",
+                    "Free users can only create 1 project. Upgrade to Construction Pro Premium to create unlimited projects.",
+                    [
+                        { text: "Cancel", style: "cancel" },
+                        { text: "Upgrade", style: "default", onPress: () => { router.back(); router.push('/settings' as any); } }
+                    ]
+                );
+            }
+            return;
+        }
+        router.back();
+        router.push('/project/create');
+    };
+
     // UI Renderers
     const renderProjectSelection = () => (
         <Animated.View entering={FadeIn} style={styles.stepContainer}>
@@ -217,7 +261,7 @@ export default function AIWizardScreen() {
                 ))}
                 <TouchableOpacity 
                     style={[styles.projectCard, { borderStyle: 'dashed', backgroundColor: 'transparent' }]}
-                    onPress={() => { router.back(); router.push('/project/create'); }}
+                    onPress={handleCreateProject}
                 >
                     <Text style={[styles.projectName, { color: '#2563EB' }]}>+ Add New Project</Text>
                 </TouchableOpacity>
