@@ -18,7 +18,7 @@ import { ActivityIndicator } from 'react-native';
 
 export default function CreateReportScreen() {
     const { colors } = useThemeColors();
-    const { id, type, editId, duplicateId } = useLocalSearchParams<{ id: string, type: ReportType, editId?: string, duplicateId?: string }>();
+    const { id, type, editId, duplicateId, initialData } = useLocalSearchParams<{ id: string, type: ReportType, editId?: string, duplicateId?: string, initialData?: string }>();
     const router = useRouter();
     const { addReport, updateReport, getProject, getReportsForProject, getReport } = useProjectsStore();
     const { units } = useStore();
@@ -116,7 +116,8 @@ export default function CreateReportScreen() {
 
                 // Arrays
                 ...preload,
-                photos: []
+                photos: [],
+                ...(initialData ? JSON.parse(initialData) : {})
             });
         } else if (type === 'snagging') {
             const existingReports = getReportsForProject(id);
@@ -173,7 +174,8 @@ export default function CreateReportScreen() {
                 electricityProvider: preloadSnag.electricityProvider || '',
                 
                 pcaMainPhotoUri: '',
-                snags: []
+                snags: [],
+                ...(initialData ? JSON.parse(initialData) : {})
             });
         } else if (type === 'hse') {
             const defaultHSEChecklist = [

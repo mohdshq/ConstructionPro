@@ -164,17 +164,33 @@ export default function AIWizardScreen() {
                 finalUri = manipResult.uri;
             }
 
-            if (!base64String && Platform.OS === 'web') {
-                const response = await fetch(finalUri);
-                const blob = await response.blob();
+            if (Platform.OS === 'web') {
                 base64String = await new Promise((resolve, reject) => {
-                    const reader = new FileReader();
-                    reader.onload = () => {
-                        const dataUrl = reader.result as string;
-                        resolve(dataUrl.split(',')[1]);
+                    const img = new Image(); // Use browser Image
+                    img.onload = () => {
+                        const canvas = document.createElement('canvas');
+                        const MAX_WIDTH = 800;
+                        let width = img.width;
+                        let height = img.height;
+                        
+                        if (width > MAX_WIDTH) {
+                            height = Math.round(height * (MAX_WIDTH / width));
+                            width = MAX_WIDTH;
+                        }
+                        
+                        canvas.width = width;
+                        canvas.height = height;
+                        const ctx = canvas.getContext('2d');
+                        if (ctx) {
+                            ctx.drawImage(img, 0, 0, width, height);
+                            const dataUrl = canvas.toDataURL('image/jpeg', 0.5);
+                            resolve(dataUrl.split(',')[1]);
+                        } else {
+                            resolve(base64String); // fallback
+                        }
                     };
-                    reader.onerror = reject;
-                    reader.readAsDataURL(blob);
+                    img.onerror = reject;
+                    img.src = finalUri;
                 });
             }
 
