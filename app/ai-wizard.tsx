@@ -36,7 +36,7 @@ export default function AIWizardScreen() {
     useEffect(() => {
         return () => {
             if (recording) {
-                recording.stopAndUnloadAsync();
+                recording.stopAndUnloadAsync().catch(() => {});
             }
         };
     }, [recording]);
@@ -215,6 +215,12 @@ export default function AIWizardScreen() {
                         <ChevronRight size={20} color="#64748B" />
                     </TouchableOpacity>
                 ))}
+                <TouchableOpacity 
+                    style={[styles.projectCard, { borderStyle: 'dashed', backgroundColor: 'transparent' }]}
+                    onPress={() => { router.back(); router.push('/project/create'); }}
+                >
+                    <Text style={[styles.projectName, { color: '#2563EB' }]}>+ Add New Project</Text>
+                </TouchableOpacity>
             </ScrollView>
         </Animated.View>
     );
@@ -228,7 +234,7 @@ export default function AIWizardScreen() {
                     onPress={() => { setSelectedType('snagging'); setStep('snag-context'); }}
                 >
                     <View style={styles.typeIconContainer}><Sparkles color="#2563EB" size={24} /></View>
-                    <View>
+                    <View style={{ flex: 1 }}>
                         <Text style={styles.typeTitle}>Snagging / Punch List</Text>
                         <Text style={styles.typeDesc}>Walk the site and log defects automatically.</Text>
                     </View>
@@ -238,7 +244,7 @@ export default function AIWizardScreen() {
                     onPress={() => { setSelectedType('daily'); setStep('daily-capture'); }}
                 >
                     <View style={[styles.typeIconContainer, { backgroundColor: '#DCFCE7' }]}><Mic color="#16A34A" size={24} /></View>
-                    <View>
+                    <View style={{ flex: 1 }}>
                         <Text style={styles.typeTitle}>Daily Report</Text>
                         <Text style={styles.typeDesc}>Dictate today's summary and manpower.</Text>
                     </View>
