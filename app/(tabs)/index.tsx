@@ -134,14 +134,14 @@ export default function HomeScreen() {
 
       <Animated.View entering={FadeInDown.delay(200).springify()} style={styles.aiCardContainer}>
         <Animated.View style={[styles.aiGlow, animatedGlowStyle]} />
-        <TouchableOpacity activeOpacity={0.9} onPress={() => router.push('/quick-log')}>
+        <TouchableOpacity activeOpacity={0.9} onPress={() => router.push('/ai-wizard')}>
           <BlurView intensity={Platform.OS === 'ios' ? 40 : 100} tint={isDark ? "dark" : "light"} style={[styles.aiCardInner, { backgroundColor: isDark ? 'rgba(30, 41, 59, 0.7)' : 'rgba(255, 255, 255, 0.7)' }]}>
             <View style={[styles.aiIconWrapper, { backgroundColor: isDark ? '#1E3A8A' : '#EFF6FF' }]}>
-              <Zap color={isDark ? "#60A5FA" : "#2563EB"} size={24} />
+              <Sparkles color={isDark ? "#60A5FA" : "#2563EB"} size={24} />
             </View>
             <View style={styles.aiTextWrapper}>
-              <Text style={[styles.aiTitle, { color: isDark ? '#FFFFFF' : '#1E3A8A' }]}>Quick Site Log</Text>
-              <Text style={[styles.aiSubtitle, { color: isDark ? '#94A3B8' : '#475569' }]}>Log notes, photos, and voice memos instantly.</Text>
+              <Text style={[styles.aiTitle, { color: isDark ? '#FFFFFF' : '#1E3A8A' }]}>✨ Quick AI Report</Text>
+              <Text style={[styles.aiSubtitle, { color: isDark ? '#94A3B8' : '#475569' }]}>Use voice and camera to auto-generate reports.</Text>
             </View>
           </BlurView>
         </TouchableOpacity>

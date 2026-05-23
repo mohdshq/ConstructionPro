@@ -15,6 +15,7 @@
       "infoPlist": {
         "NSCameraUsageDescription": "ConstructionPro requires camera access to capture photos for site snagging and daily reports.",
         "NSPhotoLibraryUsageDescription": "ConstructionPro needs access to your photo library to attach existing images to reports and update your profile picture.",
+        "NSMicrophoneUsageDescription": "ConstructionPro needs access to your microphone to record conversational AI voice notes.",
         "ITSAppUsesNonExemptEncryption": false
       }
     },
