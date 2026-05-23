@@ -150,16 +150,22 @@ export default function AIWizardScreen() {
             setStep('processing');
             setProcessingText('Analyzing photo...');
             
-            // Resize image to reduce payload size and speed up AI processing
-            const manipResult = await ImageManipulator.manipulateAsync(
-                result.assets[0].uri,
-                [{ resize: { width: 800 } }],
-                { compress: 0.5, format: ImageManipulator.SaveFormat.JPEG, base64: true }
-            );
-            
-            let base64String = manipResult.base64;
+            let base64String = result.assets[0].base64;
+            let finalUri = result.assets[0].uri;
+
+            if (Platform.OS !== 'web') {
+                // Resize image to reduce payload size and speed up AI processing on native
+                const manipResult = await ImageManipulator.manipulateAsync(
+                    result.assets[0].uri,
+                    [{ resize: { width: 800 } }],
+                    { compress: 0.5, format: ImageManipulator.SaveFormat.JPEG, base64: true }
+                );
+                base64String = manipResult.base64;
+                finalUri = manipResult.uri;
+            }
+
             if (!base64String && Platform.OS === 'web') {
-                const response = await fetch(manipResult.uri);
+                const response = await fetch(finalUri);
                 const blob = await response.blob();
                 base64String = await new Promise((resolve, reject) => {
                     const reader = new FileReader();
