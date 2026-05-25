@@ -1,5 +1,5 @@
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, SafeAreaView, Platform, KeyboardAvoidingView } from 'react-native';
-import { ArrowLeft, Image as ImageIcon, MapPin, Building2, User, FileText, DollarSign, CalendarDays, Briefcase } from "lucide-react-native";
+import { ArrowLeft, Image as ImageIcon, MapPin, Building2, User, FileText, DollarSign, CalendarDays, Briefcase, Hash } from "lucide-react-native";
 import BackButton from "../../components/BackButton";
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useState, createElement, useEffect } from 'react';
@@ -26,6 +26,7 @@ export default function CreateProjectScreen() {
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
     const [projectManager, setProjectManager] = useState('');
+    const [referenceNumber, setReferenceNumber] = useState('');
     const [photoUri, setPhotoUri] = useState<string | null>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const { user } = useAuthStore();
@@ -43,6 +44,7 @@ export default function CreateProjectScreen() {
                 setStartDate(project.startDate || '');
                 setEndDate(project.endDate || '');
                 setProjectManager(project.projectManager || '');
+                setReferenceNumber(project.referenceNumber || '');
                 setPhotoUri(project.photoUri || null);
             }
         }
@@ -87,6 +89,7 @@ export default function CreateProjectScreen() {
             startDate: startDate.trim() || undefined,
             endDate: endDate.trim() || undefined,
             projectManager: projectManager.trim() || undefined,
+            referenceNumber: referenceNumber.trim() || undefined,
             photoUri: finalPhotoUri || undefined,
         };
 
@@ -150,6 +153,22 @@ export default function CreateProjectScreen() {
                                 value={name}
                                 onChangeText={setName}
                                 autoCapitalize="words"
+                            />
+                        </View>
+                    </View>
+
+                    <View style={styles.formGroup}>
+                        <Text style={[styles.label, { color: colors.text }]}>Reference Number</Text>
+                        <View style={[styles.inputContainer, { backgroundColor: colors.inputBackground, borderColor: colors.border }]}>
+                            <Hash size={20} color={colors.textMuted} style={styles.inputIcon} />
+                            <TextInput
+                                style={[styles.input, { color: colors.text }]}
+                                placeholder="e.g. PRJ-2026-001"
+                                placeholderTextColor={colors.textMuted}
+                                value={referenceNumber}
+                                onChangeText={setReferenceNumber}
+                                autoCapitalize="characters"
+                                maxLength={50}
                             />
                         </View>
                     </View>
