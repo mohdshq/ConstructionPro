@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator, ScrollView } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator, ScrollView, Alert } from 'react-native';
 import { Link, useRouter } from 'expo-router';
 import { Mail, Lock, User, AlertCircle, ArrowRight } from 'lucide-react-native';
 import { supabase } from '../../lib/supabase';
