@@ -18,11 +18,6 @@ export const unstable_settings = {
   anchor: '(tabs)',
 };
 
-// RevenueCat API Keys
-// TODO: Move to .env via expo-constants for production
-const REVENUECAT_API_KEY_APPLE = "appl_XPTkcAVgIUmYxQnXXZAVuuYpGfX";
-const REVENUECAT_API_KEY_GOOGLE = "goog_placeholder_key_here"; // TODO: Replace with actual Play Store key
-
 export default function RootLayout() {
   const colorScheme = useColorScheme();
   const { setIsPremium } = useStore();
@@ -66,11 +61,16 @@ export default function RootLayout() {
       // NOTE: isPremium is now persisted via Zustand — no need to force false.
       // RevenueCat listener will update it when entitlement status changes.
       try {
-        if (Platform.OS === 'ios') {
-          Purchases.configure({ apiKey: REVENUECAT_API_KEY_APPLE });
-        } else if (Platform.OS === 'android') {
-          Purchases.configure({ apiKey: REVENUECAT_API_KEY_GOOGLE });
+        const apiKey = Platform.OS === 'ios'
+          ? process.env.EXPO_PUBLIC_REVENUECAT_API_KEY_IOS
+          : process.env.EXPO_PUBLIC_REVENUECAT_API_KEY_ANDROID;
+
+        if (!apiKey) {
+          console.warn("[RevenueCat] Missing API key for iOS/Android — premium features will be unavailable");
+          return;
         }
+
+        Purchases.configure({ apiKey });
         
         // Initial check — updates persisted value if entitlement changed
         const customerInfo = await Purchases.getCustomerInfo();
