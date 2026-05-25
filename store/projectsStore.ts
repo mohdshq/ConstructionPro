@@ -320,6 +320,7 @@ function mapProjectRow(row: any): Project {
         startDate: row.start_date || undefined,
         endDate: row.end_date || undefined,
         projectManager: row.project_manager || undefined,
+        referenceNumber: row.reference_number || undefined,
         status: row.status || 'active',
         photoUri: row.photo_url || undefined,
         createdAt: row.created_at || new Date().toISOString(),
@@ -500,6 +501,7 @@ export const useProjectsStore = create<ProjectsState>()(
                             start_date: project.startDate || null,
                             end_date: project.endDate || null,
                             project_manager: project.projectManager || null,
+                            reference_number: project.referenceNumber || null,
                             status: project.status || 'active',
                             photo_url: project.photoUri || null,
                         });
@@ -539,6 +541,7 @@ export const useProjectsStore = create<ProjectsState>()(
                         if (projectUpdates.startDate !== undefined) remoteUpdates.start_date = projectUpdates.startDate;
                         if (projectUpdates.endDate !== undefined) remoteUpdates.end_date = projectUpdates.endDate;
                         if (projectUpdates.projectManager !== undefined) remoteUpdates.project_manager = projectUpdates.projectManager;
+                        if (projectUpdates.referenceNumber !== undefined) remoteUpdates.reference_number = projectUpdates.referenceNumber;
                         if (projectUpdates.status !== undefined) remoteUpdates.status = projectUpdates.status;
                         if (projectUpdates.photoUri !== undefined) remoteUpdates.photo_url = projectUpdates.photoUri;
 

@@ -278,6 +278,7 @@ export type Database = {
           name: string
           photo_url: string | null
           project_manager: string | null
+          reference_number: string | null
           start_date: string | null
           status: string | null
           updated_at: string | null
@@ -294,6 +295,7 @@ export type Database = {
           name: string
           photo_url?: string | null
           project_manager?: string | null
+          reference_number?: string | null
           start_date?: string | null
           status?: string | null
           updated_at?: string | null
@@ -310,6 +312,7 @@ export type Database = {
           name?: string
           photo_url?: string | null
           project_manager?: string | null
+          reference_number?: string | null
           start_date?: string | null
           status?: string | null
           updated_at?: string | null
