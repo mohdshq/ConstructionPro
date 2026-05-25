@@ -23,6 +23,7 @@ export default function CreateReportScreen() {
     const { addReport, updateReport, getProject, getReportsForProject, getReport } = useProjectsStore();
     const { units } = useStore();
     const isMetric = units === 'metric';
+    const project = getProject(id);
 
     const [author, setAuthor] = useState('');
     const [formData, setFormData] = useState<any>({});
@@ -38,8 +39,6 @@ export default function CreateReportScreen() {
     const userId = useAuthStore((s) => s.user?.id);
 
     useEffect(() => {
-        const project = getProject(id);
-
         // Handle Edit or Duplicate Pre-fill
         if (editId || duplicateId) {
             const targetId = editId || duplicateId;
