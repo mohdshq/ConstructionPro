@@ -204,6 +204,7 @@ export interface Project {
     startDate?: string; // ISO string
     endDate?: string;   // ISO string
     projectManager?: string;
+    referenceNumber?: string;
     status: ProjectStatus;
     photoUri?: string;
     createdAt: string;
