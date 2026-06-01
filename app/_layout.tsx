@@ -58,6 +58,13 @@ export default function RootLayout() {
 
   useEffect(() => {
     const initRevenueCat = async () => {
+      // Developer override for premium paywall
+      if (__DEV__ && process.env.EXPO_PUBLIC_DEV_FORCE_PREMIUM === 'true') {
+        console.warn("[DEV] Premium paywall bypassed via EXPO_PUBLIC_DEV_FORCE_PREMIUM=true");
+        setIsPremium(true);
+        return; // Skip actual RevenueCat initialization
+      }
+
       // NOTE: isPremium is now persisted via Zustand — no need to force false.
       // RevenueCat listener will update it when entitlement status changes.
       try {
