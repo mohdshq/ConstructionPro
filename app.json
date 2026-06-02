@@ -58,7 +58,16 @@
         {
           "microphonePermission": "ConstructionPro needs access to your microphone to record voice notes for quick logs."
         }
-      ]
+      ],
+      [
+        "@sentry/react-native/expo",
+        {
+          "organization": "paltech-jd",
+          "project": "constructionpro",
+          "url": "https://de.sentry.io/"
+        }
+      ],
+      "@sentry/react-native"
     ],
     "experiments": {
       "typedRoutes": true,

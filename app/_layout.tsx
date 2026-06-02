@@ -13,12 +13,21 @@ import { useAuthStore } from '@/store/useAuthStore';
 import { useProjectsStore } from '@/store/projectsStore';
 import { useRealtimeSync } from '@/lib/useRealtimeSync';
 import { usePushNotifications } from '@/lib/usePushNotifications';
+import * as Sentry from '@sentry/react-native';
+
+Sentry.init({
+  dsn: process.env.EXPO_PUBLIC_SENTRY_DSN,
+  environment: __DEV__ ? 'development' : 'production',
+  enabled: !__DEV__ || process.env.EXPO_PUBLIC_SENTRY_FORCE_ENABLE === 'true',
+  tracesSampleRate: 1.0,
+  sendDefaultPii: false
+});
 
 export const unstable_settings = {
   anchor: '(tabs)',
 };
 
-export default function RootLayout() {
+function RootLayout() {
   const colorScheme = useColorScheme();
   const { setIsPremium } = useStore();
   
@@ -117,3 +126,5 @@ export default function RootLayout() {
     </ThemeProvider>
   );
 }
+
+export default Sentry.wrap(RootLayout);
