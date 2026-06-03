@@ -346,6 +346,15 @@ function mapReportRow(row: any): Report {
     };
 }
 
+function reconcile<T extends { id: string; syncStatus?: 'synced' | 'pending' }>(
+    serverRecords: T[],
+    localRecords: T[]
+): T[] {
+    const serverIds = new Set(serverRecords.map(r => r.id));
+    const pendingLocalRecords = localRecords.filter(r => r.syncStatus === 'pending' && !serverIds.has(r.id));
+    return [...serverRecords, ...pendingLocalRecords];
+}
+
 function mapFolderRow(row: any): DrawingFolder {
     return {
         id: row.id,
@@ -448,8 +457,8 @@ export const useProjectsStore = create<ProjectsState>()(
                         fetchUserCalculations(userId),
                     ]);
 
-                    const remoteProjects = results[0].status === 'fulfilled' ? results[0].value.map(mapProjectRow) : get().projects;
-                    const remoteReports = results[1].status === 'fulfilled' ? results[1].value.map(mapReportRow) : get().reports;
+                    const remoteProjects = results[0].status === 'fulfilled' ? reconcile(results[0].value.map(mapProjectRow), get().projects) : get().projects;
+                    const remoteReports = results[1].status === 'fulfilled' ? reconcile(results[1].value.map(mapReportRow), get().reports) : get().reports;
                     const remoteFolders = results[2].status === 'fulfilled' ? results[2].value.map(mapFolderRow) : get().folders;
                     const remoteDrawings = results[3].status === 'fulfilled' ? results[3].value.map(mapDrawingRow) : get().drawings;
                     const remoteMembers = results[4].status === 'fulfilled' ? results[4].value.map(mapMemberRow) : get().members;

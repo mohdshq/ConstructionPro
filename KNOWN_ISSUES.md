@@ -37,6 +37,29 @@ we proceed to Milestone 2 (Sentry/PostHog observability).
 - Config values live in `.env` (EXPO_PUBLIC_POSTHOG_KEY / EXPO_PUBLIC_POSTHOG_HOST, US region).
 - Analytics are DISABLED in dev by default (conditional PostHogProvider render);
   enabled in production builds, or in dev via EXPO_PUBLIC_POSTHOG_FORCE_ENABLE=true.
+## M3.3 — Offline data-loss: partial fix (projects + reports only)
+- M3.3b made initialSync NON-DESTRUCTIVE for projects and reports: local records
+  with syncStatus === 'pending' that are absent from the server are now PRESERVED
+  (not wiped), fixing the catastrophic "offline-created report disappears on sync" bug.
+- STILL DESTRUCTIVE (data-loss bug remains): folders, drawings, activities, calculations.
+  These have optimistic offline-create paths that silently swallow failures and are still
+  wholesale-overwritten by initialSync. They lack the syncStatus field.
+  TO FIX: extend M3.3a groundwork (syncStatus on interfaces/mappers/add fns) to these four,
+  then add them to the reconcile — OR resolve fully via M4 PowerSync.
+- Legacy records (syncStatus === undefined) absent from server are DROPPED by design
+  (treated as remote-deleted, not resurrected) to avoid zombie data.
+- Offline EDITS to existing records: server wins on sync (edit-conflict resolution
+  deferred to M4). Only offline CREATES are preserved.
+
+## M3.3b — VERIFICATION PENDING (network blocker)
+- The non-destructive reconcile is code-complete and type-checks, but NOT yet verified
+  on-device. The data-loss bug is NOT considered closed until tested.
+- TO VERIFY on a stable network: (1) go offline, (2) create a report, (3) confirm it
+  shows locally with syncStatus 'pending', (4) go online + trigger initialSync /
+  pull-to-refresh, (5) confirm the report SURVIVES (not wiped) and flips to 'synced'
+  after a successful re-push. Also verify a remotely-deleted synced record correctly
+  disappears locally (no resurrection).
+
 ## Dev environment — network connectivity blocker
 - Current dev Wi-Fi ("Azizi_Phase4") is a managed/isolated network (client isolation on,
   router admin unreachable) — direct LAN Metro connection fails.
