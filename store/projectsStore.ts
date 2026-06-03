@@ -172,6 +172,7 @@ export interface Report {
     status: ReportStatus;
     createdAt: string;
     updatedAt: string;
+    syncStatus?: 'synced' | 'pending';
 }
 
 export interface DrawingFolder {
@@ -209,6 +210,7 @@ export interface Project {
     photoUri?: string;
     createdAt: string;
     updatedAt: string;
+    syncStatus?: 'synced' | 'pending';
 }
 
 export interface ProjectMember {
@@ -325,6 +327,7 @@ function mapProjectRow(row: any): Project {
         photoUri: row.photo_url || undefined,
         createdAt: row.created_at || new Date().toISOString(),
         updatedAt: row.updated_at || new Date().toISOString(),
+        syncStatus: 'synced',
     };
 }
 
@@ -339,6 +342,7 @@ function mapReportRow(row: any): Report {
         status: row.status || 'draft',
         createdAt: row.created_at || new Date().toISOString(),
         updatedAt: row.updated_at || new Date().toISOString(),
+        syncStatus: 'synced',
     };
 }
 
@@ -485,6 +489,7 @@ export const useProjectsStore = create<ProjectsState>()(
                     id: localId,
                     createdAt: now,
                     updatedAt: now,
+                    syncStatus: 'pending',
                 };
                 set((state) => ({ projects: [...state.projects, newProject] }));
 
@@ -522,9 +527,10 @@ export const useProjectsStore = create<ProjectsState>()(
                 const now = new Date().toISOString();
                 
                 // Optimistic local update
+                // M3.3: pending flag set on edit; M3.3b reconcile preserves unsynced CREATES only — offline EDIT conflict resolution deferred to M4 (PowerSync).
                 set((state) => ({
                     projects: state.projects.map((p) =>
-                        p.id === id ? { ...p, ...projectUpdates, updatedAt: now } : p
+                        p.id === id ? { ...p, ...projectUpdates, updatedAt: now, syncStatus: 'pending' } : p
                     ),
                 }));
 
@@ -546,6 +552,11 @@ export const useProjectsStore = create<ProjectsState>()(
                         if (projectUpdates.photoUri !== undefined) remoteUpdates.photo_url = projectUpdates.photoUri;
 
                         await updateProjectRemote(id, remoteUpdates);
+                        set((state) => ({
+                            projects: state.projects.map((p) =>
+                                p.id === id ? { ...p, syncStatus: 'synced' } : p
+                            ),
+                        }));
                     } catch (error) {
                         console.error('Failed to sync project update to Supabase:', error);
                     }
@@ -590,6 +601,7 @@ export const useProjectsStore = create<ProjectsState>()(
                     id: localId,
                     createdAt: now,
                     updatedAt: now,
+                    syncStatus: 'pending',
                 };
                 set((state) => ({ reports: [...state.reports, newReport] }));
 
@@ -625,9 +637,10 @@ export const useProjectsStore = create<ProjectsState>()(
 
             updateReport: async (id, reportUpdates) => {
                 const now = new Date().toISOString();
+                // M3.3: pending flag set on edit; M3.3b reconcile preserves unsynced CREATES only — offline EDIT conflict resolution deferred to M4 (PowerSync).
                 set((state) => ({
                     reports: state.reports.map((r) =>
-                        r.id === id ? { ...r, ...reportUpdates, updatedAt: now } : r
+                        r.id === id ? { ...r, ...reportUpdates, updatedAt: now, syncStatus: 'pending' } : r
                     ),
                 }));
 
@@ -648,6 +661,11 @@ export const useProjectsStore = create<ProjectsState>()(
                         }
 
                         await updateReportRemote(id, remoteUpdates);
+                        set((state) => ({
+                            reports: state.reports.map((r) =>
+                                r.id === id ? { ...r, syncStatus: 'synced' } : r
+                            ),
+                        }));
                     } catch (error) {
                         console.error('Failed to sync report update to Supabase:', error);
                     }
@@ -900,7 +918,7 @@ export const useProjectsStore = create<ProjectsState>()(
             // ──────────────────────────────────────────
 
             _applyRemoteProjectUpsert: (row) => {
-                const mapped = mapProjectRow(row);
+                const mapped = { ...mapProjectRow(row), syncStatus: 'synced' as const };
                 set((state) => {
                     const exists = state.projects.some((p) => p.id === mapped.id);
                     if (exists) {
@@ -918,7 +936,7 @@ export const useProjectsStore = create<ProjectsState>()(
             },
 
             _applyRemoteReportUpsert: (row) => {
-                const mapped = mapReportRow(row);
+                const mapped = { ...mapReportRow(row), syncStatus: 'synced' as const };
                 set((state) => {
                     const exists = state.reports.some((r) => r.id === mapped.id);
                     if (exists) {
