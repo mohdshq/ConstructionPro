@@ -14,6 +14,7 @@ import { useProjectsStore } from '@/store/projectsStore';
 import { useRealtimeSync } from '@/lib/useRealtimeSync';
 import { usePushNotifications } from '@/lib/usePushNotifications';
 import * as Sentry from '@sentry/react-native';
+import { PostHogProvider } from 'posthog-react-native';
 
 Sentry.init({
   dsn: process.env.EXPO_PUBLIC_SENTRY_DSN,
@@ -112,7 +113,10 @@ function RootLayout() {
     );
   }
 
-  return (
+  const analyticsEnabled = !__DEV__ || process.env.EXPO_PUBLIC_POSTHOG_FORCE_ENABLE === 'true';
+  const posthogKey = process.env.EXPO_PUBLIC_POSTHOG_KEY;
+
+  const appContent = (
     <ThemeProvider value={DarkTheme}>
       <SafeAreaProvider>
         <Stack screenOptions={{ headerShown: false }}>
@@ -125,6 +129,15 @@ function RootLayout() {
       </SafeAreaProvider>
     </ThemeProvider>
   );
+
+  return (analyticsEnabled && posthogKey) ? (
+    <PostHogProvider 
+      apiKey={posthogKey}
+      options={{ host: process.env.EXPO_PUBLIC_POSTHOG_HOST }}
+    >
+      {appContent}
+    </PostHogProvider>
+  ) : appContent;
 }
 
 export default Sentry.wrap(RootLayout);

@@ -26,6 +26,25 @@ we proceed to Milestone 2 (Sentry/PostHog observability).
       causes `data.success` / `data.error` to fail at runtime.
 - [ ] `components/SaveCalculationModal.tsx:72` — References
       `proj.referenceNumber` which does not exist on the Project type.
+## M2b — PostHog runtime verification pending
+- PostHog analytics integrated and code-complete (installed, type-checks clean, dev build compiles).
+- LIVE runtime test (capturing a test event and confirming it lands in the US PostHog
+  dashboard) is DEFERRED — blocked by unstable network (building Wi-Fi has client
+  isolation; ngrok tunnel persistently drops/fails on this network).
+- TO VERIFY when on a stable network: run
+  `EXPO_PUBLIC_POSTHOG_FORCE_ENABLE=true npx expo start --dev-client`, trigger a
+  `posthog.capture('Test Event')`, confirm it appears in PostHog → Activity.
+- Config values live in `.env` (EXPO_PUBLIC_POSTHOG_KEY / EXPO_PUBLIC_POSTHOG_HOST, US region).
+- Analytics are DISABLED in dev by default (conditional PostHogProvider render);
+  enabled in production builds, or in dev via EXPO_PUBLIC_POSTHOG_FORCE_ENABLE=true.
+## Dev environment — network connectivity blocker
+- Current dev Wi-Fi ("Azizi_Phase4") is a managed/isolated network (client isolation on,
+  router admin unreachable) — direct LAN Metro connection fails.
+- ngrok tunnel works intermittently but drops frequently / sometimes fails to start.
+- iPhone Personal Hotspot + Mac: loopback routing issue (dev client can't reach Metro on
+  same phone's hotspot).
+- WORKAROUND: retry tunnel until a connection holds; long-term consider a personal
+  travel router or a network you control for reliable on-device testing.
 
 ## Low (config / hygiene)
 

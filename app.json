@@ -67,7 +67,8 @@
           "url": "https://de.sentry.io/"
         }
       ],
-      "@sentry/react-native"
+      "@sentry/react-native",
+      "expo-localization"
     ],
     "experiments": {
       "typedRoutes": true,
