@@ -51,6 +51,16 @@ we proceed to Milestone 2 (Sentry/PostHog observability).
 - Offline EDITS to existing records: server wins on sync (edit-conflict resolution
   deferred to M4). Only offline CREATES are preserved.
 
+## M3.3c — Network detection + offline banner (NOT STARTED)
+- Plan reviewed and approved: use @react-native-community/netinfo, add
+  lib/useNetworkStatus.ts hook + components/OfflineBanner.tsx, mount banner in
+  app/_layout.tsx (inside appContent's SafeAreaProvider).
+- BLOCKED ON: requires a new dev build (netinfo is a native module). Defer until next
+  dev build / stable network.
+- BEFORE APPLYING: re-verify the _layout.tsx diff against the current appContent/
+  PostHogProvider structure (the originally-proposed diff was against the pre-M2b layout).
+- Scope: detection + display only. No sync/queue/retry (that's M4).
+
 ## M3.3b — VERIFICATION PENDING (network blocker)
 - The non-destructive reconcile is code-complete and type-checks, but NOT yet verified
   on-device. The data-loss bug is NOT considered closed until tested.
