@@ -26,17 +26,8 @@ we proceed to Milestone 2 (Sentry/PostHog observability).
       causes `data.success` / `data.error` to fail at runtime.
 - [ ] `components/SaveCalculationModal.tsx:72` — References
       `proj.referenceNumber` which does not exist on the Project type.
-## M2b — PostHog runtime verification pending
-- PostHog analytics integrated and code-complete (installed, type-checks clean, dev build compiles).
-- LIVE runtime test (capturing a test event and confirming it lands in the US PostHog
-  dashboard) is DEFERRED — blocked by unstable network (building Wi-Fi has client
-  isolation; ngrok tunnel persistently drops/fails on this network).
-- TO VERIFY when on a stable network: run
-  `EXPO_PUBLIC_POSTHOG_FORCE_ENABLE=true npx expo start --dev-client`, trigger a
-  `posthog.capture('Test Event')`, confirm it appears in PostHog → Activity.
-- Config values live in `.env` (EXPO_PUBLIC_POSTHOG_KEY / EXPO_PUBLIC_POSTHOG_HOST, US region).
-- Analytics are DISABLED in dev by default (conditional PostHogProvider render);
-  enabled in production builds, or in dev via EXPO_PUBLIC_POSTHOG_FORCE_ENABLE=true.
+## M2b — PostHog runtime verification ✅ VERIFIED
+- Verified live on iOS Simulator dev build: 'M2b Test Event' captured via usePostHog().capture() + flush() appeared in PostHog Events dashboard (US region). Autocapture (Application Opened) also confirmed firing.
 ## M3.3 — Offline data-loss: partial fix (projects + reports only)
 - M3.3b made initialSync NON-DESTRUCTIVE for projects and reports: local records
   with syncStatus === 'pending' that are absent from the server are now PRESERVED
@@ -61,14 +52,9 @@ we proceed to Milestone 2 (Sentry/PostHog observability).
   PostHogProvider structure (the originally-proposed diff was against the pre-M2b layout).
 - Scope: detection + display only. No sync/queue/retry (that's M4).
 
-## M3.3b — VERIFICATION PENDING (network blocker)
-- The non-destructive reconcile is code-complete and type-checks, but NOT yet verified
-  on-device. The data-loss bug is NOT considered closed until tested.
-- TO VERIFY on a stable network: (1) go offline, (2) create a report, (3) confirm it
-  shows locally with syncStatus 'pending', (4) go online + trigger initialSync /
-  pull-to-refresh, (5) confirm the report SURVIVES (not wiped) and flips to 'synced'
-  after a successful re-push. Also verify a remotely-deleted synced record correctly
-  disappears locally (no resurrection).
+## M3.3b — Offline reconcile ✅ VERIFIED (with known gap)
+- Verified live: a report created OFFLINE survived reconnection / initialSync (no longer wiped). Data-loss-on-overwrite bug confirmed fixed.
+- KNOWN GAP: offline-created records are PRESERVED locally (syncStatus 'pending') but are NEVER auto-pushed to Supabase after reconnect. Needs flush-on-reconnect / mutation queue. Deferred to M4 (PowerSync).
 
 ## Dev environment — network connectivity blocker
 - Current dev Wi-Fi ("Azizi_Phase4") is a managed/isolated network (client isolation on,
@@ -78,6 +64,7 @@ we proceed to Milestone 2 (Sentry/PostHog observability).
   same phone's hotspot).
 - WORKAROUND: retry tunnel until a connection holds; long-term consider a personal
   travel router or a network you control for reliable on-device testing.
+- NOTE: On-device verification is now possible via the iOS Simulator dev build (`development-simulator` EAS profile), safely bypassing the physical network/tunnel blockers.
 
 ## Low (config / hygiene)
 
