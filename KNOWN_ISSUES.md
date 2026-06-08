@@ -79,3 +79,10 @@ we proceed to Milestone 2 (Sentry/PostHog observability).
       addressed web-platform image manipulation but the core flow is
       still broken. DEFERRED to post-M2 when Sentry will provide stack
       traces and reproduction context.
+
+## M3.3c — Offline detection + banner ✅ CODE-COMPLETE (live offline-state verification pending)
+- Added @react-native-community/netinfo, lib/useNetworkStatus.ts hook, components/OfflineBanner.tsx (global red banner), mounted in app/_layout.tsx inside SafeAreaProvider.
+- VERIFIED on iOS Simulator: banner renders correctly with proper safe-area insets; absent when online.
+- NOT fully verified: a true offline transition. The iOS Simulator does NOT emit isConnected:false on host Wi-Fi toggle (NetInfo always reports isConnected:true, type:wifi) — a known simulator limitation, not a code issue. Confirmed via debug logging.
+- TO VERIFY on a physical device: install the `development` (device) dev build, enable Airplane Mode, confirm the red banner appears, disable it, confirm the banner clears.
+- isOffline keys off isConnected only (isInternetReachable can stick on simulators/flaky networks). Captive-portal edge case deferred to M4.

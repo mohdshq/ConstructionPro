@@ -15,6 +15,7 @@ import { useRealtimeSync } from '@/lib/useRealtimeSync';
 import { usePushNotifications } from '@/lib/usePushNotifications';
 import * as Sentry from '@sentry/react-native';
 import { PostHogProvider } from 'posthog-react-native';
+import { OfflineBanner } from '@/components/OfflineBanner';
 
 Sentry.init({
   dsn: process.env.EXPO_PUBLIC_SENTRY_DSN,
@@ -125,6 +126,7 @@ function RootLayout() {
           <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
           <Stack.Screen name="ai-wizard" options={{ presentation: 'fullScreenModal', headerShown: false }} />
         </Stack>
+        <OfflineBanner />
         <StatusBar style="light" />
       </SafeAreaProvider>
     </ThemeProvider>
