@@ -1,0 +1,39 @@
+import { column, Schema, Table } from '@powersync/react-native';
+
+const profiles = new Table({
+  full_name: column.text, avatar_url: column.text, company: column.text,
+  role: column.text, created_at: column.text, updated_at: column.text,
+});
+const projects = new Table({
+  user_id: column.text, name: column.text, location: column.text, client: column.text,
+  description: column.text, contract_value: column.text, start_date: column.text,
+  end_date: column.text, project_manager: column.text, status: column.text,
+  photo_url: column.text, created_at: column.text, updated_at: column.text,
+  reference_number: column.text,
+});
+const reports = new Table({
+  project_id: column.text, user_id: column.text, type: column.text, date: column.text,
+  author: column.text, template_data: column.text, status: column.text,
+  created_at: column.text, updated_at: column.text,
+}, { indexes: { by_project: ['project_id'] } });
+const drawings = new Table({
+  project_id: column.text, user_id: column.text, folder_id: column.text, name: column.text,
+  type: column.text, storage_path: column.text, size: column.integer,
+  uploaded_at: column.text, author: column.text,
+}, { indexes: { by_project: ['project_id'], by_folder: ['folder_id'] } });
+const drawing_folders = new Table({
+  project_id: column.text, user_id: column.text, name: column.text,
+  parent_id: column.text, created_at: column.text,
+}, { indexes: { by_project: ['project_id'] } });
+const calculations = new Table({
+  project_id: column.text, user_id: column.text, type: column.text,
+  data: column.text, created_at: column.text,
+}, { indexes: { by_project: ['project_id'] } });
+const project_members = new Table({
+  project_id: column.text, user_id: column.text, role: column.text, created_at: column.text,
+}, { indexes: { by_project: ['project_id'] } });
+
+export const AppSchema = new Schema({
+  profiles, projects, reports, drawings, drawing_folders, calculations, project_members,
+});
+export type Database = (typeof AppSchema)['types'];
