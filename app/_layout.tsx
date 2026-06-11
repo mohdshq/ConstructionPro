@@ -16,6 +16,7 @@ import { usePushNotifications } from '@/lib/usePushNotifications';
 import * as Sentry from '@sentry/react-native';
 import { PostHogProvider } from 'posthog-react-native';
 import { OfflineBanner } from '@/components/OfflineBanner';
+import { setupPowerSync, teardownPowerSync } from '@/lib/powersync/system';
 
 Sentry.init({
   dsn: process.env.EXPO_PUBLIC_SENTRY_DSN,
@@ -64,6 +65,14 @@ function RootLayout() {
     // Sync data from Supabase when user is authenticated
     if (session && isInitialized) {
       initialSync();
+      setupPowerSync().catch((e) =>
+        console.warn('[PowerSync] connect failed:', e?.message)
+      );
+    }
+    if (!session && isInitialized) {
+      teardownPowerSync().catch((e) =>
+        console.warn('[PowerSync] teardown failed:', e?.message)
+      );
     }
   }, [session, isInitialized, segments]);
 
