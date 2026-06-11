@@ -16,7 +16,8 @@ import { usePushNotifications } from '@/lib/usePushNotifications';
 import * as Sentry from '@sentry/react-native';
 import { PostHogProvider } from 'posthog-react-native';
 import { OfflineBanner } from '@/components/OfflineBanner';
-import { setupPowerSync, teardownPowerSync } from '@/lib/powersync/system';
+import { PowerSyncContext } from '@powersync/react';
+import { setupPowerSync, teardownPowerSync, powersync } from '@/lib/powersync/system';
 
 Sentry.init({
   dsn: process.env.EXPO_PUBLIC_SENTRY_DSN,
@@ -127,18 +128,20 @@ function RootLayout() {
   const posthogKey = process.env.EXPO_PUBLIC_POSTHOG_KEY;
 
   const appContent = (
-    <ThemeProvider value={DarkTheme}>
-      <SafeAreaProvider>
-        <Stack screenOptions={{ headerShown: false }}>
-          <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
-          <Stack.Screen name="ai-wizard" options={{ presentation: 'fullScreenModal', headerShown: false }} />
-        </Stack>
-        <OfflineBanner />
-        <StatusBar style="light" />
-      </SafeAreaProvider>
-    </ThemeProvider>
+    <PowerSyncContext.Provider value={powersync}>
+      <ThemeProvider value={DarkTheme}>
+        <SafeAreaProvider>
+          <Stack screenOptions={{ headerShown: false }}>
+            <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+            <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
+            <Stack.Screen name="ai-wizard" options={{ presentation: 'fullScreenModal', headerShown: false }} />
+          </Stack>
+          <OfflineBanner />
+          <StatusBar style="light" />
+        </SafeAreaProvider>
+      </ThemeProvider>
+    </PowerSyncContext.Provider>
   );
 
   return (analyticsEnabled && posthogKey) ? (
