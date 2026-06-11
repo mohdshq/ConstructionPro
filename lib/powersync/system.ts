@@ -6,6 +6,9 @@ import { Connector } from './Connector';
 const factory = new OPSqliteOpenFactory({ dbFilename: 'constructionpro.db' });
 export const powersync = new PowerSyncDatabase({ schema: AppSchema, database: factory });
 
+let connected = false;
 export const setupPowerSync = async () => {
+  if (connected) return;
+  connected = true;
   await powersync.connect(new Connector());
 };

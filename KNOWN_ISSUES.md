@@ -86,3 +86,12 @@ we proceed to Milestone 2 (Sentry/PostHog observability).
 - NOT fully verified: a true offline transition. The iOS Simulator does NOT emit isConnected:false on host Wi-Fi toggle (NetInfo always reports isConnected:true, type:wifi) — a known simulator limitation, not a code issue. Confirmed via debug logging.
 - TO VERIFY on a physical device: install the `development` (device) dev build, enable Airplane Mode, confirm the red banner appears, disable it, confirm the banner clears.
 - isOffline keys off isConnected only (isInternetReachable can stick on simulators/flaky networks). Captive-portal edge case deferred to M4.
+
+## M4.1 — PowerSync client integration (✅ VERIFIED on iOS simulator)
+PowerSync client scaffolded (lib/powersync/: AppSchema, Connector, system). End-to-end sync verified: Supabase JWT → PowerSync JWKS auth → sync rules → local SQLite. Row counts matched Sync Diagnostics (profiles 1, projects 3, reports 2, drawings 0, drawing_folders 1, calculations 2, project_members 3).
+
+Two PowerSync auth config requirements (Client Auth dashboard), required for Supabase auth to work:
+
+JWKS URI configured (project uses new ECC P-256 signing keys, not legacy HS256 secret): https://<project-ref>.supabase.co/auth/v1/.well-known/jwks.json
+JWT Audience must include authenticated — Supabase signs all user tokens with aud: "authenticated"; without this, sync fails with [PSYNC_S2105] Unexpected "aud" claim value.
+setupPowerSync() is NOT yet wired into app startup (deferred to M4.2). user_tokens intentionally excluded from sync (PK is user_id, kept on direct-Supabase path). Dev note: PowerSync Development tokens toggle still ON (enable for diagnostics) — disable before production.
