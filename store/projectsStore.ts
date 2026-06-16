@@ -605,30 +605,23 @@ export const useProjectsStore = create<ProjectsState>()(
 
                 if (userId) {
                     try {
-                        // Parse template_data — it's stored as a JSON string locally
-                        let templateDataJson: any = {};
-                        try {
-                            templateDataJson = JSON.parse(report.templateData);
-                        } catch {
-                            templateDataJson = {};
-                        }
-
-                        const remoteReport = await insertReportRemote({
-                            project_id: report.projectId,
-                            user_id: userId,
-                            type: report.type,
-                            date: report.date,
-                            author: report.author || null,
-                            template_data: templateDataJson,
-                            status: report.status || 'draft',
-                        });
+                        await powersync.execute(
+                          `INSERT INTO reports
+                            (id, project_id, user_id, type, date, author, template_data, status, created_at, updated_at)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                          [
+                            localId, report.projectId, userId, report.type, report.date,
+                            report.author || null, report.templateData, report.status || 'draft',
+                            now, now,
+                          ]
+                        );
                         set((state) => ({
-                            reports: state.reports.map((r) =>
-                                r.id === localId ? mapReportRow(remoteReport) : r
-                            ),
+                          reports: state.reports.map((r) =>
+                            r.id === localId ? { ...r, syncStatus: 'synced' } : r
+                          ),
                         }));
                     } catch (error) {
-                        console.error('Failed to sync report to Supabase:', error);
+                        console.error('Failed to write report to PowerSync:', error);
                     }
                 }
             },
@@ -642,31 +635,27 @@ export const useProjectsStore = create<ProjectsState>()(
                     ),
                 }));
 
-                const userId = getCurrentUserId();
-                if (userId) {
-                    try {
-                        const remoteUpdates: any = {};
-                        if (reportUpdates.type !== undefined) remoteUpdates.type = reportUpdates.type;
-                        if (reportUpdates.date !== undefined) remoteUpdates.date = reportUpdates.date;
-                        if (reportUpdates.author !== undefined) remoteUpdates.author = reportUpdates.author;
-                        if (reportUpdates.status !== undefined) remoteUpdates.status = reportUpdates.status;
-                        if (reportUpdates.templateData !== undefined) {
-                            try {
-                                remoteUpdates.template_data = JSON.parse(reportUpdates.templateData);
-                            } catch {
-                                remoteUpdates.template_data = {};
-                            }
-                        }
+                try {
+                    const cols: string[] = [];
+                    const vals: any[] = [];
+                    const add = (col: string, val: any) => { cols.push(`${col} = ?`); vals.push(val); };
+                    if (reportUpdates.type !== undefined) add('type', reportUpdates.type);
+                    if (reportUpdates.date !== undefined) add('date', reportUpdates.date);
+                    if (reportUpdates.author !== undefined) add('author', reportUpdates.author);
+                    if (reportUpdates.status !== undefined) add('status', reportUpdates.status);
+                    if (reportUpdates.templateData !== undefined) add('template_data', reportUpdates.templateData);
+                    add('updated_at', now);
 
-                        await updateReportRemote(id, remoteUpdates);
-                        set((state) => ({
-                            reports: state.reports.map((r) =>
-                                r.id === id ? { ...r, syncStatus: 'synced' } : r
-                            ),
-                        }));
-                    } catch (error) {
-                        console.error('Failed to sync report update to Supabase:', error);
-                    }
+                    vals.push(id);
+                    await powersync.execute(`UPDATE reports SET ${cols.join(', ')} WHERE id = ?`, vals);
+
+                    set((state) => ({
+                        reports: state.reports.map((r) =>
+                            r.id === id ? { ...r, syncStatus: 'synced' } : r
+                        ),
+                    }));
+                } catch (error) {
+                    console.error('Failed to update report in PowerSync:', error);
                 }
             },
 
@@ -675,13 +664,10 @@ export const useProjectsStore = create<ProjectsState>()(
                     reports: state.reports.filter((r) => r.id !== id),
                 }));
 
-                const userId = getCurrentUserId();
-                if (userId) {
-                    try {
-                        await deleteReportRemote(id);
-                    } catch (error) {
-                        console.error('Failed to delete report from Supabase:', error);
-                    }
+                try {
+                    await powersync.execute(`DELETE FROM reports WHERE id = ?`, [id]);
+                } catch (error) {
+                    console.error('Failed to delete report from PowerSync:', error);
                 }
             },
 

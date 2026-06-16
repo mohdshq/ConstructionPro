@@ -24,6 +24,16 @@ export class Connector implements PowerSyncBackendConnector {
         const table = supabase.from(op.table as any);
         const data = (op.opData ?? {}) as any;
 
+        // Reports store template_data as a JSON string locally (text column).
+        // Supabase expects JSONB, so parse before upload to avoid double-encoding.
+        if (op.table === 'reports' && data && typeof data.template_data === 'string') {
+          try {
+            data.template_data = JSON.parse(data.template_data);
+          } catch {
+            data.template_data = {};
+          }
+        }
+
         let result;
         switch (op.op) {
           case UpdateType.PUT:
