@@ -11,6 +11,7 @@ import {
     fetchUserProjectMembers, fetchUserActivities, fetchUserCalculations, insertActivity, insertCalculation
 } from '../lib/supabaseSync';
 import { useAuthStore } from './useAuthStore';
+import { powersync } from '@/lib/powersync/system';
 
 export type ProjectStatus = 'planning' | 'active' | 'completed' | 'on-hold';
 export type ReportType = 'daily' | 'snagging' | 'hse' | 'quick-log';
@@ -492,7 +493,7 @@ export const useProjectsStore = create<ProjectsState>()(
                 const now = new Date().toISOString();
                 const localId = uuidv4();
 
-                // Optimistic local update
+                // Optimistic local Zustand update (dashboard reads this)
                 const newProject: Project = {
                     ...project,
                     id: localId,
@@ -502,78 +503,70 @@ export const useProjectsStore = create<ProjectsState>()(
                 };
                 set((state) => ({ projects: [...state.projects, newProject] }));
 
-                // Push to Supabase
-                if (userId) {
-                    try {
-                        const remoteProject = await insertProjectRemote({
-                            user_id: userId,
-                            name: project.name,
-                            location: project.location || null,
-                            client: project.client || null,
-                            description: project.description || null,
-                            contract_value: project.contractValue || null,
-                            start_date: project.startDate || null,
-                            end_date: project.endDate || null,
-                            project_manager: project.projectManager || null,
-                            reference_number: project.referenceNumber || null,
-                            status: project.status || 'active',
-                            photo_url: project.photoUri || null,
-                        });
-                        // Replace local ID with server ID
-                        set((state) => ({
-                            projects: state.projects.map((p) =>
-                                p.id === localId ? mapProjectRow(remoteProject) : p
-                            ),
-                        }));
-                    } catch (error) {
-                        console.error('Failed to sync project to Supabase:', error);
-                        // Local data preserved — will sync later
-                    }
+                if (!userId) return;
+
+                // Write to PowerSync local SQLite; uploadData() pushes to Supabase.
+                try {
+                    await powersync.execute(
+                        `INSERT INTO projects
+                          (id, user_id, name, location, client, description, contract_value,
+                           start_date, end_date, project_manager, reference_number, status,
+                           photo_url, created_at, updated_at)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                        [
+                            localId, userId, project.name,
+                            project.location || null, project.client || null,
+                            project.description || null, project.contractValue || null,
+                            project.startDate || null, project.endDate || null,
+                            project.projectManager || null, project.referenceNumber || null,
+                            project.status || 'active', project.photoUri || null,
+                            now, now,
+                        ]
+                    );
+                } catch (error) {
+                    console.error('Failed to write project to PowerSync:', error);
                 }
             },
 
             updateProject: async (id, projectUpdates) => {
                 const now = new Date().toISOString();
-                
-                // Optimistic local update
-                // M3.3: pending flag set on edit; M3.3b reconcile preserves unsynced CREATES only — offline EDIT conflict resolution deferred to M4 (PowerSync).
                 set((state) => ({
                     projects: state.projects.map((p) =>
                         p.id === id ? { ...p, ...projectUpdates, updatedAt: now, syncStatus: 'pending' } : p
                     ),
                 }));
 
-                // Push to Supabase
-                const userId = getCurrentUserId();
-                if (userId) {
-                    try {
-                        const remoteUpdates: any = {};
-                        if (projectUpdates.name !== undefined) remoteUpdates.name = projectUpdates.name;
-                        if (projectUpdates.location !== undefined) remoteUpdates.location = projectUpdates.location;
-                        if (projectUpdates.client !== undefined) remoteUpdates.client = projectUpdates.client;
-                        if (projectUpdates.description !== undefined) remoteUpdates.description = projectUpdates.description;
-                        if (projectUpdates.contractValue !== undefined) remoteUpdates.contract_value = projectUpdates.contractValue;
-                        if (projectUpdates.startDate !== undefined) remoteUpdates.start_date = projectUpdates.startDate;
-                        if (projectUpdates.endDate !== undefined) remoteUpdates.end_date = projectUpdates.endDate;
-                        if (projectUpdates.projectManager !== undefined) remoteUpdates.project_manager = projectUpdates.projectManager;
-                        if (projectUpdates.referenceNumber !== undefined) remoteUpdates.reference_number = projectUpdates.referenceNumber;
-                        if (projectUpdates.status !== undefined) remoteUpdates.status = projectUpdates.status;
-                        if (projectUpdates.photoUri !== undefined) remoteUpdates.photo_url = projectUpdates.photoUri;
+                try {
+                    const cols: string[] = [];
+                    const vals: any[] = [];
+                    const add = (col: string, val: any) => { cols.push(`${col} = ?`); vals.push(val); };
+                    if (projectUpdates.name !== undefined) add('name', projectUpdates.name);
+                    if (projectUpdates.location !== undefined) add('location', projectUpdates.location);
+                    if (projectUpdates.client !== undefined) add('client', projectUpdates.client);
+                    if (projectUpdates.description !== undefined) add('description', projectUpdates.description);
+                    if (projectUpdates.contractValue !== undefined) add('contract_value', projectUpdates.contractValue);
+                    if (projectUpdates.startDate !== undefined) add('start_date', projectUpdates.startDate);
+                    if (projectUpdates.endDate !== undefined) add('end_date', projectUpdates.endDate);
+                    if (projectUpdates.projectManager !== undefined) add('project_manager', projectUpdates.projectManager);
+                    if (projectUpdates.referenceNumber !== undefined) add('reference_number', projectUpdates.referenceNumber);
+                    if (projectUpdates.status !== undefined) add('status', projectUpdates.status);
+                    if (projectUpdates.photoUri !== undefined) add('photo_url', projectUpdates.photoUri);
+                    add('updated_at', now);
 
-                        await updateProjectRemote(id, remoteUpdates);
-                        set((state) => ({
-                            projects: state.projects.map((p) =>
-                                p.id === id ? { ...p, syncStatus: 'synced' } : p
-                            ),
-                        }));
-                    } catch (error) {
-                        console.error('Failed to sync project update to Supabase:', error);
-                    }
+                    vals.push(id);
+                    await powersync.execute(`UPDATE projects SET ${cols.join(', ')} WHERE id = ?`, vals);
+
+                    set((state) => ({
+                        projects: state.projects.map((p) =>
+                            p.id === id ? { ...p, syncStatus: 'synced' } : p
+                        ),
+                    }));
+                } catch (error) {
+                    console.error('Failed to update project in PowerSync:', error);
                 }
             },
 
             deleteProject: async (id) => {
-                // Optimistic local update (cascade delete associated data)
                 set((state) => ({
                     projects: state.projects.filter((p) => p.id !== id),
                     reports: state.reports.filter((r) => r.projectId !== id),
@@ -581,14 +574,10 @@ export const useProjectsStore = create<ProjectsState>()(
                     drawings: state.drawings.filter((d) => d.projectId !== id),
                 }));
 
-                // Push to Supabase (server cascade will handle related records)
-                const userId = getCurrentUserId();
-                if (userId) {
-                    try {
-                        await deleteProjectRemote(id);
-                    } catch (error) {
-                        console.error('Failed to delete project from Supabase:', error);
-                    }
+                try {
+                    await powersync.execute(`DELETE FROM projects WHERE id = ?`, [id]);
+                } catch (error) {
+                    console.error('Failed to delete project from PowerSync:', error);
                 }
             },
 
