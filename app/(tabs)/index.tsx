@@ -6,6 +6,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { router } from 'expo-router';
 import { useStore } from '../../store/useStore';
 import { useProjectsStore } from '../../store/projectsStore';
+import { useQuery } from '@powersync/react-native';
 import { useThemeColors } from '../../store/useThemeColors';
 import { useAuthStore } from '../../store/useAuthStore';
 import { getPublicUrl } from '../../lib/supabaseSync';
@@ -41,7 +42,7 @@ export default function HomeScreen() {
   const glowOpacity = useSharedValue(0.15);
   const glowScale = useSharedValue(1);
   const { userName, userPhoto } = useStore();
-  const { projects, reports, initialSync } = useProjectsStore();
+  const { initialSync } = useProjectsStore();
   const { colors, isDark } = useThemeColors();
   const { profile, user } = useAuthStore();
   const [refreshing, setRefreshing] = useState(false);
@@ -71,8 +72,14 @@ export default function HomeScreen() {
     day: 'numeric',
   });
 
-  const activeProjectsCount = projects.filter(p => p.status !== 'completed').length;
-  const totalReportsCount = reports.length;
+  const { data: activeRows } = useQuery<{ c: number }>(
+    `SELECT COUNT(*) AS c FROM projects WHERE status != 'completed'`
+  );
+  const { data: reportRows } = useQuery<{ c: number }>(
+    `SELECT COUNT(*) AS c FROM reports`
+  );
+  const activeProjectsCount = activeRows?.[0]?.c ?? 0;
+  const totalReportsCount = reportRows?.[0]?.c ?? 0;
 
   useEffect(() => {
     glowOpacity.value = withRepeat(
