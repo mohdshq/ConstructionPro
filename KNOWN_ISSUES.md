@@ -79,6 +79,7 @@ we proceed to Milestone 2 (Sentry/PostHog observability).
       addressed web-platform image manipulation but the core flow is
       still broken. DEFERRED to post-M2 when Sentry will provide stack
       traces and reproduction context.
+- [ ] Project status not user-editable (pre-existing, unrelated to PowerSync): create form hardcodes status: 'planning'; edit form omits status. Card badge shows date-derived displayStatus, not stored value. Fix = add a status picker to app/project/create.tsx and include status in the edit payload.
 
 ## M3.3c — Offline detection + banner ✅ CODE-COMPLETE (live offline-state verification pending)
 - Added @react-native-community/netinfo, lib/useNetworkStatus.ts hook, components/OfflineBanner.tsx (global red banner), mounted in app/_layout.tsx inside SafeAreaProvider.
