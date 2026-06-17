@@ -10,6 +10,12 @@ import { useAuthStore } from '../../../store/useAuthStore';
 import { Image } from 'react-native';
 import { supabase } from '../../../lib/supabase';
 
+interface InviteResponse {
+    success: boolean;
+    error?: string;
+    message?: string;
+}
+
 export default function TeamScreen() {
     const { id } = useLocalSearchParams<{ id: string }>();
     const router = useRouter();
@@ -38,6 +44,8 @@ export default function TeamScreen() {
                 _role: 'viewer' // Default to viewer for safety
             });
 
+            const response = data as unknown as InviteResponse | null;
+
             const showAlert = (title: string, message: string) => {
                 if (Platform.OS === 'web') {
                     window.alert(`${title}: ${message}`);
@@ -48,8 +56,8 @@ export default function TeamScreen() {
 
             if (error) {
                 showAlert('Error', error.message);
-            } else if (data && !data.success) {
-                showAlert('Invite Failed', data.error);
+            } else if (response && !response.success) {
+                showAlert('Invite Failed', response.error || 'An unknown error occurred');
             } else {
                 showAlert('Success', 'User added to the team!');
                 setInviteEmail('');

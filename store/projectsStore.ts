@@ -4,13 +4,14 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import 'react-native-get-random-values';
 import { v4 as uuidv4 } from 'uuid';
 import {
-    fetchUserProjects, insertProject as insertProjectRemote, updateProjectRemote, deleteProjectRemote,
-    fetchUserReports, insertReport as insertReportRemote, updateReportRemote, deleteReportRemote,
+    fetchUserProjects,
+    fetchUserReports,
     fetchUserFolders, insertFolder as insertFolderRemote, updateFolderRemote, deleteFolderRemote,
     fetchUserDrawings, insertDrawing as insertDrawingRemote, updateDrawingRemote, deleteDrawingRemote,
     fetchUserProjectMembers, fetchUserActivities, fetchUserCalculations, insertActivity, insertCalculation
 } from '../lib/supabaseSync';
 import { useAuthStore } from './useAuthStore';
+import { powersync } from '@/lib/powersync/system';
 
 export type ProjectStatus = 'planning' | 'active' | 'completed' | 'on-hold';
 export type ReportType = 'daily' | 'snagging' | 'hse' | 'quick-log';
@@ -172,6 +173,7 @@ export interface Report {
     status: ReportStatus;
     createdAt: string;
     updatedAt: string;
+    syncStatus?: 'synced' | 'pending';
 }
 
 export interface DrawingFolder {
@@ -204,10 +206,12 @@ export interface Project {
     startDate?: string; // ISO string
     endDate?: string;   // ISO string
     projectManager?: string;
+    referenceNumber?: string;
     status: ProjectStatus;
     photoUri?: string;
     createdAt: string;
     updatedAt: string;
+    syncStatus?: 'synced' | 'pending';
 }
 
 export interface ProjectMember {
@@ -295,11 +299,6 @@ interface ProjectsState {
     // Sync Actions
     initialSync: () => Promise<void>;
 
-    // Realtime internal actions (apply remote changes without pushing back to Supabase)
-    _applyRemoteProjectUpsert: (row: any) => void;
-    _applyRemoteProjectDelete: (id: string) => void;
-    _applyRemoteReportUpsert: (row: any) => void;
-    _applyRemoteReportDelete: (id: string) => void;
 }
 
 // Helper: Get current user ID (returns null if not authenticated)
@@ -319,10 +318,12 @@ function mapProjectRow(row: any): Project {
         startDate: row.start_date || undefined,
         endDate: row.end_date || undefined,
         projectManager: row.project_manager || undefined,
+        referenceNumber: row.reference_number || undefined,
         status: row.status || 'active',
         photoUri: row.photo_url || undefined,
         createdAt: row.created_at || new Date().toISOString(),
         updatedAt: row.updated_at || new Date().toISOString(),
+        syncStatus: 'synced',
     };
 }
 
@@ -337,7 +338,17 @@ function mapReportRow(row: any): Report {
         status: row.status || 'draft',
         createdAt: row.created_at || new Date().toISOString(),
         updatedAt: row.updated_at || new Date().toISOString(),
+        syncStatus: 'synced',
     };
+}
+
+function reconcile<T extends { id: string; syncStatus?: 'synced' | 'pending' }>(
+    serverRecords: T[],
+    localRecords: T[]
+): T[] {
+    const serverIds = new Set(serverRecords.map(r => r.id));
+    const pendingLocalRecords = localRecords.filter(r => r.syncStatus === 'pending' && !serverIds.has(r.id));
+    return [...serverRecords, ...pendingLocalRecords];
 }
 
 function mapFolderRow(row: any): DrawingFolder {
@@ -442,8 +453,8 @@ export const useProjectsStore = create<ProjectsState>()(
                         fetchUserCalculations(userId),
                     ]);
 
-                    const remoteProjects = results[0].status === 'fulfilled' ? results[0].value.map(mapProjectRow) : get().projects;
-                    const remoteReports = results[1].status === 'fulfilled' ? results[1].value.map(mapReportRow) : get().reports;
+                    const remoteProjects = results[0].status === 'fulfilled' ? reconcile(results[0].value.map(mapProjectRow), get().projects) : get().projects;
+                    const remoteReports = results[1].status === 'fulfilled' ? reconcile(results[1].value.map(mapReportRow), get().reports) : get().reports;
                     const remoteFolders = results[2].status === 'fulfilled' ? results[2].value.map(mapFolderRow) : get().folders;
                     const remoteDrawings = results[3].status === 'fulfilled' ? results[3].value.map(mapDrawingRow) : get().drawings;
                     const remoteMembers = results[4].status === 'fulfilled' ? results[4].value.map(mapMemberRow) : get().members;
@@ -477,79 +488,80 @@ export const useProjectsStore = create<ProjectsState>()(
                 const now = new Date().toISOString();
                 const localId = uuidv4();
 
-                // Optimistic local update
+                // Optimistic local Zustand update (dashboard reads this)
                 const newProject: Project = {
                     ...project,
                     id: localId,
                     createdAt: now,
                     updatedAt: now,
+                    syncStatus: 'pending',
                 };
                 set((state) => ({ projects: [...state.projects, newProject] }));
 
-                // Push to Supabase
-                if (userId) {
-                    try {
-                        const remoteProject = await insertProjectRemote({
-                            user_id: userId,
-                            name: project.name,
-                            location: project.location || null,
-                            client: project.client || null,
-                            description: project.description || null,
-                            contract_value: project.contractValue || null,
-                            start_date: project.startDate || null,
-                            end_date: project.endDate || null,
-                            project_manager: project.projectManager || null,
-                            status: project.status || 'active',
-                            photo_url: project.photoUri || null,
-                        });
-                        // Replace local ID with server ID
-                        set((state) => ({
-                            projects: state.projects.map((p) =>
-                                p.id === localId ? mapProjectRow(remoteProject) : p
-                            ),
-                        }));
-                    } catch (error) {
-                        console.error('Failed to sync project to Supabase:', error);
-                        // Local data preserved — will sync later
-                    }
+                if (!userId) return;
+
+                // Write to PowerSync local SQLite; uploadData() pushes to Supabase.
+                try {
+                    await powersync.execute(
+                        `INSERT INTO projects
+                          (id, user_id, name, location, client, description, contract_value,
+                           start_date, end_date, project_manager, reference_number, status,
+                           photo_url, created_at, updated_at)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                        [
+                            localId, userId, project.name,
+                            project.location || null, project.client || null,
+                            project.description || null, project.contractValue || null,
+                            project.startDate || null, project.endDate || null,
+                            project.projectManager || null, project.referenceNumber || null,
+                            project.status || 'active', project.photoUri || null,
+                            now, now,
+                        ]
+                    );
+                } catch (error) {
+                    console.error('Failed to write project to PowerSync:', error);
                 }
             },
 
             updateProject: async (id, projectUpdates) => {
                 const now = new Date().toISOString();
-                
-                // Optimistic local update
                 set((state) => ({
                     projects: state.projects.map((p) =>
-                        p.id === id ? { ...p, ...projectUpdates, updatedAt: now } : p
+                        p.id === id ? { ...p, ...projectUpdates, updatedAt: now, syncStatus: 'pending' } : p
                     ),
                 }));
 
-                // Push to Supabase
-                const userId = getCurrentUserId();
-                if (userId) {
-                    try {
-                        const remoteUpdates: any = {};
-                        if (projectUpdates.name !== undefined) remoteUpdates.name = projectUpdates.name;
-                        if (projectUpdates.location !== undefined) remoteUpdates.location = projectUpdates.location;
-                        if (projectUpdates.client !== undefined) remoteUpdates.client = projectUpdates.client;
-                        if (projectUpdates.description !== undefined) remoteUpdates.description = projectUpdates.description;
-                        if (projectUpdates.contractValue !== undefined) remoteUpdates.contract_value = projectUpdates.contractValue;
-                        if (projectUpdates.startDate !== undefined) remoteUpdates.start_date = projectUpdates.startDate;
-                        if (projectUpdates.endDate !== undefined) remoteUpdates.end_date = projectUpdates.endDate;
-                        if (projectUpdates.projectManager !== undefined) remoteUpdates.project_manager = projectUpdates.projectManager;
-                        if (projectUpdates.status !== undefined) remoteUpdates.status = projectUpdates.status;
-                        if (projectUpdates.photoUri !== undefined) remoteUpdates.photo_url = projectUpdates.photoUri;
+                try {
+                    const cols: string[] = [];
+                    const vals: any[] = [];
+                    const add = (col: string, val: any) => { cols.push(`${col} = ?`); vals.push(val); };
+                    if (projectUpdates.name !== undefined) add('name', projectUpdates.name);
+                    if (projectUpdates.location !== undefined) add('location', projectUpdates.location);
+                    if (projectUpdates.client !== undefined) add('client', projectUpdates.client);
+                    if (projectUpdates.description !== undefined) add('description', projectUpdates.description);
+                    if (projectUpdates.contractValue !== undefined) add('contract_value', projectUpdates.contractValue);
+                    if (projectUpdates.startDate !== undefined) add('start_date', projectUpdates.startDate);
+                    if (projectUpdates.endDate !== undefined) add('end_date', projectUpdates.endDate);
+                    if (projectUpdates.projectManager !== undefined) add('project_manager', projectUpdates.projectManager);
+                    if (projectUpdates.referenceNumber !== undefined) add('reference_number', projectUpdates.referenceNumber);
+                    if (projectUpdates.status !== undefined) add('status', projectUpdates.status);
+                    if (projectUpdates.photoUri !== undefined) add('photo_url', projectUpdates.photoUri);
+                    add('updated_at', now);
 
-                        await updateProjectRemote(id, remoteUpdates);
-                    } catch (error) {
-                        console.error('Failed to sync project update to Supabase:', error);
-                    }
+                    vals.push(id);
+                    await powersync.execute(`UPDATE projects SET ${cols.join(', ')} WHERE id = ?`, vals);
+
+                    set((state) => ({
+                        projects: state.projects.map((p) =>
+                            p.id === id ? { ...p, syncStatus: 'synced' } : p
+                        ),
+                    }));
+                } catch (error) {
+                    console.error('Failed to update project in PowerSync:', error);
                 }
             },
 
             deleteProject: async (id) => {
-                // Optimistic local update (cascade delete associated data)
                 set((state) => ({
                     projects: state.projects.filter((p) => p.id !== id),
                     reports: state.reports.filter((r) => r.projectId !== id),
@@ -557,14 +569,10 @@ export const useProjectsStore = create<ProjectsState>()(
                     drawings: state.drawings.filter((d) => d.projectId !== id),
                 }));
 
-                // Push to Supabase (server cascade will handle related records)
-                const userId = getCurrentUserId();
-                if (userId) {
-                    try {
-                        await deleteProjectRemote(id);
-                    } catch (error) {
-                        console.error('Failed to delete project from Supabase:', error);
-                    }
+                try {
+                    await powersync.execute(`DELETE FROM projects WHERE id = ?`, [id]);
+                } catch (error) {
+                    console.error('Failed to delete project from PowerSync:', error);
                 }
             },
 
@@ -586,67 +594,63 @@ export const useProjectsStore = create<ProjectsState>()(
                     id: localId,
                     createdAt: now,
                     updatedAt: now,
+                    syncStatus: 'pending',
                 };
                 set((state) => ({ reports: [...state.reports, newReport] }));
 
                 if (userId) {
                     try {
-                        // Parse template_data — it's stored as a JSON string locally
-                        let templateDataJson: any = {};
-                        try {
-                            templateDataJson = JSON.parse(report.templateData);
-                        } catch {
-                            templateDataJson = {};
-                        }
-
-                        const remoteReport = await insertReportRemote({
-                            project_id: report.projectId,
-                            user_id: userId,
-                            type: report.type,
-                            date: report.date,
-                            author: report.author || null,
-                            template_data: templateDataJson,
-                            status: report.status || 'draft',
-                        });
+                        await powersync.execute(
+                          `INSERT INTO reports
+                            (id, project_id, user_id, type, date, author, template_data, status, created_at, updated_at)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                          [
+                            localId, report.projectId, userId, report.type, report.date,
+                            report.author || null, report.templateData, report.status || 'draft',
+                            now, now,
+                          ]
+                        );
                         set((state) => ({
-                            reports: state.reports.map((r) =>
-                                r.id === localId ? mapReportRow(remoteReport) : r
-                            ),
+                          reports: state.reports.map((r) =>
+                            r.id === localId ? { ...r, syncStatus: 'synced' } : r
+                          ),
                         }));
                     } catch (error) {
-                        console.error('Failed to sync report to Supabase:', error);
+                        console.error('Failed to write report to PowerSync:', error);
                     }
                 }
             },
 
             updateReport: async (id, reportUpdates) => {
                 const now = new Date().toISOString();
+                // M3.3: pending flag set on edit; M3.3b reconcile preserves unsynced CREATES only — offline EDIT conflict resolution deferred to M4 (PowerSync).
                 set((state) => ({
                     reports: state.reports.map((r) =>
-                        r.id === id ? { ...r, ...reportUpdates, updatedAt: now } : r
+                        r.id === id ? { ...r, ...reportUpdates, updatedAt: now, syncStatus: 'pending' } : r
                     ),
                 }));
 
-                const userId = getCurrentUserId();
-                if (userId) {
-                    try {
-                        const remoteUpdates: any = {};
-                        if (reportUpdates.type !== undefined) remoteUpdates.type = reportUpdates.type;
-                        if (reportUpdates.date !== undefined) remoteUpdates.date = reportUpdates.date;
-                        if (reportUpdates.author !== undefined) remoteUpdates.author = reportUpdates.author;
-                        if (reportUpdates.status !== undefined) remoteUpdates.status = reportUpdates.status;
-                        if (reportUpdates.templateData !== undefined) {
-                            try {
-                                remoteUpdates.template_data = JSON.parse(reportUpdates.templateData);
-                            } catch {
-                                remoteUpdates.template_data = {};
-                            }
-                        }
+                try {
+                    const cols: string[] = [];
+                    const vals: any[] = [];
+                    const add = (col: string, val: any) => { cols.push(`${col} = ?`); vals.push(val); };
+                    if (reportUpdates.type !== undefined) add('type', reportUpdates.type);
+                    if (reportUpdates.date !== undefined) add('date', reportUpdates.date);
+                    if (reportUpdates.author !== undefined) add('author', reportUpdates.author);
+                    if (reportUpdates.status !== undefined) add('status', reportUpdates.status);
+                    if (reportUpdates.templateData !== undefined) add('template_data', reportUpdates.templateData);
+                    add('updated_at', now);
 
-                        await updateReportRemote(id, remoteUpdates);
-                    } catch (error) {
-                        console.error('Failed to sync report update to Supabase:', error);
-                    }
+                    vals.push(id);
+                    await powersync.execute(`UPDATE reports SET ${cols.join(', ')} WHERE id = ?`, vals);
+
+                    set((state) => ({
+                        reports: state.reports.map((r) =>
+                            r.id === id ? { ...r, syncStatus: 'synced' } : r
+                        ),
+                    }));
+                } catch (error) {
+                    console.error('Failed to update report in PowerSync:', error);
                 }
             },
 
@@ -655,13 +659,10 @@ export const useProjectsStore = create<ProjectsState>()(
                     reports: state.reports.filter((r) => r.id !== id),
                 }));
 
-                const userId = getCurrentUserId();
-                if (userId) {
-                    try {
-                        await deleteReportRemote(id);
-                    } catch (error) {
-                        console.error('Failed to delete report from Supabase:', error);
-                    }
+                try {
+                    await powersync.execute(`DELETE FROM reports WHERE id = ?`, [id]);
+                } catch (error) {
+                    console.error('Failed to delete report from PowerSync:', error);
                 }
             },
 
@@ -891,44 +892,6 @@ export const useProjectsStore = create<ProjectsState>()(
             getActivitiesForProject: (projectId) => get().activities.filter((a) => a.projectId === projectId),
             getCalculationsForProject: (projectId) => get().calculations.filter((c) => c.projectId === projectId),
 
-            // ──────────────────────────────────────────
-            // Realtime: Apply remote changes locally only
-            // ──────────────────────────────────────────
-
-            _applyRemoteProjectUpsert: (row) => {
-                const mapped = mapProjectRow(row);
-                set((state) => {
-                    const exists = state.projects.some((p) => p.id === mapped.id);
-                    if (exists) {
-                        return { projects: state.projects.map((p) => p.id === mapped.id ? mapped : p) };
-                    }
-                    return { projects: [...state.projects, mapped] };
-                });
-            },
-
-            _applyRemoteProjectDelete: (id) => {
-                set((state) => ({
-                    projects: state.projects.filter((p) => p.id !== id),
-                    reports: state.reports.filter((r) => r.projectId !== id),
-                }));
-            },
-
-            _applyRemoteReportUpsert: (row) => {
-                const mapped = mapReportRow(row);
-                set((state) => {
-                    const exists = state.reports.some((r) => r.id === mapped.id);
-                    if (exists) {
-                        return { reports: state.reports.map((r) => r.id === mapped.id ? mapped : r) };
-                    }
-                    return { reports: [...state.reports, mapped] };
-                });
-            },
-
-            _applyRemoteReportDelete: (id) => {
-                set((state) => ({
-                    reports: state.reports.filter((r) => r.id !== id),
-                }));
-            },
         }),
         {
             name: 'construction-pro-projects-storage',

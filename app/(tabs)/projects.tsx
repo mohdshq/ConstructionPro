@@ -4,6 +4,7 @@ import Animated, { FadeInDown, FadeIn } from 'react-native-reanimated';
 import { useRouter } from 'expo-router';
 import ProjectImage from '../../components/ProjectImage';
 import { useProjectsStore, Project } from '../../store/projectsStore';
+import { usePowerSyncProjects } from '@/lib/powersync/useProjects';
 import { useThemeColors } from '../../store/useThemeColors';
 import { useStore } from '../../store/useStore';
 import { useMemo, useCallback, useState } from 'react';
@@ -13,7 +14,8 @@ const { width } = Dimensions.get('window');
 
 export default function ProjectsScreen() {
     const router = useRouter();
-    const { projects, reports, deleteProject, initialSync, isSyncing } = useProjectsStore();
+    const { reports, deleteProject, initialSync, isSyncing } = useProjectsStore();
+    const { data: projects = [] } = usePowerSyncProjects();
     const { isPremium } = useStore();
     const { colors, isDark } = useThemeColors();
     const [refreshing, setRefreshing] = useState(false);

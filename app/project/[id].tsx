@@ -6,6 +6,7 @@ import { Image } from 'react-native';
 import { useEffect, useState, useCallback } from 'react';
 import Animated, { FadeInDown, FadeIn } from 'react-native-reanimated';
 import { useProjectsStore, Project, Report } from '../../store/projectsStore';
+import { usePowerSyncReports } from '../../lib/powersync/useReports';
 import { useThemeColors } from '../../store/useThemeColors';
 import { useStore } from '../../store/useStore';
 import ProjectImage from '../../components/ProjectImage';
@@ -24,8 +25,7 @@ export default function ProjectDashboardScreen() {
     const { colors } = useThemeColors();
 
     // Make reports reactive to instantly show newly created ones
-    const allReports = useProjectsStore(state => state.reports);
-    const reports = allReports.filter(r => r.projectId === id).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    const reports = usePowerSyncReports(id as string);
     const { isPremium } = useStore();
 
     const [project, setProject] = useState<Project | null>(null);

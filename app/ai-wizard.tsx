@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, Alert, SafeAreaView, Platform } from 'react-native';
-import { Stack, useRouter } from 'react-router-native'; // Wait, it's expo-router
+import { Stack, useRouter } from 'expo-router';
 import { useRouter as useExpoRouter } from 'expo-router';
 import { Audio } from 'expo-av';
 import * as ImagePicker from 'expo-image-picker';
