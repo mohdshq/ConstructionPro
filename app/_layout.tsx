@@ -11,7 +11,6 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useStore } from '@/store/useStore';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useProjectsStore } from '@/store/projectsStore';
-import { useRealtimeSync } from '@/lib/useRealtimeSync';
 import { usePushNotifications } from '@/lib/usePushNotifications';
 import * as Sentry from '@sentry/react-native';
 import { PostHogProvider } from 'posthog-react-native';
@@ -39,9 +38,6 @@ function RootLayout() {
   const { initialSync } = useProjectsStore();
   const segments = useSegments();
   const router = useRouter();
-
-  // Subscribe to Realtime changes when authenticated
-  useRealtimeSync();
 
   // Register for push notifications
   usePushNotifications();

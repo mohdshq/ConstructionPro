@@ -4,8 +4,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import 'react-native-get-random-values';
 import { v4 as uuidv4 } from 'uuid';
 import {
-    fetchUserProjects, insertProject as insertProjectRemote, updateProjectRemote, deleteProjectRemote,
-    fetchUserReports, insertReport as insertReportRemote, updateReportRemote, deleteReportRemote,
+    fetchUserProjects,
+    fetchUserReports,
     fetchUserFolders, insertFolder as insertFolderRemote, updateFolderRemote, deleteFolderRemote,
     fetchUserDrawings, insertDrawing as insertDrawingRemote, updateDrawingRemote, deleteDrawingRemote,
     fetchUserProjectMembers, fetchUserActivities, fetchUserCalculations, insertActivity, insertCalculation
@@ -299,11 +299,6 @@ interface ProjectsState {
     // Sync Actions
     initialSync: () => Promise<void>;
 
-    // Realtime internal actions (apply remote changes without pushing back to Supabase)
-    _applyRemoteProjectUpsert: (row: any) => void;
-    _applyRemoteProjectDelete: (id: string) => void;
-    _applyRemoteReportUpsert: (row: any) => void;
-    _applyRemoteReportDelete: (id: string) => void;
 }
 
 // Helper: Get current user ID (returns null if not authenticated)
@@ -897,44 +892,6 @@ export const useProjectsStore = create<ProjectsState>()(
             getActivitiesForProject: (projectId) => get().activities.filter((a) => a.projectId === projectId),
             getCalculationsForProject: (projectId) => get().calculations.filter((c) => c.projectId === projectId),
 
-            // ──────────────────────────────────────────
-            // Realtime: Apply remote changes locally only
-            // ──────────────────────────────────────────
-
-            _applyRemoteProjectUpsert: (row) => {
-                const mapped = { ...mapProjectRow(row), syncStatus: 'synced' as const };
-                set((state) => {
-                    const exists = state.projects.some((p) => p.id === mapped.id);
-                    if (exists) {
-                        return { projects: state.projects.map((p) => p.id === mapped.id ? mapped : p) };
-                    }
-                    return { projects: [...state.projects, mapped] };
-                });
-            },
-
-            _applyRemoteProjectDelete: (id) => {
-                set((state) => ({
-                    projects: state.projects.filter((p) => p.id !== id),
-                    reports: state.reports.filter((r) => r.projectId !== id),
-                }));
-            },
-
-            _applyRemoteReportUpsert: (row) => {
-                const mapped = { ...mapReportRow(row), syncStatus: 'synced' as const };
-                set((state) => {
-                    const exists = state.reports.some((r) => r.id === mapped.id);
-                    if (exists) {
-                        return { reports: state.reports.map((r) => r.id === mapped.id ? mapped : r) };
-                    }
-                    return { reports: [...state.reports, mapped] };
-                });
-            },
-
-            _applyRemoteReportDelete: (id) => {
-                set((state) => ({
-                    reports: state.reports.filter((r) => r.id !== id),
-                }));
-            },
         }),
         {
             name: 'construction-pro-projects-storage',
