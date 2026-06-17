@@ -6,12 +6,8 @@ import type { Database } from '../types/supabase';
 // Type aliases from generated Supabase types
 // ──────────────────────────────────────────────
 type ProjectRow = Database['public']['Tables']['projects']['Row'];
-type ProjectInsert = Database['public']['Tables']['projects']['Insert'];
-type ProjectUpdate = Database['public']['Tables']['projects']['Update'];
 
 type ReportRow = Database['public']['Tables']['reports']['Row'];
-type ReportInsert = Database['public']['Tables']['reports']['Insert'];
-type ReportUpdate = Database['public']['Tables']['reports']['Update'];
 
 type DrawingFolderRow = Database['public']['Tables']['drawing_folders']['Row'];
 type DrawingFolderInsert = Database['public']['Tables']['drawing_folders']['Insert'];
@@ -71,38 +67,6 @@ export async function fetchUserProjects(userId: string): Promise<ProjectRow[]> {
     return data ?? [];
 }
 
-export async function insertProject(project: ProjectInsert): Promise<ProjectRow> {
-    const { data, error } = await supabase
-        .from('projects')
-        .insert(project)
-        .select()
-        .single();
-
-    if (error) throw new Error(`Failed to create project: ${error.message}`);
-    return data;
-}
-
-export async function updateProjectRemote(id: string, updates: ProjectUpdate): Promise<ProjectRow> {
-    const { data, error } = await supabase
-        .from('projects')
-        .update({ ...updates, updated_at: new Date().toISOString() })
-        .eq('id', id)
-        .select()
-        .single();
-
-    if (error) throw new Error(`Failed to update project: ${error.message}`);
-    return data;
-}
-
-export async function deleteProjectRemote(id: string): Promise<void> {
-    const { error } = await supabase
-        .from('projects')
-        .delete()
-        .eq('id', id);
-
-    if (error) throw new Error(`Failed to delete project: ${error.message}`);
-}
-
 // ──────────────────────────────────────────────
 // Reports
 // ──────────────────────────────────────────────
@@ -116,38 +80,6 @@ export async function fetchUserReports(userId: string): Promise<ReportRow[]> {
 
     if (error) throw new Error(`Failed to fetch reports: ${error.message}`);
     return data ?? [];
-}
-
-export async function insertReport(report: ReportInsert): Promise<ReportRow> {
-    const { data, error } = await supabase
-        .from('reports')
-        .insert(report)
-        .select()
-        .single();
-
-    if (error) throw new Error(`Failed to create report: ${error.message}`);
-    return data;
-}
-
-export async function updateReportRemote(id: string, updates: ReportUpdate): Promise<ReportRow> {
-    const { data, error } = await supabase
-        .from('reports')
-        .update({ ...updates, updated_at: new Date().toISOString() })
-        .eq('id', id)
-        .select()
-        .single();
-
-    if (error) throw new Error(`Failed to update report: ${error.message}`);
-    return data;
-}
-
-export async function deleteReportRemote(id: string): Promise<void> {
-    const { error } = await supabase
-        .from('reports')
-        .delete()
-        .eq('id', id);
-
-    if (error) throw new Error(`Failed to delete report: ${error.message}`);
 }
 
 // ──────────────────────────────────────────────
