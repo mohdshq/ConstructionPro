@@ -8,6 +8,7 @@ import { useMemo, useState, useEffect } from 'react';
 import { ActionSheetIOS, ActivityIndicator, Alert, Modal, Platform, SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { WebView } from 'react-native-webview';
 import * as XLSX from 'xlsx';
+import { usePowerSyncReport } from '../../../../lib/powersync/useReports';
 import { useProjectsStore } from '../../../../store/projectsStore';
 import { useThemeColors } from '../../../../store/useThemeColors';
 import { generateDailyReportHTML } from '../../../../lib/report/templates/DailyReportHTML';
@@ -20,29 +21,19 @@ export default function ReportViewerScreen() {
     const { colors } = useThemeColors();
     const { reportId } = useLocalSearchParams<{ reportId: string }>();
     const router = useRouter();
-    const { getReport, getProject, updateReport } = useProjectsStore();
+    const { getProject, updateReport } = useProjectsStore();
 
     const [isGenerating, setIsGenerating] = useState(false);
     const [isGeneratingAISummary, setIsGeneratingAISummary] = useState(false);
     const [shareModalVisible, setShareModalVisible] = useState(false);
 
-    const report = useMemo(() => reportId ? getReport(reportId) : null, [reportId, getReport]);
+    const report = usePowerSyncReport(reportId as string);
     const project = useMemo(() => report ? getProject(report.projectId) : null, [report, getProject]);
     const rawData = useMemo(() => report ? JSON.parse(report.templateData) : null, [report]);
     const [data, setData] = useState<any>(null);
     const [htmlContent, setHtmlContent] = useState<string>('');
 
-    if (!report || !project || !rawData) {
-        return (
-            <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
-                <Stack.Screen options={{ headerShown: false }} />
-                <View style={[styles.header, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
-                    <BackButton style={{ position: "absolute", left: 20, zIndex: 20, bottom: 8 }} />
-                    <Text style={[styles.headerTitle, { color: colors.text }]}>Report Not Found</Text>
-                </View>
-            </SafeAreaView>
-        );
-    }
+
 
     // ─── Data Preparation (Base64 media embedding) ────────────────────
     useEffect(() => {
@@ -132,6 +123,7 @@ export default function ReportViewerScreen() {
 
     // ─── HTML Generation (dispatches to extracted templates) ──────────
     const generateHTML = (options?: { hideMeta?: boolean }) => {
+        if (!report || !project) return '';
         if (!data) return '';
         if (report.type === 'snagging') {
             return generateSnaggingHTML(data, report, project, options);
@@ -151,6 +143,7 @@ export default function ReportViewerScreen() {
 
     // ─── PDF Export ──────────────────────────────────────────────────
     const handleSharePDF = async (hideMeta?: boolean) => {
+        if (!report || !project) return;
         try {
             setIsGenerating(true);
             const html = generateHTML({ hideMeta });
@@ -185,6 +178,7 @@ export default function ReportViewerScreen() {
     };
 
     const handleShareCloudLink = async () => {
+        if (!report || !project) return;
         try {
             setIsGenerating(true);
             const html = generateHTML();
@@ -233,6 +227,7 @@ export default function ReportViewerScreen() {
 
     // ─── Excel Export ────────────────────────────────────────────────
     const handleShareExcel = async () => {
+        if (!report || !project) return;
         try {
             setIsGenerating(true);
             const dateStr = new Date(report.date).toLocaleDateString('en-GB');
@@ -463,6 +458,7 @@ export default function ReportViewerScreen() {
     };
 
     const handleGenerateAISummary = async () => {
+        if (!report) return;
         if (!data) return;
         try {
             setIsGeneratingAISummary(true);
@@ -485,6 +481,18 @@ export default function ReportViewerScreen() {
             setIsGeneratingAISummary(false);
         }
     };
+
+    if (!report || !project || !rawData) {
+        return (
+            <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
+                <Stack.Screen options={{ headerShown: false }} />
+                <View style={[styles.header, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
+                    <BackButton style={{ position: "absolute", left: 20, zIndex: 20, bottom: 8 }} />
+                    <Text style={[styles.headerTitle, { color: colors.text }]}>Report Not Found</Text>
+                </View>
+            </SafeAreaView>
+        );
+    }
 
     // ─── Render ──────────────────────────────────────────────────────
     return (

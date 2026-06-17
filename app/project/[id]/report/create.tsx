@@ -5,9 +5,10 @@ import * as Haptics from 'expo-haptics';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ArrowLeft, Camera, ChevronDown, Eye, EyeOff, Plus, Save, Trash2, Sparkles } from "lucide-react-native";
 import BackButton from "../../../../components/BackButton";
-import { createElement, useEffect, useState } from 'react';
+import { createElement, useEffect, useState, useRef } from 'react';
 import { KeyboardAvoidingView, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
+import { usePowerSyncReport } from '../../../../lib/powersync/useReports';
 import { DailyReportData, ReportType, useProjectsStore } from '../../../../store/projectsStore';
 import { useThemeColors } from '../../../../store/useThemeColors';
 import { useStore } from '../../../../store/useStore';
@@ -20,10 +21,11 @@ export default function CreateReportScreen() {
     const { colors } = useThemeColors();
     const { id, type, editId, duplicateId, initialData } = useLocalSearchParams<{ id: string, type: ReportType, editId?: string, duplicateId?: string, initialData?: string }>();
     const router = useRouter();
-    const { addReport, updateReport, getProject, getReportsForProject, getReport } = useProjectsStore();
+    const { addReport, updateReport, getProject, getReportsForProject } = useProjectsStore();
     const { units } = useStore();
     const isMetric = units === 'metric';
-    const project = getProject(id);
+    const project = getProject(id as string);
+    const existingReport = usePowerSyncReport((editId || duplicateId) as string | undefined);
 
     const [author, setAuthor] = useState('');
     const [formData, setFormData] = useState<any>({});
@@ -37,12 +39,15 @@ export default function CreateReportScreen() {
     const [isSaving, setIsSaving] = useState(false);
     const [isAutoSnagging, setIsAutoSnagging] = useState(false);
     const userId = useAuthStore((s) => s.user?.id);
+    const hasInitialized = useRef(false);
 
     useEffect(() => {
+        if (hasInitialized.current) return;
+
         // Handle Edit or Duplicate Pre-fill
         if (editId || duplicateId) {
-            const targetId = editId || duplicateId;
-            const existing = getReport(targetId as string);
+            if (!existingReport) return;
+            const existing = existingReport;
             if (existing && existing.templateData) {
                 try {
                     const parsed = JSON.parse(existing.templateData);
@@ -50,6 +55,7 @@ export default function CreateReportScreen() {
                     if (editId) {
                         setAuthor(existing.author);
                     }
+                    hasInitialized.current = true;
                     return; // Skip default init
                 } catch (e) { }
             }
@@ -209,7 +215,9 @@ export default function CreateReportScreen() {
                 photos: []
             });
         }
-    }, [type, id, editId, duplicateId]);
+        
+        hasInitialized.current = true;
+    }, [type, id, editId, duplicateId, existingReport]);
 
     // Auto Calculate Main Contractor Manpower (Reactive to array changes, allowing manual override)
     useEffect(() => {
