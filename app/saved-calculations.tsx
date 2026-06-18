@@ -1,21 +1,20 @@
-import { View, Text, StyleSheet, ScrollView, SafeAreaView, TouchableOpacity } from 'react-native';
-import { Calculator, Box, Activity } from "lucide-react-native";
-import BackButton from "../components/BackButton";
-import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
+import { formatDistanceToNow } from 'date-fns';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { Activity, Box, Calculator } from "lucide-react-native";
+import { SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
+import BackButton from "../components/BackButton";
+import { usePowerSyncCalculations } from '../lib/powersync/useCalculations';
 import { useProjectsStore } from '../store/projectsStore';
 import { useThemeColors } from '../store/useThemeColors';
-import { formatDistanceToNow } from 'date-fns';
 
 export default function SavedCalculationsScreen() {
-    const { calculations, getProject } = useProjectsStore();
+    const { getProject } = useProjectsStore();
     const { colors } = useThemeColors();
     const router = useRouter();
     const { projectId } = useLocalSearchParams<{ projectId?: string }>();
 
-    const filteredCalculations = projectId 
-        ? calculations.filter(c => c.projectId === projectId)
-        : calculations;
+    const calculations = usePowerSyncCalculations(projectId);
 
     const getIcon = (type: string) => {
         switch (type) {
@@ -32,7 +31,7 @@ export default function SavedCalculationsScreen() {
             return `Total Weight: ${data.weight} ${data.weightUnit} | Length: ${data.total} ${data.totalUnit}`;
         }
         if (type === 'block') {
-            return `Total Blocks: ${data.result} | Mortar Volume: ${data.mortarVolume} ${data.mortarUnit}`;
+            return `Total Blocks: ${data.result} pcs | With Waste: ${data.wasteResult} pcs`;
         }
         if (type === 'labor') {
             return `Total Cost: $${data.totalCost} | Duration: ${data.duration} ${data.durationUnit}`;
@@ -50,11 +49,11 @@ export default function SavedCalculationsScreen() {
 
             <ScrollView style={[styles.container, { backgroundColor: colors.background }]}>
                 <View style={styles.list}>
-                    {filteredCalculations.map((calc, index) => {
+                    {calculations.map((calc, index) => {
                         const project = getProject(calc.projectId);
                         return (
                             <Animated.View entering={FadeInDown.delay(index * 50).springify()} key={calc.id}>
-                                <TouchableOpacity 
+                                <TouchableOpacity
                                     style={[styles.calcCard, { backgroundColor: colors.card, borderColor: colors.border }]}
                                     activeOpacity={0.7}
                                     onPress={() => router.push({ pathname: `/${calc.type}-calculator`, params: { calcId: calc.id } } as any)}
@@ -81,7 +80,7 @@ export default function SavedCalculationsScreen() {
                         );
                     })}
 
-                    {filteredCalculations.length === 0 && (
+                    {calculations.length === 0 && (
                         <View style={styles.emptyState}>
                             <Activity size={48} color={colors.textMuted} style={{ marginBottom: 16 }} />
                             <Text style={[styles.emptyStateTitle, { color: colors.text }]}>No Saved Calculations</Text>
