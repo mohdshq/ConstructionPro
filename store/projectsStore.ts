@@ -8,7 +8,7 @@ import {
     fetchUserReports,
     fetchUserFolders, insertFolder as insertFolderRemote, updateFolderRemote, deleteFolderRemote,
     fetchUserDrawings, insertDrawing as insertDrawingRemote, updateDrawingRemote, deleteDrawingRemote,
-    fetchUserActivities, fetchUserCalculations, insertActivity, insertCalculation
+    fetchUserActivities, fetchUserCalculations, insertActivity
 } from '../lib/supabaseSync';
 import { useAuthStore } from './useAuthStore';
 import { powersync } from '@/lib/powersync/system';
@@ -856,17 +856,13 @@ export const useProjectsStore = create<ProjectsState>()(
                 
                 if (userId) {
                     try {
-                        const remoteCalc = await insertCalculation({
-                            project_id: calc.projectId,
-                            user_id: calc.userId,
-                            type: calc.type,
-                            data: calc.data,
-                        });
-                        set(state => ({
-                            calculations: state.calculations.map(c => c.id === localId ? mapCalculationRow(remoteCalc) : c)
-                        }));
+                        await powersync.execute(
+                            `INSERT INTO calculations (id, project_id, user_id, type, data, created_at)
+                             VALUES (?, ?, ?, ?, ?, ?)`,
+                            [localId, calc.projectId, calc.userId, calc.type, JSON.stringify(calc.data ?? {}), now]
+                        );
                     } catch (error) {
-                        console.error('Failed to save calculation remote:', error);
+                        console.error('Failed to write calculation to PowerSync:', error);
                     }
                 }
             },

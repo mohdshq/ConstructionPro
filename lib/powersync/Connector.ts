@@ -34,6 +34,10 @@ export class Connector implements PowerSyncBackendConnector {
           }
         }
 
+        if (op.table === 'calculations' && op.opData && typeof op.opData.data === 'string') {
+          try { op.opData.data = JSON.parse(op.opData.data); } catch { op.opData.data = {}; }
+        }
+
         let result;
         switch (op.op) {
           case UpdateType.PUT:
