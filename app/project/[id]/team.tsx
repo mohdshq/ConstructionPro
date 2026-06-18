@@ -9,6 +9,7 @@ import { useThemeColors } from '../../../store/useThemeColors';
 import { useAuthStore } from '../../../store/useAuthStore';
 import { Image } from 'react-native';
 import { supabase } from '../../../lib/supabase';
+import { usePowerSyncMembers } from '../../../lib/powersync/useMembers';
 
 interface InviteResponse {
     success: boolean;
@@ -19,12 +20,12 @@ interface InviteResponse {
 export default function TeamScreen() {
     const { id } = useLocalSearchParams<{ id: string }>();
     const router = useRouter();
-    const { getProject, getMembersForProject } = useProjectsStore();
+    const { getProject } = useProjectsStore();
     const { colors } = useThemeColors();
     const { user } = useAuthStore();
 
     const project = getProject(id);
-    const members = getMembersForProject(id);
+    const members = usePowerSyncMembers(id);
     const currentMember = members.find(m => m.userId === user?.id);
     const isManager = currentMember?.role === 'owner' || currentMember?.role === 'manager';
 

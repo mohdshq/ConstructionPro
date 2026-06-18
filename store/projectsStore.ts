@@ -8,7 +8,7 @@ import {
     fetchUserReports,
     fetchUserFolders, insertFolder as insertFolderRemote, updateFolderRemote, deleteFolderRemote,
     fetchUserDrawings, insertDrawing as insertDrawingRemote, updateDrawingRemote, deleteDrawingRemote,
-    fetchUserProjectMembers, fetchUserActivities, fetchUserCalculations, insertActivity, insertCalculation
+    fetchUserActivities, fetchUserCalculations, insertActivity, insertCalculation
 } from '../lib/supabaseSync';
 import { useAuthStore } from './useAuthStore';
 import { powersync } from '@/lib/powersync/system';
@@ -255,7 +255,6 @@ interface ProjectsState {
     reports: Report[];
     folders: DrawingFolder[];
     drawings: Drawing[];
-    members: ProjectMember[];
     activities: Activity[];
     calculations: Calculation[];
     
@@ -292,7 +291,6 @@ interface ProjectsState {
     // Phase 4 Actions
     addActivity: (activity: Omit<Activity, 'id' | 'createdAt' | 'profile'>) => Promise<void>;
     addCalculation: (calc: Omit<Calculation, 'id' | 'createdAt'>) => Promise<void>;
-    getMembersForProject: (projectId: string) => ProjectMember[];
     getActivitiesForProject: (projectId: string) => Activity[];
     getCalculationsForProject: (projectId: string) => Calculation[];
 
@@ -375,17 +373,6 @@ function mapDrawingRow(row: any): Drawing {
     };
 }
 
-function mapMemberRow(row: any): ProjectMember {
-    return {
-        id: row.id,
-        projectId: row.project_id,
-        userId: row.user_id,
-        role: row.role,
-        createdAt: row.created_at,
-        profile: row.profiles,
-    };
-}
-
 function mapActivityRow(row: any): Activity {
     return {
         id: row.id,
@@ -417,7 +404,6 @@ export const useProjectsStore = create<ProjectsState>()(
             reports: [],
             folders: [],
             drawings: [],
-            members: [],
             activities: [],
             calculations: [],
             
@@ -433,7 +419,7 @@ export const useProjectsStore = create<ProjectsState>()(
                 if (!userId) {
                     set({ 
                         projects: [], reports: [], folders: [], drawings: [],
-                        members: [], activities: [], calculations: [],
+                        activities: [], calculations: [],
                         isSyncing: false 
                     });
                     return;
@@ -448,7 +434,6 @@ export const useProjectsStore = create<ProjectsState>()(
                         fetchUserReports(userId),
                         fetchUserFolders(userId),
                         fetchUserDrawings(userId),
-                        fetchUserProjectMembers(userId),
                         fetchUserActivities(userId),
                         fetchUserCalculations(userId),
                     ]);
@@ -457,16 +442,14 @@ export const useProjectsStore = create<ProjectsState>()(
                     const remoteReports = results[1].status === 'fulfilled' ? reconcile(results[1].value.map(mapReportRow), get().reports) : get().reports;
                     const remoteFolders = results[2].status === 'fulfilled' ? results[2].value.map(mapFolderRow) : get().folders;
                     const remoteDrawings = results[3].status === 'fulfilled' ? results[3].value.map(mapDrawingRow) : get().drawings;
-                    const remoteMembers = results[4].status === 'fulfilled' ? results[4].value.map(mapMemberRow) : get().members;
-                    const remoteActivities = results[5].status === 'fulfilled' ? results[5].value.map(mapActivityRow) : get().activities;
-                    const remoteCalculations = results[6].status === 'fulfilled' ? results[6].value.map(mapCalculationRow) : get().calculations;
+                    const remoteActivities = results[4].status === 'fulfilled' ? results[4].value.map(mapActivityRow) : get().activities;
+                    const remoteCalculations = results[5].status === 'fulfilled' ? results[5].value.map(mapCalculationRow) : get().calculations;
 
                     set({
                         projects: remoteProjects,
                         reports: remoteReports,
                         folders: remoteFolders,
                         drawings: remoteDrawings,
-                        members: remoteMembers,
                         activities: remoteActivities,
                         calculations: remoteCalculations,
                         lastSyncAt: new Date().toISOString(),
@@ -888,7 +871,6 @@ export const useProjectsStore = create<ProjectsState>()(
                 }
             },
             
-            getMembersForProject: (projectId) => get().members.filter((m) => m.projectId === projectId),
             getActivitiesForProject: (projectId) => get().activities.filter((a) => a.projectId === projectId),
             getCalculationsForProject: (projectId) => get().calculations.filter((c) => c.projectId === projectId),
 
