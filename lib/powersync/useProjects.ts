@@ -1,5 +1,5 @@
-import { useQuery } from '@powersync/react-native';
 import type { Project } from '@/store/projectsStore';
+import { useQuery } from '@powersync/react';
 
 // Aliases map snake_case SQLite columns to the camelCase Project shape
 // the UI already expects. Live query: auto-updates when local SQLite changes.

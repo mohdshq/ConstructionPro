@@ -1,5 +1,5 @@
-import { useQuery } from '@powersync/react-native';
 import { ProjectMember } from '@/store/projectsStore';
+import { useQuery } from '@powersync/react';
 
 interface MemberJoinRow {
   id: string;

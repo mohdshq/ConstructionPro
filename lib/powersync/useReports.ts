@@ -1,5 +1,5 @@
-import { useQuery } from '@powersync/react-native';
 import { Report } from '@/store/projectsStore';
+import { useQuery } from '@powersync/react';
 
 const REPORT_SELECT = `id,
   project_id AS projectId,
