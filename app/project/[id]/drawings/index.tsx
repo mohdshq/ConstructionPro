@@ -6,6 +6,7 @@ import { useState, useMemo } from 'react';
 import { Folder, FileText, Image as ImageIcon, File, Plus, MoreVertical, ChevronRight, X, ArrowLeft, Trash2, Compass, FileSpreadsheet } from 'lucide-react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import { useThemeColors } from '../../../../store/useThemeColors';
+import { usePowerSyncFolders } from '../../../../lib/powersync/useFolders';
 
 type ListItem = 
   | { type: 'folder'; data: DrawingFolder }
@@ -14,7 +15,8 @@ type ListItem =
 export default function DrawingsBrowserScreen() {
     const { id } = useLocalSearchParams<{ id: string }>();
     const router = useRouter();
-    const { getProject, folders, drawings, addFolder, addDrawing, deleteFolder, deleteDrawing } = useProjectsStore();
+    const { getProject, drawings, addFolder, addDrawing, deleteFolder, deleteDrawing } = useProjectsStore();
+    const folders = usePowerSyncFolders(id);
     const { colors } = useThemeColors();
 
     const project = useMemo(() => getProject(id), [id, getProject]);

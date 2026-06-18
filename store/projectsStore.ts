@@ -6,7 +6,7 @@ import { v4 as uuidv4 } from 'uuid';
 import {
     fetchUserProjects,
     fetchUserReports,
-    fetchUserFolders, insertFolder as insertFolderRemote, updateFolderRemote, deleteFolderRemote,
+    fetchUserFolders,
     fetchUserDrawings, insertDrawing as insertDrawingRemote, updateDrawingRemote, deleteDrawingRemote,
     fetchUserActivities, fetchUserCalculations, insertActivity
 } from '../lib/supabaseSync';
@@ -675,17 +675,11 @@ export const useProjectsStore = create<ProjectsState>()(
 
                 if (userId) {
                     try {
-                        const remoteFolder = await insertFolderRemote({
-                            project_id: folder.projectId,
-                            user_id: userId,
-                            name: folder.name,
-                            parent_id: folder.parentId || null,
-                        });
-                        set((state) => ({
-                            folders: state.folders.map((f) =>
-                                f.id === localId ? mapFolderRow(remoteFolder) : f
-                            ),
-                        }));
+                        await powersync.execute(
+                            `INSERT INTO drawing_folders (id, project_id, user_id, name, parent_id, created_at)
+                             VALUES (?, ?, ?, ?, ?, ?)`,
+                            [localId, folder.projectId, userId, folder.name, folder.parentId ?? null, now]
+                        );
                     } catch (error) {
                         console.error('Failed to sync folder to Supabase:', error);
                     }
@@ -700,10 +694,16 @@ export const useProjectsStore = create<ProjectsState>()(
                 const userId = getCurrentUserId();
                 if (userId) {
                     try {
-                        const remoteUpdates: any = {};
-                        if (updatedFields.name !== undefined) remoteUpdates.name = updatedFields.name;
-                        if (updatedFields.parentId !== undefined) remoteUpdates.parent_id = updatedFields.parentId;
-                        await updateFolderRemote(id, remoteUpdates);
+                        const cols: string[] = [];
+                        const vals: any[] = [];
+                        const add = (col: string, val: any) => { cols.push(`${col} = ?`); vals.push(val); };
+                        if (updatedFields.name !== undefined) add('name', updatedFields.name);
+                        if (updatedFields.parentId !== undefined) add('parent_id', updatedFields.parentId);
+                        
+                        if (cols.length > 0) {
+                            vals.push(id);
+                            await powersync.execute(`UPDATE drawing_folders SET ${cols.join(', ')} WHERE id = ?`, vals);
+                        }
                     } catch (error) {
                         console.error('Failed to sync folder update to Supabase:', error);
                     }
@@ -719,7 +719,7 @@ export const useProjectsStore = create<ProjectsState>()(
                 const userId = getCurrentUserId();
                 if (userId) {
                     try {
-                        await deleteFolderRemote(id);
+                        await powersync.execute('DELETE FROM drawing_folders WHERE id = ?', [id]);
                     } catch (error) {
                         console.error('Failed to delete folder from Supabase:', error);
                     }
