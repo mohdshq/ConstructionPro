@@ -7,7 +7,7 @@ import {
     fetchUserProjects,
     fetchUserReports,
     fetchUserFolders,
-    fetchUserDrawings, insertDrawing as insertDrawingRemote, updateDrawingRemote, deleteDrawingRemote,
+    fetchUserDrawings, uploadDrawingFile, deleteStorageFile,
     fetchUserActivities, fetchUserCalculations, insertActivity
 } from '../lib/supabaseSync';
 import { useAuthStore } from './useAuthStore';
@@ -366,8 +366,8 @@ function mapDrawingRow(row: any): Drawing {
         folderId: row.folder_id || undefined,
         name: row.name,
         type: row.type,
-        uri: row.file_url,
-        size: row.size_bytes || 0,
+        uri: row.storage_path,
+        size: row.size || 0,
         uploadedAt: row.uploaded_at || new Date().toISOString(),
         author: row.author || '',
     };
@@ -711,6 +711,7 @@ export const useProjectsStore = create<ProjectsState>()(
             },
 
             deleteFolder: async (id) => {
+                const childDrawings = get().drawings.filter(d => d.folderId === id);
                 set((state) => ({
                     folders: state.folders.filter((f) => f.id !== id),
                     drawings: state.drawings.filter(d => d.folderId !== id)
@@ -720,6 +721,16 @@ export const useProjectsStore = create<ProjectsState>()(
                 if (userId) {
                     try {
                         await powersync.execute('DELETE FROM drawing_folders WHERE id = ?', [id]);
+                        for (const d of childDrawings) {
+                            try {
+                                await powersync.execute('DELETE FROM drawings WHERE id = ?', [d.id]);
+                                if (d.uri && !d.uri.startsWith('file:') && !d.uri.startsWith('http')) {
+                                    await deleteStorageFile('drawings', d.uri);
+                                }
+                            } catch (e) {
+                                console.error('Failed to delete child drawing:', e);
+                            }
+                        }
                     } catch (error) {
                         console.error('Failed to delete folder from Supabase:', error);
                     }
@@ -748,21 +759,12 @@ export const useProjectsStore = create<ProjectsState>()(
 
                 if (userId) {
                     try {
-                        const remoteDrawing = await insertDrawingRemote({
-                            project_id: drawing.projectId,
-                            user_id: userId,
-                            folder_id: drawing.folderId || null,
-                            name: drawing.name,
-                            type: drawing.type || 'other',
-                            storage_path: drawing.uri || null,
-                            size: drawing.size || 0,
-                            author: drawing.author || null,
-                        });
-                        set((state) => ({
-                            drawings: state.drawings.map((d) =>
-                                d.id === localId ? mapDrawingRow(remoteDrawing) : d
-                            ),
-                        }));
+                        await powersync.execute(
+                            `INSERT INTO drawings (id, project_id, user_id, folder_id, name, type, storage_path, size, uploaded_at, author)
+                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                            [localId, drawing.projectId, userId, drawing.folderId ?? null, drawing.name,
+                             drawing.type ?? 'other', drawing.uri ?? null, drawing.size ?? 0, now, drawing.author ?? null]
+                        );
                     } catch (error) {
                         console.error('Failed to sync drawing to Supabase:', error);
                     }
@@ -777,14 +779,20 @@ export const useProjectsStore = create<ProjectsState>()(
                 const userId = getCurrentUserId();
                 if (userId) {
                     try {
-                        const remoteUpdates: any = {};
-                        if (updatedFields.name !== undefined) remoteUpdates.name = updatedFields.name;
-                        if (updatedFields.folderId !== undefined) remoteUpdates.folder_id = updatedFields.folderId;
-                        if (updatedFields.type !== undefined) remoteUpdates.type = updatedFields.type;
-                        if (updatedFields.uri !== undefined) remoteUpdates.storage_path = updatedFields.uri;
-                        if (updatedFields.size !== undefined) remoteUpdates.size = updatedFields.size;
-                        if (updatedFields.author !== undefined) remoteUpdates.author = updatedFields.author;
-                        await updateDrawingRemote(id, remoteUpdates);
+                        const cols: string[] = [];
+                        const vals: any[] = [];
+                        const add = (col: string, val: any) => { cols.push(`${col} = ?`); vals.push(val); };
+                        if (updatedFields.name !== undefined) add('name', updatedFields.name);
+                        if (updatedFields.folderId !== undefined) add('folder_id', updatedFields.folderId);
+                        if (updatedFields.type !== undefined) add('type', updatedFields.type);
+                        if (updatedFields.uri !== undefined) add('storage_path', updatedFields.uri);
+                        if (updatedFields.size !== undefined) add('size', updatedFields.size);
+                        if (updatedFields.author !== undefined) add('author', updatedFields.author);
+                        
+                        if (cols.length > 0) {
+                            vals.push(id);
+                            await powersync.execute(`UPDATE drawings SET ${cols.join(', ')} WHERE id = ?`, vals);
+                        }
                     } catch (error) {
                         console.error('Failed to sync drawing update to Supabase:', error);
                     }
@@ -792,6 +800,7 @@ export const useProjectsStore = create<ProjectsState>()(
             },
 
             deleteDrawing: async (id) => {
+                const d = get().drawings.find(x => x.id === id);
                 set((state) => ({
                     drawings: state.drawings.filter((d) => d.id !== id),
                 }));
@@ -799,7 +808,10 @@ export const useProjectsStore = create<ProjectsState>()(
                 const userId = getCurrentUserId();
                 if (userId) {
                     try {
-                        await deleteDrawingRemote(id);
+                        await powersync.execute('DELETE FROM drawings WHERE id = ?', [id]);
+                        if (d?.uri && !d.uri.startsWith('file:') && !d.uri.startsWith('http')) {
+                            try { await deleteStorageFile('drawings', d.uri); } catch (e) { console.error('Storage delete error:', e); }
+                        }
                     } catch (error) {
                         console.error('Failed to delete drawing from Supabase:', error);
                     }

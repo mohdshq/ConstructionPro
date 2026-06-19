@@ -7,6 +7,9 @@ import { Folder, FileText, Image as ImageIcon, File, Plus, MoreVertical, Chevron
 import * as DocumentPicker from 'expo-document-picker';
 import { useThemeColors } from '../../../../store/useThemeColors';
 import { usePowerSyncFolders } from '../../../../lib/powersync/useFolders';
+import { usePowerSyncDrawings } from '../../../../lib/powersync/useDrawings';
+import { uploadDrawingFile } from '../../../../lib/supabaseSync';
+import { useAuthStore } from '../../../../store/useAuthStore';
 
 type ListItem = 
   | { type: 'folder'; data: DrawingFolder }
@@ -15,8 +18,10 @@ type ListItem =
 export default function DrawingsBrowserScreen() {
     const { id } = useLocalSearchParams<{ id: string }>();
     const router = useRouter();
-    const { getProject, drawings, addFolder, addDrawing, deleteFolder, deleteDrawing } = useProjectsStore();
+    const { getProject, addFolder, addDrawing, deleteFolder, deleteDrawing } = useProjectsStore();
     const folders = usePowerSyncFolders(id);
+    const drawings = usePowerSyncDrawings(id);
+    const userId = useAuthStore.getState().user?.id;
     const { colors } = useThemeColors();
 
     const project = useMemo(() => getProject(id), [id, getProject]);
@@ -97,15 +102,22 @@ export default function DrawingsBrowserScreen() {
                     fileType = 'excel';
                 }
 
-                addDrawing({
-                    projectId: project.id,
-                    folderId: currentFolderId || undefined,
-                    name: asset.name,
-                    type: fileType,
-                    uri: asset.uri,
-                    size: asset.size || 0,
-                    author: 'Current User' // Implement auth context later
-                });
+                if (!userId) { Alert.alert('Error', 'You must be signed in to upload.'); return; }
+                try {
+                    const storagePath = await uploadDrawingFile(userId, project.id, asset.uri, asset.mimeType ?? 'application/octet-stream');
+                    addDrawing({
+                        projectId: project.id,
+                        folderId: currentFolderId || undefined,
+                        name: asset.name,
+                        type: fileType,
+                        uri: storagePath,
+                        size: asset.size || 0,
+                        author: 'Current User',
+                    });
+                } catch (e: any) {
+                    console.error('Upload failed:', e);
+                    Alert.alert('Upload Failed', e.message ?? 'Could not upload the file.');
+                }
             }
         } catch (error) {
             console.error('Error picking document:', error);
