@@ -116,3 +116,11 @@ setupPowerSync() is NOT yet wired into app startup (deferred to M4.2). user_toke
   `updateDrawingRemote`, `deleteDrawingRemote` (and other *Remote helpers) that are no
   longer called after M6.2/M6.3.
 - TODO: remove in a cleanup pass once all entities are migrated.
+
+### Activity log writes are not wired up
+- `addActivity` exists in `store/projectsStore.ts` but has no callers — no app action
+  (report create/update, drawing upload, member join) ever logs an activity.
+- The activity screen reads correctly via PowerSync (`usePowerSyncActivities`) but will
+  always show "No Activity Yet" until writes are added.
+- TODO (separate feature task): call `addActivity` at meaningful events and migrate
+  `addActivity` to `powersync.execute()` (it currently uses the legacy `insertActivity`).

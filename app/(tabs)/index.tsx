@@ -7,6 +7,7 @@ import { router } from 'expo-router';
 import { useStore } from '../../store/useStore';
 import { useProjectsStore } from '../../store/projectsStore';
 import { useQuery } from '@powersync/react-native';
+import { powersync } from '../../lib/powersync/system';
 import { useThemeColors } from '../../store/useThemeColors';
 import { useAuthStore } from '../../store/useAuthStore';
 import { getPublicUrl } from '../../lib/supabaseSync';
@@ -80,6 +81,7 @@ export default function HomeScreen() {
   );
   const activeProjectsCount = activeRows?.[0]?.c ?? 0;
   const totalReportsCount = reportRows?.[0]?.c ?? 0;
+
 
   useEffect(() => {
     glowOpacity.value = withRepeat(

@@ -32,8 +32,12 @@ const calculations = new Table({
 const project_members = new Table({
   project_id: column.text, user_id: column.text, role: column.text, created_at: column.text,
 }, { indexes: { by_project: ['project_id'] } });
+const activities = new Table({
+  project_id: column.text, user_id: column.text, action: column.text,
+  entity_type: column.text, entity_id: column.text, created_at: column.text,
+}, { indexes: { by_project: ['project_id'] } });
 
 export const AppSchema = new Schema({
-  profiles, projects, reports, drawings, drawing_folders, calculations, project_members,
+  profiles, projects, reports, drawings, drawing_folders, calculations, project_members, activities,
 });
 export type Database = (typeof AppSchema)['types'];

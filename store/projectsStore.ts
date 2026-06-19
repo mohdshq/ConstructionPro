@@ -8,7 +8,7 @@ import {
     fetchUserReports,
     fetchUserFolders,
     fetchUserDrawings, uploadDrawingFile, deleteStorageFile,
-    fetchUserActivities, fetchUserCalculations, insertActivity
+    fetchUserCalculations, insertActivity
 } from '../lib/supabaseSync';
 import { useAuthStore } from './useAuthStore';
 import { powersync } from '@/lib/powersync/system';
@@ -255,7 +255,6 @@ interface ProjectsState {
     reports: Report[];
     folders: DrawingFolder[];
     drawings: Drawing[];
-    activities: Activity[];
     calculations: Calculation[];
     
     // Sync state
@@ -291,7 +290,6 @@ interface ProjectsState {
     // Phase 4 Actions
     addActivity: (activity: Omit<Activity, 'id' | 'createdAt' | 'profile'>) => Promise<void>;
     addCalculation: (calc: Omit<Calculation, 'id' | 'createdAt'>) => Promise<void>;
-    getActivitiesForProject: (projectId: string) => Activity[];
     getCalculationsForProject: (projectId: string) => Calculation[];
 
     // Sync Actions
@@ -373,18 +371,6 @@ function mapDrawingRow(row: any): Drawing {
     };
 }
 
-function mapActivityRow(row: any): Activity {
-    return {
-        id: row.id,
-        projectId: row.project_id,
-        userId: row.user_id,
-        action: row.action,
-        entityType: row.entity_type,
-        entityId: row.entity_id,
-        createdAt: row.created_at,
-        profile: row.profiles,
-    };
-}
 
 function mapCalculationRow(row: any): Calculation {
     return {
@@ -404,7 +390,6 @@ export const useProjectsStore = create<ProjectsState>()(
             reports: [],
             folders: [],
             drawings: [],
-            activities: [],
             calculations: [],
             
             isSyncing: false,
@@ -419,7 +404,7 @@ export const useProjectsStore = create<ProjectsState>()(
                 if (!userId) {
                     set({ 
                         projects: [], reports: [], folders: [], drawings: [],
-                        activities: [], calculations: [],
+                        calculations: [],
                         isSyncing: false 
                     });
                     return;
@@ -434,7 +419,6 @@ export const useProjectsStore = create<ProjectsState>()(
                         fetchUserReports(userId),
                         fetchUserFolders(userId),
                         fetchUserDrawings(userId),
-                        fetchUserActivities(userId),
                         fetchUserCalculations(userId),
                     ]);
 
@@ -442,15 +426,13 @@ export const useProjectsStore = create<ProjectsState>()(
                     const remoteReports = results[1].status === 'fulfilled' ? reconcile(results[1].value.map(mapReportRow), get().reports) : get().reports;
                     const remoteFolders = results[2].status === 'fulfilled' ? results[2].value.map(mapFolderRow) : get().folders;
                     const remoteDrawings = results[3].status === 'fulfilled' ? results[3].value.map(mapDrawingRow) : get().drawings;
-                    const remoteActivities = results[4].status === 'fulfilled' ? results[4].value.map(mapActivityRow) : get().activities;
-                    const remoteCalculations = results[5].status === 'fulfilled' ? results[5].value.map(mapCalculationRow) : get().calculations;
+                    const remoteCalculations = results[4].status === 'fulfilled' ? results[4].value.map(mapCalculationRow) : get().calculations;
 
                     set({
                         projects: remoteProjects,
                         reports: remoteReports,
                         folders: remoteFolders,
                         drawings: remoteDrawings,
-                        activities: remoteActivities,
                         calculations: remoteCalculations,
                         lastSyncAt: new Date().toISOString(),
                     });
@@ -821,32 +803,17 @@ export const useProjectsStore = create<ProjectsState>()(
             getDrawingsForProject: (projectId) => {
                 return get().drawings.filter((d) => d.projectId === projectId).sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime());
             },
-
             addActivity: async (activity) => {
                 const userId = getCurrentUserId();
-                const now = new Date().toISOString();
-                const localId = uuidv4();
-                
-                const newActivity: Activity = {
-                    ...activity,
-                    id: localId,
-                    createdAt: now,
-                };
-                
-                set(state => ({ activities: [newActivity, ...state.activities] }));
-                
                 if (userId) {
                     try {
-                        const remoteAct = await insertActivity({
+                        await insertActivity({
                             project_id: activity.projectId,
                             user_id: activity.userId,
                             action: activity.action,
                             entity_type: activity.entityType,
                             entity_id: activity.entityId,
                         });
-                        set(state => ({
-                            activities: state.activities.map(a => a.id === localId ? mapActivityRow(remoteAct) : a)
-                        }));
                     } catch (error) {
                         console.error('Failed to log activity remote:', error);
                     }
@@ -879,7 +846,6 @@ export const useProjectsStore = create<ProjectsState>()(
                 }
             },
             
-            getActivitiesForProject: (projectId) => get().activities.filter((a) => a.projectId === projectId),
             getCalculationsForProject: (projectId) => get().calculations.filter((c) => c.projectId === projectId),
 
         }),
