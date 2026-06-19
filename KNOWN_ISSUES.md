@@ -97,13 +97,8 @@ JWKS URI configured (project uses new ECC P-256 signing keys, not legacy HS256 s
 JWT Audience must include authenticated — Supabase signs all user tokens with aud: "authenticated"; without this, sync fails with [PSYNC_S2105] Unexpected "aud" claim value.
 setupPowerSync() is NOT yet wired into app startup (deferred to M4.2). user_tokens intentionally excluded from sync (PK is user_id, kept on direct-Supabase path). Dev note: PowerSync Development tokens toggle still ON (enable for diagnostics) — disable before production.
 
-### Storage uploads via uriToBlob write 0-byte files (uploadPhoto, uploadAvatar)
-- `lib/supabaseSync.ts` `uploadPhoto` and `uploadAvatar` use `uriToBlob` (which does
-  `fetch(localUri).blob()`). On React Native, fetching a `file://` URI returns a 0-byte
-  blob, so report photos and avatars likely upload as empty files.
-- Fixed for drawings in M6.3b by switching `uploadDrawingFile` to `FileSystem.uploadAsync`
-  with `BINARY_CONTENT` streaming to the Storage REST endpoint.
-- TODO: apply the same fix to `uploadPhoto` and `uploadAvatar`.
+### ✅ RESOLVED — Storage uploads via uriToBlob write 0-byte files (uploadPhoto, uploadAvatar)
+- ✅ RESOLVED (branch fix/upload-blob-zero-bytes): `uploadPhoto` and `uploadAvatar` now use `FileSystem.uploadAsync` with `BINARY_CONTENT` (same fix applied to `uploadDrawingFile` in M6.3b). Verified on iOS: avatar and report-photo uploads write real (non-zero) bytes to their Supabase Storage buckets and render correctly in-app. `uriToBlob` removed from `lib/supabaseSync.ts`.
 
 ### expo-file-system legacy API in use
 - The drawing viewer and `uploadDrawingFile` import from `expo-file-system/legacy`
