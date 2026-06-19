@@ -1,6 +1,6 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import { supabase } from './supabase';
-import { compressImage, compressThumbnail, uriToBlob, generateStorageFilename } from './imageUtils';
+import { compressImage, compressThumbnail, generateStorageFilename } from './imageUtils';
 import type { Database } from '../types/supabase';
 
 // ──────────────────────────────────────────────
@@ -297,17 +297,27 @@ export async function uploadPhoto(
     pathParts.push(filename);
     const storagePath = pathParts.join('/');
 
-    // Convert to blob and upload
-    const blob = await uriToBlob(processedUri);
-    
-    const { error } = await supabase.storage
-        .from(bucket)
-        .upload(storagePath, blob, {
-            contentType: 'image/jpeg',
-            upsert: false,
-        });
+    // Upload file contents
+    const { data: { session } } = await supabase.auth.getSession();
+    const accessToken = session?.access_token;
+    if (!accessToken) throw new Error('Not authenticated');
 
-    if (error) throw new Error(`Failed to upload photo: ${error.message}`);
+    const uploadUrl = `${process.env.EXPO_PUBLIC_SUPABASE_URL}/storage/v1/object/${bucket}/${storagePath}`;
+
+    const result = await FileSystem.uploadAsync(uploadUrl, processedUri, {
+        httpMethod: 'POST',
+        uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
+        headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'image/jpeg',
+            'x-upsert': 'false',
+        },
+    });
+
+    if (result.status !== 200 && result.status !== 201) {
+        throw new Error(`Failed to upload photo: status ${result.status} - ${result.body}`);
+    }
+
     return storagePath;
 }
 
@@ -338,16 +348,26 @@ export async function uploadAvatar(
     storagePath: string,
     localUri: string,
 ): Promise<string> {
-    const blob = await uriToBlob(localUri);
+    const { data: { session } } = await supabase.auth.getSession();
+    const accessToken = session?.access_token;
+    if (!accessToken) throw new Error('Not authenticated');
 
-    const { error } = await supabase.storage
-        .from('avatars')
-        .upload(storagePath, blob, {
-            contentType: 'image/jpeg',
-            upsert: true,
-        });
+    const uploadUrl = `${process.env.EXPO_PUBLIC_SUPABASE_URL}/storage/v1/object/avatars/${storagePath}`;
 
-    if (error) throw new Error(`Failed to upload avatar: ${error.message}`);
+    const result = await FileSystem.uploadAsync(uploadUrl, localUri, {
+        httpMethod: 'POST',
+        uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
+        headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'image/jpeg',
+            'x-upsert': 'true',
+        },
+    });
+
+    if (result.status !== 200 && result.status !== 201) {
+        throw new Error(`Failed to upload avatar: status ${result.status} - ${result.body}`);
+    }
+
     return storagePath;
 }
 
