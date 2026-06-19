@@ -1,3 +1,4 @@
+import * as FileSystem from 'expo-file-system/legacy';
 import { supabase } from './supabase';
 import { compressImage, compressThumbnail, uriToBlob, generateStorageFilename } from './imageUtils';
 import type { Database } from '../types/supabase';
@@ -385,26 +386,36 @@ export async function uploadDrawingFile(
     mimeType: string
 ): Promise<string> {
     const isImage = mimeType.startsWith('image/');
-    
     let processedUri = localUri;
     if (isImage) {
         const compressed = await compressImage(localUri, { quality: 0.8 });
         processedUri = compressed.uri;
     }
 
-    const ext = isImage ? 'jpg' : localUri.split('.').pop() || 'bin';
+    const ext = isImage ? 'jpg' : (localUri.split('.').pop() || 'bin');
     const filename = `drawing_${Date.now()}_${Math.random().toString(36).substring(2, 8)}.${ext}`;
     const storagePath = `${userId}/${projectId}/${filename}`;
 
-    const blob = await uriToBlob(processedUri);
+    // Get current session token for authenticated upload
+    const { data: { session } } = await supabase.auth.getSession();
+    const accessToken = session?.access_token;
+    if (!accessToken) throw new Error('Not authenticated');
 
-    const { error } = await supabase.storage
-        .from('drawings')
-        .upload(storagePath, blob, {
-            contentType: isImage ? 'image/jpeg' : mimeType,
-            upsert: false,
-        });
+    const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
+    const uploadUrl = `${supabaseUrl}/storage/v1/object/drawings/${storagePath}`;
 
-    if (error) throw new Error(`Failed to upload drawing: ${error.message}`);
+    const result = await FileSystem.uploadAsync(uploadUrl, processedUri, {
+        httpMethod: 'POST',
+        uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
+        headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': isImage ? 'image/jpeg' : mimeType,
+            'x-upsert': 'false',
+        },
+    });
+
+    if (result.status !== 200 && result.status !== 201) {
+        throw new Error(`Failed to upload drawing: status ${result.status} ${result.body}`);
+    }
     return storagePath;
 }
