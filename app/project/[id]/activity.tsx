@@ -3,16 +3,15 @@ import { Activity as ActivityIcon, FileText, FolderOpen, UserPlus, Info } from "
 import BackButton from "../../../components/BackButton";
 import { useLocalSearchParams, Stack } from 'expo-router';
 import Animated, { FadeInDown } from 'react-native-reanimated';
-import { useProjectsStore } from '../../../store/projectsStore';
 import { useThemeColors } from '../../../store/useThemeColors';
+import { usePowerSyncActivities } from '../../../lib/powersync/useActivities';
 import { formatDistanceToNow } from 'date-fns';
 
 export default function ActivityScreen() {
     const { id } = useLocalSearchParams<{ id: string }>();
-    const { getActivitiesForProject } = useProjectsStore();
     const { colors } = useThemeColors();
 
-    const activities = getActivitiesForProject(id);
+    const activities = usePowerSyncActivities(id);
 
     const getActionIcon = (action: string) => {
         if (action.includes('report')) return <FileText size={20} color="#F59E0B" />;
