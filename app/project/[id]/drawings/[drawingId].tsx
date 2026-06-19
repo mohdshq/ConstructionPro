@@ -1,12 +1,13 @@
-import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, ActivityIndicator, Platform, Share, Alert } from 'react-native';
+import * as FileSystem from 'expo-file-system/legacy';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { useProjectsStore } from '../../../../store/projectsStore';
-import { useState, useMemo, useEffect } from 'react';
-import { ArrowLeft, Share2, Info, AlertCircle, Maximize2, Compass, UploadCloud } from "lucide-react-native";
-import BackButton from "../../../../components/BackButton";
-import { WebView } from 'react-native-webview';
-import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
+import { AlertCircle, Compass, Share2, UploadCloud } from "lucide-react-native";
+import { useEffect, useMemo, useState } from 'react';
+import { ActivityIndicator, Alert, Platform, SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { WebView } from 'react-native-webview';
+import BackButton from "../../../../components/BackButton";
+import { getSignedUrl } from '../../../../lib/supabaseSync';
+import { useProjectsStore } from '../../../../store/projectsStore';
 import { useThemeColors } from '../../../../store/useThemeColors';
 
 export default function DrawingViewerScreen() {
@@ -21,6 +22,8 @@ export default function DrawingViewerScreen() {
     const [isLoading, setIsLoading] = useState(true);
     const [base64Data, setBase64Data] = useState<string | null>(null);
     const [errorMsg, setErrorMsg] = useState<string | null>(null);
+    const [signedUrl, setSignedUrl] = useState<string | null>(null);
+    const [localFileUri, setLocalFileUri] = useState<string | null>(null);
 
     const [cloudViewerUrl, setCloudViewerUrl] = useState<string | null>(null);
     const [isUploadingCloud, setIsUploadingCloud] = useState(false);
@@ -31,9 +34,10 @@ export default function DrawingViewerScreen() {
         setErrorMsg(null);
         try {
             let resultJson;
-            
+
             if (Platform.OS === 'web') {
-                const response = await fetch(drawing.uri);
+                if (!signedUrl) throw new Error("URL not resolved");
+                const response = await fetch(signedUrl);
                 const blob = await response.blob();
                 const formData = new FormData();
                 formData.append('file', blob, drawing.name);
@@ -44,7 +48,8 @@ export default function DrawingViewerScreen() {
                 });
                 resultJson = await uploadRes.json();
             } else {
-                const uploadRes = await FileSystem.uploadAsync('https://tmpfiles.org/api/v1/upload', drawing.uri, {
+                if (!localFileUri) throw new Error("Local file not downloaded yet");
+                const uploadRes = await FileSystem.uploadAsync('https://tmpfiles.org/api/v1/upload', localFileUri, {
                     fieldName: 'file',
                     httpMethod: 'POST',
                     uploadType: 1 as any, // FileSystemUploadType.MULTIPART
@@ -76,18 +81,21 @@ export default function DrawingViewerScreen() {
         const loadFile = async () => {
             setIsLoading(true);
             try {
-                // For Android PDFs and local images, we convert to base64 to ensure it renders inside the WebView reliably.
-                // iOS handles local URIs perfectly, but for consistency we use base64 if needed, or stick to URI logic.
-                if (Platform.OS === 'web') {
-                    // Web handles URIs directly via iframe/native img
-                    setIsLoading(false);
-                    return;
-                }
+                const resolved = drawing.uri.startsWith('file:') || drawing.uri.startsWith('http')
+                    ? drawing.uri
+                    : await getSignedUrl('drawings', drawing.uri);
+                if (!resolved) { setErrorMsg('Could not load file from storage.'); setIsLoading(false); return; }
+                setSignedUrl(resolved);
 
-                if (Platform.OS === 'android' && drawing.type === 'pdf') {
-                    // Android WebView struggles with local PDF files directly. We load via base64 data URI
-                    const b64 = await FileSystem.readAsStringAsync(drawing.uri, { encoding: 'base64' });
-                    setBase64Data(b64);
+                const needsLocal = Platform.OS !== 'web';
+                if (needsLocal && !resolved.startsWith('file:')) {
+                    const target = FileSystem.cacheDirectory + (drawing.name || `dl_${drawing.id}`);
+                    const dl = await FileSystem.downloadAsync(resolved, target);
+                    setLocalFileUri(dl.uri);
+                    if (Platform.OS === 'android' && drawing.type === 'pdf') {
+                        const b64 = await FileSystem.readAsStringAsync(dl.uri, { encoding: 'base64' });
+                        setBase64Data(b64);
+                    }
                 }
             } catch (error) {
                 console.error("Error loading file:", error);
@@ -115,18 +123,19 @@ export default function DrawingViewerScreen() {
     const handleShare = async () => {
         try {
             if (Platform.OS === 'web') {
-                if (navigator.share) {
+                if (navigator.share && signedUrl) {
                     await navigator.share({
                         title: drawing.name,
-                        url: drawing.uri
+                        url: signedUrl
                     });
                 } else {
                     alert("Sharing not supported on this browser.");
                 }
             } else {
                 const canShare = await Sharing.isAvailableAsync();
-                if (canShare) {
-                    await Sharing.shareAsync(drawing.uri, { dialogTitle: 'Share Drawing' });
+                const shareUri = localFileUri ?? signedUrl;
+                if (canShare && shareUri) {
+                    await Sharing.shareAsync(shareUri, { dialogTitle: 'Share Drawing' });
                 } else {
                     Alert.alert('Sharing Unavailable', 'Sharing is not supported on this device.');
                 }
@@ -137,7 +146,7 @@ export default function DrawingViewerScreen() {
     };
 
     const renderViewer = () => {
-        if (isLoading) {
+        if (isLoading || (!signedUrl && !errorMsg)) {
             return (
                 <View style={styles.centerContainer}>
                     <ActivityIndicator size="large" color="#0EA5E9" />
@@ -175,8 +184,8 @@ export default function DrawingViewerScreen() {
                         To view this {isOffice ? 'document' : 'CAD file'} natively, it will be temporarily processed by a secure online cloud viewer.
                         Please note this involves uploading the file to a temporary public server for rendering.
                     </Text>
-                    
-                    <TouchableOpacity 
+
+                    <TouchableOpacity
                         style={styles.uploadCadButton}
                         onPress={() => handleLoadCloud(isOffice ? 'office' : 'cad')}
                         disabled={isUploadingCloud}
@@ -197,8 +206,8 @@ export default function DrawingViewerScreen() {
         if (Platform.OS === 'web') {
             if (drawing.type === 'pdf') {
                 return (
-                    <iframe 
-                        src={drawing.uri} 
+                    <iframe
+                        src={signedUrl!}
                         style={{ width: '100%', height: '100%', border: 'none' }}
                         title={drawing.name}
                     />
@@ -206,9 +215,9 @@ export default function DrawingViewerScreen() {
             } else if (drawing.type === 'image') {
                 return (
                     <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'auto', backgroundColor: '#F1F5F9' }}>
-                        <img 
-                            src={drawing.uri} 
-                            alt={drawing.name} 
+                        <img
+                            src={signedUrl!}
+                            alt={drawing.name}
                             style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
                         />
                     </div>
@@ -222,7 +231,7 @@ export default function DrawingViewerScreen() {
         }
 
         // --- Native (iOS/Android) Viewer ---
-        
+
         let htmlSource = '';
 
         if (drawing.type === 'image') {
@@ -237,7 +246,7 @@ export default function DrawingViewerScreen() {
                         </style>
                     </head>
                     <body>
-                        <img src="${drawing.uri}" />
+                        <img src="${signedUrl}" />
                     </body>
                 </html>
             `;
@@ -247,7 +256,7 @@ export default function DrawingViewerScreen() {
         if (['pdf', 'word', 'excel'].includes(drawing.type)) {
             if (Platform.OS === 'ios') {
                 // iOS handles PDF and Office URIs beautifully out of the box with QuickLook built into WKWebView
-                return <WebView source={{ uri: drawing.uri }} style={styles.webview} originWhitelist={['*']} />;
+                return <WebView source={{ uri: signedUrl! }} style={styles.webview} originWhitelist={['*']} />;
             } else if (Platform.OS === 'android' && drawing.type === 'pdf') {
                 // Android requires PDF.js or base64 injection for local PDFs. We inject via base64 application/pdf.
                 htmlSource = `
@@ -280,7 +289,7 @@ export default function DrawingViewerScreen() {
     return (
         <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
             <Stack.Screen options={{ headerShown: false }} />
-            
+
             {/* Header */}
             <View style={[styles.header, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
                 <BackButton style={{ position: "absolute", left: 20, zIndex: 20, bottom: 8 }} />
@@ -332,8 +341,8 @@ const styles = StyleSheet.create({
         fontSize: 16,
         fontWeight: '700',
         color: '#0F172A',
-            textAlign: "center",
-},
+        textAlign: "center",
+    },
     headerSubtitle: {
         fontSize: 12,
         color: '#64748B',
