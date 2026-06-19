@@ -96,3 +96,23 @@ Two PowerSync auth config requirements (Client Auth dashboard), required for Sup
 JWKS URI configured (project uses new ECC P-256 signing keys, not legacy HS256 secret): https://<project-ref>.supabase.co/auth/v1/.well-known/jwks.json
 JWT Audience must include authenticated — Supabase signs all user tokens with aud: "authenticated"; without this, sync fails with [PSYNC_S2105] Unexpected "aud" claim value.
 setupPowerSync() is NOT yet wired into app startup (deferred to M4.2). user_tokens intentionally excluded from sync (PK is user_id, kept on direct-Supabase path). Dev note: PowerSync Development tokens toggle still ON (enable for diagnostics) — disable before production.
+
+### Storage uploads via uriToBlob write 0-byte files (uploadPhoto, uploadAvatar)
+- `lib/supabaseSync.ts` `uploadPhoto` and `uploadAvatar` use `uriToBlob` (which does
+  `fetch(localUri).blob()`). On React Native, fetching a `file://` URI returns a 0-byte
+  blob, so report photos and avatars likely upload as empty files.
+- Fixed for drawings in M6.3b by switching `uploadDrawingFile` to `FileSystem.uploadAsync`
+  with `BINARY_CONTENT` streaming to the Storage REST endpoint.
+- TODO: apply the same fix to `uploadPhoto` and `uploadAvatar`.
+
+### expo-file-system legacy API in use
+- The drawing viewer and `uploadDrawingFile` import from `expo-file-system/legacy`
+  (SDK 54 moved `cacheDirectory` / `downloadAsync` / `readAsStringAsync` / `uploadAsync`).
+- The legacy module is supported but slated for removal in a future SDK.
+- TODO: migrate to the new File/Directory API before upgrading past the legacy window.
+
+### Dead Supabase sync helpers after PowerSync migration
+- `lib/supabaseSync.ts` still defines `updateFolderRemote`, `deleteFolderRemote`,
+  `updateDrawingRemote`, `deleteDrawingRemote` (and other *Remote helpers) that are no
+  longer called after M6.2/M6.3.
+- TODO: remove in a cleanup pass once all entities are migrated.
