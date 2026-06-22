@@ -120,10 +120,8 @@ setupPowerSync() is NOT yet wired into app startup (deferred to M4.2). user_toke
 ### ✅ RESOLVED — Dead `insertActivity` helper in supabaseSync.ts
 - ✅ RESOLVED (branch chore/remove-dead-insertActivity): Removed the unused `insertActivity` definition from `lib/supabaseSync.ts`. Confirmed zero callers before removal; `tsc --noEmit` clean.
 
-### Member-joined activity not logged (server-side)
-- Activity logging for report/drawing creation is wired (M6.5), but "joined the project" is not.
-- Member creation happens server-side via the `invite_user_by_email` RPC, so it can't be logged from the client reliably.
-- TODO: log the join event with a Postgres trigger on `project_members` insert, or add the insert inside the RPC body, writing to the `activities` table.
+### ✅ RESOLVED — Member-joined activity not logged (server-side)
+- ✅ RESOLVED (database trigger): Added `trg_log_member_joined` on `project_members` (function `log_member_joined`, SECURITY DEFINER) that logs a "joined the project" activity for non-owner members. SQL tracked in `supabase/triggers/log_member_joined.sql`. Applied via Supabase SQL editor (not an app code change). Note: `invite_user_by_email` RPC only adds already-registered users, so a join test requires a second account.
 
 ### Drawing display name is raw upload filename
 - Uploaded drawings store a UUID-based filename as `name`, which shows up verbatim in the activity feed and drawings list (e.g. "uploaded A17E1468-...pdf").
