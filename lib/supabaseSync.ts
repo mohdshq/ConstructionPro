@@ -204,16 +204,6 @@ export async function fetchUserCalculations(userId: string) {
     return data ?? [];
 }
 
-export async function insertActivity(activity: any) {
-    const { data, error } = await supabase
-        .from('activities')
-        .insert(activity)
-        .select()
-        .single();
-    if (error) console.error('Failed to log activity:', error);
-    return data;
-}
-
 export async function insertCalculation(calculation: any) {
     const { data, error } = await supabase
         .from('calculations')
