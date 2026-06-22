@@ -22,13 +22,7 @@ export default function ActivityScreen() {
 
     const getActionText = (activity: any) => {
         const name = activity.profile?.full_name || 'A team member';
-        switch (activity.action) {
-            case 'created_report': return `${name} created a new ${activity.entityType}.`;
-            case 'updated_report': return `${name} updated a ${activity.entityType}.`;
-            case 'added_drawing': return `${name} uploaded a new drawing.`;
-            case 'joined_project': return `${name} joined the project.`;
-            default: return `${name} performed an action.`;
-        }
+        return `${name} ${activity.action || 'performed an action'}.`;
     };
 
     return (

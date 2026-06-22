@@ -8,7 +8,7 @@ import {
     fetchUserReports,
     fetchUserFolders,
     fetchUserDrawings, uploadDrawingFile, deleteStorageFile,
-    fetchUserCalculations, insertActivity
+    fetchUserCalculations
 } from '../lib/supabaseSync';
 import { useAuthStore } from './useAuthStore';
 import { powersync } from '@/lib/powersync/system';
@@ -580,6 +580,14 @@ export const useProjectsStore = create<ProjectsState>()(
                             r.id === localId ? { ...r, syncStatus: 'synced' } : r
                           ),
                         }));
+
+                        await get().addActivity({
+                            projectId: report.projectId,
+                            userId,
+                            action: 'created a new ' + report.type + ' report',
+                            entityType: 'report',
+                            entityId: localId,
+                        });
                     } catch (error) {
                         console.error('Failed to write report to PowerSync:', error);
                     }
@@ -747,6 +755,14 @@ export const useProjectsStore = create<ProjectsState>()(
                             [localId, drawing.projectId, userId, drawing.folderId ?? null, drawing.name,
                              drawing.type ?? 'other', drawing.uri ?? null, drawing.size ?? 0, now, drawing.author ?? null]
                         );
+
+                        await get().addActivity({
+                            projectId: drawing.projectId,
+                            userId,
+                            action: 'uploaded ' + drawing.name,
+                            entityType: 'drawing',
+                            entityId: localId,
+                        });
                     } catch (error) {
                         console.error('Failed to sync drawing to Supabase:', error);
                     }
@@ -805,18 +821,25 @@ export const useProjectsStore = create<ProjectsState>()(
             },
             addActivity: async (activity) => {
                 const userId = getCurrentUserId();
-                if (userId) {
-                    try {
-                        await insertActivity({
-                            project_id: activity.projectId,
-                            user_id: activity.userId,
-                            action: activity.action,
-                            entity_type: activity.entityType,
-                            entity_id: activity.entityId,
-                        });
-                    } catch (error) {
-                        console.error('Failed to log activity remote:', error);
-                    }
+                if (!userId) return;
+                const now = new Date().toISOString();
+                const localId = uuidv4();
+                try {
+                    await powersync.execute(
+                        `INSERT INTO activities (id, project_id, user_id, action, entity_type, entity_id, created_at)
+                         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+                        [
+                            localId,
+                            activity.projectId,
+                            activity.userId || userId,
+                            activity.action,
+                            activity.entityType,
+                            activity.entityId ?? null,
+                            now,
+                        ]
+                    );
+                } catch (error) {
+                    console.error('Failed to write activity to PowerSync:', error);
                 }
             },
             
