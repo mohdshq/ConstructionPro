@@ -117,9 +117,8 @@ setupPowerSync() is NOT yet wired into app startup (deferred to M4.2). user_toke
 - TODO (separate feature task): call `addActivity` at meaningful events and migrate
   `addActivity` to `powersync.execute()` (it currently uses the legacy `insertActivity`).
 
-### Dead `insertActivity` helper in supabaseSync.ts
-- `insertActivity` in `lib/supabaseSync.ts` is no longer called anywhere after M6.5 migrated `addActivity` to `powersync.execute()`.
-- TODO: remove the `insertActivity` definition in a cleanup pass (confirm zero callers via grep first).
+### ✅ RESOLVED — Dead `insertActivity` helper in supabaseSync.ts
+- ✅ RESOLVED (branch chore/remove-dead-insertActivity): Removed the unused `insertActivity` definition from `lib/supabaseSync.ts`. Confirmed zero callers before removal; `tsc --noEmit` clean.
 
 ### Member-joined activity not logged (server-side)
 - Activity logging for report/drawing creation is wired (M6.5), but "joined the project" is not.
