@@ -116,3 +116,16 @@ setupPowerSync() is NOT yet wired into app startup (deferred to M4.2). user_toke
   always show "No Activity Yet" until writes are added.
 - TODO (separate feature task): call `addActivity` at meaningful events and migrate
   `addActivity` to `powersync.execute()` (it currently uses the legacy `insertActivity`).
+
+### Dead `insertActivity` helper in supabaseSync.ts
+- `insertActivity` in `lib/supabaseSync.ts` is no longer called anywhere after M6.5 migrated `addActivity` to `powersync.execute()`.
+- TODO: remove the `insertActivity` definition in a cleanup pass (confirm zero callers via grep first).
+
+### Member-joined activity not logged (server-side)
+- Activity logging for report/drawing creation is wired (M6.5), but "joined the project" is not.
+- Member creation happens server-side via the `invite_user_by_email` RPC, so it can't be logged from the client reliably.
+- TODO: log the join event with a Postgres trigger on `project_members` insert, or add the insert inside the RPC body, writing to the `activities` table.
+
+### Drawing display name is raw upload filename
+- Uploaded drawings store a UUID-based filename as `name`, which shows up verbatim in the activity feed and drawings list (e.g. "uploaded A17E1468-...pdf").
+- TODO: capture/derive a friendlier display name at upload time.
