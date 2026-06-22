@@ -106,11 +106,8 @@ setupPowerSync() is NOT yet wired into app startup (deferred to M4.2). user_toke
 - The legacy module is supported but slated for removal in a future SDK.
 - TODO: migrate to the new File/Directory API before upgrading past the legacy window.
 
-### Dead Supabase sync helpers after PowerSync migration
-- `lib/supabaseSync.ts` still defines `updateFolderRemote`, `deleteFolderRemote`,
-  `updateDrawingRemote`, `deleteDrawingRemote` (and other *Remote helpers) that are no
-  longer called after M6.2/M6.3.
-- TODO: remove in a cleanup pass once all entities are migrated.
+### ✅ RESOLVED — Dead Supabase sync helpers after PowerSync migration
+- ✅ RESOLVED (branch chore/remove-dead-supabase-helpers): Removed unused `updateFolderRemote`, `deleteFolderRemote`, `updateDrawingRemote`, `deleteDrawingRemote` and their now-unused `DrawingFolderUpdate` / `DrawingUpdate` types from `lib/supabaseSync.ts`. Confirmed zero callers workspace-wide before removal; `tsc --noEmit` clean.
 
 ### Activity log writes are not wired up
 - `addActivity` exists in `store/projectsStore.ts` but has no callers — no app action

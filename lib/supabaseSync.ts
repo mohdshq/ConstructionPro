@@ -12,11 +12,9 @@ type ReportRow = Database['public']['Tables']['reports']['Row'];
 
 type DrawingFolderRow = Database['public']['Tables']['drawing_folders']['Row'];
 type DrawingFolderInsert = Database['public']['Tables']['drawing_folders']['Insert'];
-type DrawingFolderUpdate = Database['public']['Tables']['drawing_folders']['Update'];
 
 type DrawingRow = Database['public']['Tables']['drawings']['Row'];
 type DrawingInsert = Database['public']['Tables']['drawings']['Insert'];
-type DrawingUpdate = Database['public']['Tables']['drawings']['Update'];
 
 type ProfileRow = Database['public']['Tables']['profiles']['Row'];
 
@@ -109,26 +107,7 @@ export async function insertFolder(folder: DrawingFolderInsert): Promise<Drawing
     return data;
 }
 
-export async function updateFolderRemote(id: string, updates: DrawingFolderUpdate): Promise<DrawingFolderRow> {
-    const { data, error } = await supabase
-        .from('drawing_folders')
-        .update(updates)
-        .eq('id', id)
-        .select()
-        .single();
 
-    if (error) throw new Error(`Failed to update folder: ${error.message}`);
-    return data;
-}
-
-export async function deleteFolderRemote(id: string): Promise<void> {
-    const { error } = await supabase
-        .from('drawing_folders')
-        .delete()
-        .eq('id', id);
-
-    if (error) throw new Error(`Failed to delete folder: ${error.message}`);
-}
 
 // ──────────────────────────────────────────────
 // Drawings
@@ -156,26 +135,7 @@ export async function insertDrawing(drawing: DrawingInsert): Promise<DrawingRow>
     return data;
 }
 
-export async function updateDrawingRemote(id: string, updates: DrawingUpdate): Promise<DrawingRow> {
-    const { data, error } = await supabase
-        .from('drawings')
-        .update(updates)
-        .eq('id', id)
-        .select()
-        .single();
 
-    if (error) throw new Error(`Failed to update drawing: ${error.message}`);
-    return data;
-}
-
-export async function deleteDrawingRemote(id: string): Promise<void> {
-    const { error } = await supabase
-        .from('drawings')
-        .delete()
-        .eq('id', id);
-
-    if (error) throw new Error(`Failed to delete drawing: ${error.message}`);
-}
 
 // ──────────────────────────────────────────────
 // Storage Helpers
