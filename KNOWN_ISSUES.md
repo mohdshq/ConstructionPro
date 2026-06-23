@@ -123,6 +123,5 @@ setupPowerSync() is NOT yet wired into app startup (deferred to M4.2). user_toke
 ### ✅ RESOLVED — Member-joined activity not logged (server-side)
 - ✅ RESOLVED (database trigger): Added `trg_log_member_joined` on `project_members` (function `log_member_joined`, SECURITY DEFINER) that logs a "joined the project" activity for non-owner members. SQL tracked in `supabase/triggers/log_member_joined.sql`. Applied via Supabase SQL editor (not an app code change). Note: `invite_user_by_email` RPC only adds already-registered users, so a join test requires a second account.
 
-### Drawing display name is raw upload filename
-- Uploaded drawings store a UUID-based filename as `name`, which shows up verbatim in the activity feed and drawings list (e.g. "uploaded A17E1468-...pdf").
-- TODO: capture/derive a friendlier display name at upload time.
+### ~~Drawing display name is raw upload filename~~
+- ✅ RESOLVED (not a bug): Drawings already store and display the original picker filename (`asset.name`); rename works correctly. The earlier "A17E1468-...pdf" was a single old test file that genuinely had a UUID name on disk, not a code defect. No code change needed for display.
