@@ -8,7 +8,9 @@ import * as DocumentPicker from 'expo-document-picker';
 import { useThemeColors } from '../../../../store/useThemeColors';
 import { usePowerSyncFolders } from '../../../../lib/powersync/useFolders';
 import { usePowerSyncDrawings } from '../../../../lib/powersync/useDrawings';
-import { uploadDrawingFile } from '../../../../lib/supabaseSync';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
+import { uploadDrawingFile, getSignedUrl } from '../../../../lib/supabaseSync';
 import { useAuthStore } from '../../../../store/useAuthStore';
 
 type ListItem = 
@@ -148,14 +150,31 @@ export default function DrawingsBrowserScreen() {
             options.push({
                 text: 'Share',
                 onPress: async () => {
+                    const drawing = item.data as Drawing;
                     try {
-                        const { Share } = await import('react-native');
-                        await Share.share({
-                            url: (item.data as Drawing).uri,
-                            title: item.data.name
-                        });
-                    } catch (error) {
+                        let fileUri = drawing.uri;
+
+                        if (!fileUri.startsWith('http') && !fileUri.startsWith('file:')) {
+                            const signedUrl = await getSignedUrl('drawings', drawing.uri);
+                            if (!signedUrl) {
+                                Alert.alert('Share Failed', 'Could not prepare file for sharing');
+                                return;
+                            }
+                            
+                            const cacheUri = FileSystem.cacheDirectory + drawing.name;
+                            const downloadResult = await FileSystem.downloadAsync(signedUrl, cacheUri);
+                            fileUri = downloadResult.uri;
+                        }
+
+                        const isAvailable = await Sharing.isAvailableAsync();
+                        if (isAvailable) {
+                            await Sharing.shareAsync(fileUri);
+                        } else {
+                            Alert.alert('Share Failed', 'Sharing is not available on this device');
+                        }
+                    } catch (error: any) {
                         console.error('Error sharing file:', error);
+                        Alert.alert('Share Failed', error.message || 'An error occurred while sharing the file.');
                     }
                 }
             });
