@@ -21,7 +21,9 @@ export default function DrawingsBrowserScreen() {
     const { getProject, addFolder, addDrawing, deleteFolder, deleteDrawing } = useProjectsStore();
     const folders = usePowerSyncFolders(id);
     const drawings = usePowerSyncDrawings(id);
-    const userId = useAuthStore.getState().user?.id;
+    const authState = useAuthStore.getState();
+    const userId = authState.user?.id;
+    const authorName = authState.profile?.full_name || authState.user?.user_metadata?.full_name || authState.user?.email || 'Unknown';
     const { colors } = useThemeColors();
 
     const project = useMemo(() => getProject(id), [id, getProject]);
@@ -112,7 +114,7 @@ export default function DrawingsBrowserScreen() {
                         type: fileType,
                         uri: storagePath,
                         size: asset.size || 0,
-                        author: 'Current User',
+                        author: authorName,
                     });
                 } catch (e: any) {
                     console.error('Upload failed:', e);
