@@ -29,7 +29,23 @@ export default function CreateReportScreen() {
 
     const [author, setAuthor] = useState('');
     const [formData, setFormData] = useState<any>({});
-    const [activeSection, setActiveSection] = useState<string | null>('generalDaily');
+    const [activeSection, setActiveSection] = useState<string | null>(() => {
+        if (type === 'daily' && initialData) {
+            try {
+                const parsed = JSON.parse(initialData);
+                if (parsed.activitiesProgress?.length > 0) return 'activities';
+                if (parsed.areasOfConcern?.length > 0) return 'concerns';
+                if (parsed.mainContractorStaff?.length > 0) return 'mcStaff';
+                if (parsed.mainContractorLabor?.length > 0) return 'labor';
+                if (parsed.subcontractorStaff?.length > 0) return 'subconStaff';
+                if (parsed.subcontractorLabor?.length > 0) return 'subconLabor';
+                if (parsed.equipment?.length > 0) return 'equip';
+                if (parsed.nightShift?.length > 0) return 'nightShift';
+                if (parsed.transcript) return 'generalDaily';
+            } catch(e) {}
+        }
+        return 'generalDaily';
+    });
     const [snagFilterSystem, setSnagFilterSystem] = useState<string>('All');
     const [snagFilterSeverity, setSnagFilterSeverity] = useState<string>('All');
     const [snagFilterStatus, setSnagFilterStatus] = useState<string>('All');
@@ -641,7 +657,7 @@ export default function CreateReportScreen() {
             {activeSection === 'mcStaff' && (
                 <Animated.View entering={FadeIn} style={[styles.accordionContent, { backgroundColor: colors.card, borderColor: colors.border }]}>
                     {formData.mainContractorStaff?.map((item: any, i: number) => (
-                        <View key={item.id} style={[styles.arrayItemCard, { backgroundColor: colors.inputBackground, borderColor: colors.border }]}>
+                        <View key={item.id ?? `row-${i}`} style={[styles.arrayItemCard, { backgroundColor: colors.inputBackground, borderColor: colors.border }]}>
                             <View style={styles.arrayRow}>
                                 <TextInput placeholderTextColor={colors.text + '80'} style={[styles.input, { backgroundColor: colors.inputBackground, borderColor: colors.border, color: colors.text }, { flex: 3 }]} placeholder="Description / Role" value={item.description} onChangeText={t => {
                                     const newArr = [...formData.mainContractorStaff]; newArr[i].description = t; setFormData({ ...formData, mainContractorStaff: newArr });
@@ -669,7 +685,7 @@ export default function CreateReportScreen() {
                 activeSection === 'subconStaff' && (
                     <Animated.View entering={FadeIn} style={[styles.accordionContent, { backgroundColor: colors.card, borderColor: colors.border }]}>
                         {formData.subcontractorStaff?.map((item: any, i: number) => (
-                            <View key={item.id} style={[styles.arrayItemCard, { backgroundColor: colors.inputBackground, borderColor: colors.border }]}>
+                            <View key={item.id ?? `row-${i}`} style={[styles.arrayItemCard, { backgroundColor: colors.inputBackground, borderColor: colors.border }]}>
                                 <View style={styles.arrayRow}>
                                     <TextInput placeholderTextColor={colors.text + '80'} style={[styles.input, { backgroundColor: colors.inputBackground, borderColor: colors.border, color: colors.text }, { flex: 3 }]} placeholder="Name" value={item.name} onChangeText={t => {
                                         const newArr = [...formData.subcontractorStaff]; newArr[i].name = t; setFormData({ ...formData, subcontractorStaff: newArr });
@@ -697,7 +713,7 @@ export default function CreateReportScreen() {
                 activeSection === 'equip' && (
                     <Animated.View entering={FadeIn} style={[styles.accordionContent, { backgroundColor: colors.card, borderColor: colors.border }]}>
                         {formData.equipment?.map((item: any, i: number) => (
-                            <View key={item.id} style={[styles.arrayItemCard, { backgroundColor: colors.inputBackground, borderColor: colors.border }]}>
+                            <View key={item.id ?? `row-${i}`} style={[styles.arrayItemCard, { backgroundColor: colors.inputBackground, borderColor: colors.border }]}>
                                 <View style={styles.arrayRow}>
                                     <TextInput placeholderTextColor={colors.text + '80'} style={[styles.input, { backgroundColor: colors.inputBackground, borderColor: colors.border, color: colors.text }, { flex: 3 }]} placeholder="Equipment Description" value={item.description} onChangeText={t => {
                                         const newArr = [...formData.equipment]; newArr[i].description = t; setFormData({ ...formData, equipment: newArr });
@@ -725,7 +741,7 @@ export default function CreateReportScreen() {
                 activeSection === 'labor' && (
                     <Animated.View entering={FadeIn} style={[styles.accordionContent, { backgroundColor: colors.card, borderColor: colors.border }]}>
                         {formData.mainContractorLabor?.map((item: any, i: number) => (
-                            <View key={item.id} style={[styles.arrayItemCard, { backgroundColor: colors.inputBackground, borderColor: colors.border }]}>
+                            <View key={item.id ?? `row-${i}`} style={[styles.arrayItemCard, { backgroundColor: colors.inputBackground, borderColor: colors.border }]}>
                                 <TextInput placeholderTextColor={colors.text + '80'} style={[styles.input, { backgroundColor: colors.inputBackground, borderColor: colors.border, color: colors.text }, { marginBottom: 8 }]} placeholder="Trade (e.g. Mason)" value={item.trade} onChangeText={t => {
                                     const newArr = [...formData.mainContractorLabor]; newArr[i].trade = t; setFormData({ ...formData, mainContractorLabor: newArr });
                                 }} />
@@ -761,7 +777,7 @@ export default function CreateReportScreen() {
                 activeSection === 'subconLabor' && (
                     <Animated.View entering={FadeIn} style={[styles.accordionContent, { backgroundColor: colors.card, borderColor: colors.border }]}>
                         {formData.subcontractorLabor?.map((item: any, i: number) => (
-                            <View key={item.id} style={[styles.arrayItemCard, { backgroundColor: colors.inputBackground, borderColor: colors.border }]}>
+                            <View key={item.id ?? `row-${i}`} style={[styles.arrayItemCard, { backgroundColor: colors.inputBackground, borderColor: colors.border }]}>
                                 <View style={styles.arrayRow}>
                                     <TextInput placeholderTextColor={colors.text + '80'} style={[styles.input, { backgroundColor: colors.inputBackground, borderColor: colors.border, color: colors.text }, { flex: 3 }]} placeholder="Subcon Name" value={item.name} onChangeText={t => {
                                         const newArr = [...formData.subcontractorLabor]; newArr[i].name = t; setFormData({ ...formData, subcontractorLabor: newArr });
@@ -789,7 +805,7 @@ export default function CreateReportScreen() {
                 activeSection === 'nightShift' && (
                     <Animated.View entering={FadeIn} style={[styles.accordionContent, { backgroundColor: colors.card, borderColor: colors.border }]}>
                         {formData.nightShift?.map((item: any, i: number) => (
-                            <View key={item.id} style={[styles.arrayItemCard, { backgroundColor: colors.inputBackground, borderColor: colors.border }]}>
+                            <View key={item.id ?? `row-${i}`} style={[styles.arrayItemCard, { backgroundColor: colors.inputBackground, borderColor: colors.border }]}>
                                 <View style={styles.arrayRow}>
                                     <TextInput placeholderTextColor={colors.text + '80'} style={[styles.input, { backgroundColor: colors.inputBackground, borderColor: colors.border, color: colors.text }, { flex: 3 }]} placeholder="Trade" value={item.trade} onChangeText={t => {
                                         const newArr = [...formData.nightShift]; newArr[i].trade = t; setFormData({ ...formData, nightShift: newArr });
@@ -817,7 +833,7 @@ export default function CreateReportScreen() {
                 activeSection === 'activities' && (
                     <Animated.View entering={FadeIn} style={[styles.accordionContent, { backgroundColor: colors.card, borderColor: colors.border }]}>
                         {formData.activitiesProgress?.map((item: any, i: number) => (
-                            <View key={item.id} style={[styles.arrayItemCard, { backgroundColor: colors.inputBackground, borderColor: colors.border }]}>
+                            <View key={item.id ?? `row-${i}`} style={[styles.arrayItemCard, { backgroundColor: colors.inputBackground, borderColor: colors.border }]}>
                                 <TextInput placeholderTextColor={colors.text + '80'} style={[styles.input, { backgroundColor: colors.inputBackground, borderColor: colors.border, color: colors.text }, { marginBottom: 8 }]} placeholder="Activity Description" value={item.activityName} onChangeText={t => {
                                     const newArr = [...formData.activitiesProgress]; newArr[i].activityName = t; setFormData({ ...formData, activitiesProgress: newArr });
                                 }} />
@@ -870,7 +886,7 @@ export default function CreateReportScreen() {
                 activeSection === 'concerns' && (
                     <Animated.View entering={FadeIn} style={[styles.accordionContent, { backgroundColor: colors.card, borderColor: colors.border }]}>
                         {formData.areasOfConcern?.map((item: any, i: number) => (
-                            <View key={item.id} style={[styles.arrayItemCard, { backgroundColor: colors.inputBackground, borderColor: colors.border }]}>
+                            <View key={item.id ?? `row-${i}`} style={[styles.arrayItemCard, { backgroundColor: colors.inputBackground, borderColor: colors.border }]}>
                                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
                                     <TextInput placeholderTextColor={colors.text + '80'} style={[styles.input, { backgroundColor: colors.inputBackground, borderColor: colors.border, color: colors.text }, { flex: 1 }]} placeholder="Location / Building No" value={item.location} onChangeText={t => {
                                         const newArr = [...formData.areasOfConcern]; newArr[i].location = t; setFormData({ ...formData, areasOfConcern: newArr });

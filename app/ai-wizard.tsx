@@ -2,12 +2,12 @@ import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, Alert, SafeAreaView, Platform } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { useRouter as useExpoRouter } from 'expo-router';
-import { Audio } from 'expo-av';
+import { Audio, InterruptionModeIOS, InterruptionModeAndroid } from 'expo-av';
 import * as ImagePicker from 'expo-image-picker';
 import { Mic, Square, Camera, Image as ImageIcon, ChevronRight, X, Loader2, Sparkles, CheckCircle } from 'lucide-react-native';
 import { useProjectsStore, Project, ReportType } from '../store/projectsStore';
 import { supabase } from '../lib/supabase';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { useThemeColors } from '../store/useThemeColors';
 import { useStore } from '../store/useStore';
@@ -54,9 +54,15 @@ export default function AIWizardScreen() {
             await Audio.setAudioModeAsync({
                 allowsRecordingIOS: true,
                 playsInSilentModeIOS: true,
+                staysActiveInBackground: false,
+                interruptionModeIOS: InterruptionModeIOS?.DoNotMix ?? 1,
+                interruptionModeAndroid: InterruptionModeAndroid?.DoNotMix ?? 1,
+                shouldDuckAndroid: true,
+                playThroughEarpieceAndroid: false,
             });
+            await new Promise(r => setTimeout(r, 250));
             const { recording } = await Audio.Recording.createAsync(
-                Audio.RecordingOptionsPresets.LOW_QUALITY
+                Audio.RecordingOptionsPresets.HIGH_QUALITY
             );
             setRecording(recording);
             setIsRecording(true);
@@ -90,9 +96,12 @@ export default function AIWizardScreen() {
 
         try {
             let base64Audio;
+            let mimeType = 'audio/mp4';
+
             if (Platform.OS === 'web') {
                 const response = await fetch(uri);
                 const blob = await response.blob();
+                mimeType = blob.type || 'audio/mp4';
                 base64Audio = await new Promise((resolve, reject) => {
                     const reader = new FileReader();
                     reader.onload = () => {
@@ -108,7 +117,8 @@ export default function AIWizardScreen() {
             }
             
             const payload = {
-                audioBase64: `data:audio/m4a;base64,${base64Audio}`,
+                audioBase64: `data:${mimeType};base64,${base64Audio}`,
+                audioMimeType: mimeType,
                 currentStep: processStep,
                 reportType: selectedType,
                 contextData: snagContext
@@ -120,6 +130,14 @@ export default function AIWizardScreen() {
 
             if (error) throw error;
             if (data?.error) throw new Error(data.error);
+
+            if (selectedType === 'daily' && processStep === 'generate') {
+                if (!data.result.transcript || data.result.transcript.trim() === '') {
+                    Alert.alert('Error', "Couldn't hear that clearly — please try again in a quieter spot");
+                    setStep('daily-capture');
+                    return;
+                }
+            }
 
             handleAIResult(processStep, data.result);
         } catch (error: any) {
@@ -256,9 +274,27 @@ export default function AIWizardScreen() {
                 params: { id: selectedProject!.id, type: 'snagging', initialData: JSON.stringify(formData) }
             });
         } else {
+            const dataToReview = finalData || dailyData;
+            
+            // Ensure all array items have an ID
+            const arrayKeys = [
+                'mainContractorStaff', 'subcontractorStaff', 'equipment', 
+                'mainContractorLabor', 'subcontractorLabor', 'nightShift', 
+                'activitiesProgress', 'areasOfConcern'
+            ];
+            
+            arrayKeys.forEach((key) => {
+                if (Array.isArray(dataToReview[key])) {
+                    dataToReview[key] = dataToReview[key].map((item: any, idx: number) => ({
+                        ...item,
+                        id: item.id || Date.now().toString() + idx
+                    }));
+                }
+            });
+
             router.replace({
                 pathname: `/project/[id]/report/create`,
-                params: { id: selectedProject!.id, type: 'daily', initialData: JSON.stringify(finalData || dailyData) }
+                params: { id: selectedProject!.id, type: 'daily', initialData: JSON.stringify(dataToReview) }
             });
         }
     };
