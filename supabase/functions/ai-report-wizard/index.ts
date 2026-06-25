@@ -25,24 +25,46 @@ Ensure the output is strictly valid JSON without markdown wrapping.`
     },
     'daily': {
         'generate': `You are an expert construction manager.
-The user is dictating their daily report summary. Extract the details into a structured JSON object.
+The user is dictating their daily report summary. 
+First, transcribe the audio verbatim internally, preserving numbers and units exactly as spoken.
+Second, extract the details into a structured JSON object.
 Schema:
 {
-  "manpowerMainContractor": "Text summary of main contractor manpower",
-  "manpowerSubcontractors": "Text summary of subcontractors",
-  "manpowerOthers": "Text summary of other manpower",
-  "climateHumidity": "Text or empty",
-  "climateVisibility": "Text or empty",
-  "climateTemp": "Text or empty",
-  "climateWindSpeed": "Text or empty",
-  "activities": [
-    { "activityName": "string", "uom": "string", "totalQty": "string", "todayQty": "string" }
-  ],
-  "areasOfConcern": [
-    { "location": "string", "concern": "string", "action": "string" }
-  ]
+  "transcript": "verbatim transcription of what was said",
+  "manpowerMainContractor": "",
+  "manpowerSubcontractors": "",
+  "manpowerOthers": "",
+  "manpowerTotal": "",
+  "climateHumidity": "",
+  "climateTemp": "",
+  "climateVisibility": "",
+  "climateWindSpeed": "",
+  "mainContractorStaff": [ { "description": "", "count": "" } ],
+  "subcontractorStaff":  [ { "name": "", "count": "" } ],
+  "equipment":           [ { "description": "", "count": "" } ],
+  "mainContractorLabor": [ { "trade": "", "inHouse": "", "supply": "" } ],
+  "subcontractorLabor":  [ { "name": "", "count": "" } ],
+  "nightShift":          [ { "trade": "", "count": "" } ],
+  "activitiesProgress":  [ { "activityName": "", "uom": "", "totalQty": "", "prevQty": "", "todayQty": "" } ],
+  "areasOfConcern":      [ { "location": "", "concern": "", "action": "" } ]
 }
-If a specific field or array is not mentioned, leave it empty or omit it. Keep text concise and professional.
+Numbers only, no labels. Every manpower/count/quantity/climate field must contain ONLY the digits. If the user says 'total manpower three hundred fifty six', output manpowerTotal: "356" — never "total manpower 356". Strip all words, labels, and units from numeric fields.
+Interpret natural speech and route information to the correct field even if the user doesn't name the field. 'We had 489 from the main contractor and 175 subs' → manpowerMainContractor: '489', manpowerSubcontractors: '175'. 'Leak in basement 2' → an areasOfConcern entry. The user will NOT speak field names; infer them.
+CRITICAL: 'Manpower' and 'Staff' are TWO SEPARATE, INDEPENDENT inputs. Never compute one from the other.
+
+MANPOWER fields (manpowerMainContractor, manpowerSubcontractors, manpowerOthers, manpowerTotal) hold BULK HEADCOUNT NUMBERS that the user states explicitly (e.g. 'main contractor manpower is 489', 'subcontractors 175'). Use ONLY the numbers the user actually says. NEVER calculate manpower by counting staff roles.
+
+STAFF fields (mainContractorStaff, subcontractorStaff with {name/description, count}) hold NAMED ROLES/POSITIONS the user lists (e.g. 'project director, project manager, two site engineers'). Populate these ONLY from explicitly named roles.
+
+If the user gives manpower numbers but no roles → fill manpower, leave staff arrays [].
+
+If the user lists roles but no bulk manpower → fill staff arrays, leave manpower fields "" (empty). Do NOT count the roles and put that count in manpower.
+
+If the user gives BOTH → fill both independently from what was said.
+
+Same rule for mainContractorLabor / subcontractorLabor (trades) — these are independent of the manpower totals.
+When the user mentions any work activity, ALWAYS create an activitiesProgress entry. If they state a quantity and unit, put the number in todayQty (and totalQty if a total is given) and the unit in uom. Example: 'poured 40 cubic meters of concrete on level 6' → { "activityName": "Level 6 concrete pour", "uom": "m3", "todayQty": "40" }. Never drop spoken quantities.
+Only include mentioned items; unmentioned arrays return [], unmentioned scalars return "". Never invent.
 Strictly valid JSON only.`
     }
 };
@@ -72,7 +94,8 @@ serve(async (req) => {
     }
 
     const requireVision = !!imageBase64;
-    const modelName = await getBestGeminiModel(apiKey, requireVision);
+    let modelName = await getBestGeminiModel(apiKey, requireVision);
+    console.log('[ai-report-wizard] using primary model:', modelName);
 
     const parts: any[] = [];
 
@@ -80,13 +103,22 @@ serve(async (req) => {
     if (audioBase64) {
         // Strip data prefix if present
         const matches = audioBase64.match(/^data:([a-zA-Z0-9]+\/[a-zA-Z0-9-.+]+);base64,(.+)$/);
-        let mime = audioMimeType || 'audio/m4a';
+        let mime = audioMimeType || 'audio/mp4';
         let b64Data = audioBase64;
         
         if (matches && matches.length === 3) {
             mime = matches[1];
             b64Data = matches[2];
         }
+
+        if (mime.includes('m4a') || mime.includes('x-m4a')) {
+            mime = 'audio/mp4';
+        } else if (mime.includes('3gp') || mime.includes('3gpp')) {
+            mime = 'audio/aac';
+        } else if (mime.includes('caf')) {
+            mime = 'audio/aac';
+        }
+
         parts.push({ inlineData: { mimeType: mime, data: b64Data } });
     }
 
@@ -117,29 +149,84 @@ serve(async (req) => {
         parts.push({ text: "Please generate empty structure." });
     }
 
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: systemPrompt }] },
-        contents: [
-            {
-                role: 'user',
-                parts: parts
-            }
-        ],
-        generationConfig: {
-          temperature: 0.1,
-          responseMimeType: "application/json"
-        }
-      })
-    })
+    const callGemini = async (model: string) => {
+        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                systemInstruction: { parts: [{ text: systemPrompt }] },
+                contents: [{ role: 'user', parts: parts }],
+                generationConfig: { temperature: 0.1, responseMimeType: "application/json" }
+            })
+        });
+        const responseText = await response.text();
+        return { response, responseText };
+    };
 
-    const data = await response.json()
-    
-    if (!response.ok) {
-      throw new Error(data.error?.message || 'Failed to generate response')
+    const isTransientError = (status: number, text: string) => {
+        if ([429, 500, 503].includes(status)) return true;
+        const lower = text.toLowerCase();
+        if (lower.includes('high demand') || lower.includes('overloaded') || lower.includes('try again later')) return true;
+        return false;
+    };
+
+    const delays = [400, 1200];
+    let finalResponse;
+    let finalResponseText = '';
+    let success = false;
+
+    // Try primary model
+    for (let attempt = 0; attempt <= 2; attempt++) {
+        if (attempt > 0) {
+            await new Promise(r => setTimeout(r, delays[attempt - 1]));
+        }
+        try {
+            const { response, responseText } = await callGemini(modelName);
+            finalResponse = response;
+            finalResponseText = responseText;
+            
+            if (response.ok) {
+                success = true;
+                break;
+            } else if (!isTransientError(response.status, responseText)) {
+                // Persistent error, break and throw
+                break;
+            }
+        } catch (e) {
+            // Network error
+        }
     }
+
+    if (!success) {
+        // Fallback model
+        modelName = await getBestGeminiModel(apiKey, requireVision, [modelName]);
+        console.log('[ai-report-wizard] using fallback model:', modelName);
+        try {
+            const { response, responseText } = await callGemini(modelName);
+            finalResponse = response;
+            finalResponseText = responseText;
+            if (response.ok) {
+                success = true;
+            }
+        } catch (e) {
+            // Network error
+        }
+    }
+
+    if (!success || !finalResponse || !finalResponse.ok) {
+        if (finalResponse && isTransientError(finalResponse.status, finalResponseText)) {
+            return new Response(JSON.stringify({ error: "The AI service is busy right now. Please try again in a moment." }), {
+                headers: { ...corsHeaders, "Content-Type": "application/json" },
+                status: 503,
+            });
+        }
+        
+        let parsedErr = {};
+        try { parsedErr = JSON.parse(finalResponseText || '{}'); } catch(e) {}
+        throw new Error((parsedErr as any).error?.message || 'Failed to generate response');
+    }
+
+    const data = JSON.parse(finalResponseText);
 
     const aiResponse = data.candidates?.[0]?.content?.parts?.[0]?.text || '{}'
     

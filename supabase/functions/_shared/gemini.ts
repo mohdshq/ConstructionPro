@@ -1,5 +1,6 @@
-export async function getBestGeminiModel(apiKey: string, requireVision: boolean = false): Promise<string> {
-    const fallbackModel = requireVision ? 'gemini-1.5-flash' : 'gemini-1.5-flash';
+export async function getBestGeminiModel(apiKey: string, requireVision: boolean = false, excludeModels: string[] = []): Promise<string> {
+    const fallbackModel = 'gemini-2.5-flash';
+    const preferences = ['gemini-2.5-flash', 'gemini-3-flash', 'gemini-3.5-flash', 'gemini-2.0-flash'];
     
     try {
         const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
@@ -10,21 +11,17 @@ export async function getBestGeminiModel(apiKey: string, requireVision: boolean 
         
         // Find all gemini models
         const availableModels = models
+            .filter((m: any) => m.name.startsWith('models/gemini') && (m.supportedGenerationMethods || []).includes('generateContent'))
             .map((m: any) => m.name.replace('models/', ''))
-            .filter((m: string) => m.startsWith('gemini'));
+            .filter((m: string) => !excludeModels.includes(m));
             
-        // For vision, we want pro or flash, prefer pro
-        if (requireVision) {
-            if (availableModels.includes('gemini-1.5-pro')) return 'gemini-1.5-pro';
-            if (availableModels.includes('gemini-1.5-flash')) return 'gemini-1.5-flash';
-            if (availableModels.includes('gemini-pro-vision')) return 'gemini-pro-vision';
-            return availableModels[0] || fallbackModel;
+        for (const pref of preferences) {
+            if (availableModels.includes(pref)) return pref;
         }
 
-        // For standard chat
-        if (availableModels.includes('gemini-1.5-pro')) return 'gemini-1.5-pro';
-        if (availableModels.includes('gemini-1.5-flash')) return 'gemini-1.5-flash';
-        if (availableModels.includes('gemini-pro')) return 'gemini-pro';
+        // Return first flash-class model that isn't embedding or lite-preview
+        const flashModels = availableModels.filter((m: string) => m.includes('flash') && !m.includes('embedding') && !m.includes('preview'));
+        if (flashModels.length > 0) return flashModels[0];
 
         return availableModels[0] || fallbackModel;
     } catch (e) {
