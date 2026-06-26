@@ -9,7 +9,8 @@ const projects = new Table({
   description: column.text, contract_value: column.text, start_date: column.text,
   end_date: column.text, project_manager: column.text, status: column.text,
   photo_url: column.text, created_at: column.text, updated_at: column.text,
-  reference_number: column.text,
+  reference_number: column.text, employer_logo: column.text, consultant_logo: column.text,
+  contractor_logos: column.text,
 });
 const reports = new Table({
   project_id: column.text, user_id: column.text, type: column.text, date: column.text,

@@ -1,5 +1,5 @@
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, SafeAreaView, Platform, KeyboardAvoidingView } from 'react-native';
-import { ArrowLeft, Image as ImageIcon, MapPin, Building2, User, FileText, DollarSign, CalendarDays, Briefcase, Hash } from "lucide-react-native";
+import { ArrowLeft, Image as ImageIcon, MapPin, Building2, User, FileText, DollarSign, CalendarDays, Briefcase, Hash, Plus, X } from "lucide-react-native";
 import BackButton from "../../components/BackButton";
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useState, createElement, useEffect } from 'react';
@@ -28,6 +28,9 @@ export default function CreateProjectScreen() {
     const [projectManager, setProjectManager] = useState('');
     const [referenceNumber, setReferenceNumber] = useState('');
     const [photoUri, setPhotoUri] = useState<string | null>(null);
+    const [employerLogo, setEmployerLogo] = useState<string | null>(null);
+    const [consultantLogo, setConsultantLogo] = useState<string | null>(null);
+    const [contractorLogos, setContractorLogos] = useState<string[]>([]);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const { user } = useAuthStore();
 
@@ -46,6 +49,9 @@ export default function CreateProjectScreen() {
                 setProjectManager(project.projectManager || '');
                 setReferenceNumber(project.referenceNumber || '');
                 setPhotoUri(project.photoUri || null);
+                setEmployerLogo(project.employerLogo || null);
+                setConsultantLogo(project.consultantLogo || null);
+                setContractorLogos(project.contractorLogos || []);
             }
         }
     }, [id, getProject]);
@@ -63,21 +69,52 @@ export default function CreateProjectScreen() {
         }
     };
 
+    const pickLogo = async () => {
+        const result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ['images'],
+            allowsEditing: true,
+            aspect: [1, 1],
+            quality: 0.8,
+        });
+        if (!result.canceled) return result.assets[0].uri;
+        return null;
+    };
+
     const handleCreate = async () => {
         if (!name.trim()) return;
         setIsSubmitting(true);
 
-        let finalPhotoUri = photoUri;
-        if (photoUri && (photoUri.includes('://') || photoUri.startsWith('data:') || photoUri.startsWith('blob:'))) {
-            try {
-                if (user?.id) {
-                    finalPhotoUri = await uploadPhoto('report-photos', user.id, photoUri, { prefix: 'project_cover' });
+        const uploadIfNeeded = async (uri: string | null, prefix: string) => {
+            if (uri && (uri.includes('://') || uri.startsWith('data:') || uri.startsWith('blob:'))) {
+                try {
+                    if (user?.id) {
+                        return await uploadPhoto('report-photos', user.id, uri, { prefix });
+                    }
+                } catch (e: any) {
+                    throw new Error(`Failed to upload ${prefix}: ${e.message}`);
                 }
-            } catch (e: any) {
-                Alert.alert('Upload Failed', 'Failed to upload project cover image. ' + e.message);
-                setIsSubmitting(false);
-                return;
             }
+            return uri;
+        };
+
+        let finalPhotoUri = photoUri;
+        let finalEmployerLogo = employerLogo;
+        let finalConsultantLogo = consultantLogo;
+        let finalContractorLogos: string[] = [];
+
+        try {
+            finalPhotoUri = await uploadIfNeeded(photoUri, 'project_cover');
+            finalEmployerLogo = await uploadIfNeeded(employerLogo, 'logo_employer');
+            finalConsultantLogo = await uploadIfNeeded(consultantLogo, 'logo_consultant');
+            
+            for (let i = 0; i < contractorLogos.length; i++) {
+                const url = await uploadIfNeeded(contractorLogos[i], `logo_contractor_${i}`);
+                if (url) finalContractorLogos.push(url);
+            }
+        } catch (e: any) {
+            Alert.alert('Upload Failed', e.message);
+            setIsSubmitting(false);
+            return;
         }
 
         const projectData = {
@@ -91,6 +128,9 @@ export default function CreateProjectScreen() {
             projectManager: projectManager.trim() || undefined,
             referenceNumber: referenceNumber.trim() || undefined,
             photoUri: finalPhotoUri || undefined,
+            employerLogo: finalEmployerLogo || undefined,
+            consultantLogo: finalConsultantLogo || undefined,
+            contractorLogos: finalContractorLogos.length > 0 ? finalContractorLogos : undefined,
         };
 
         if (id) {
@@ -288,6 +328,53 @@ export default function CreateProjectScreen() {
                         </View>
                     </View>
 
+                    <View style={styles.formGroup}>
+                        <Text style={[styles.label, { color: colors.text }]}>Party Logos</Text>
+                        
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 16 }}>
+                            <View style={{ flex: 1, marginRight: 8, alignItems: 'center' }}>
+                                <Text style={[styles.photoSubtext, { color: colors.text, marginBottom: 8 }]}>Employer</Text>
+                                <TouchableOpacity style={[styles.logoPicker, { borderColor: colors.border }]} onPress={async () => { const uri = await pickLogo(); if (uri) setEmployerLogo(uri); }}>
+                                    {employerLogo ? <ProjectImage photoUri={employerLogo} style={styles.logoPreview} resizeMode="contain" /> : <Plus size={24} color={colors.textMuted} />}
+                                    {employerLogo && (
+                                        <TouchableOpacity style={styles.removeLogoBtn} onPress={() => setEmployerLogo(null)}>
+                                            <X size={12} color="#FFF" />
+                                        </TouchableOpacity>
+                                    )}
+                                </TouchableOpacity>
+                            </View>
+
+                            <View style={{ flex: 1, marginLeft: 8, alignItems: 'center' }}>
+                                <Text style={[styles.photoSubtext, { color: colors.text, marginBottom: 8 }]}>Consultant</Text>
+                                <TouchableOpacity style={[styles.logoPicker, { borderColor: colors.border }]} onPress={async () => { const uri = await pickLogo(); if (uri) setConsultantLogo(uri); }}>
+                                    {consultantLogo ? <ProjectImage photoUri={consultantLogo} style={styles.logoPreview} resizeMode="contain" /> : <Plus size={24} color={colors.textMuted} />}
+                                    {consultantLogo && (
+                                        <TouchableOpacity style={styles.removeLogoBtn} onPress={() => setConsultantLogo(null)}>
+                                            <X size={12} color="#FFF" />
+                                        </TouchableOpacity>
+                                    )}
+                                </TouchableOpacity>
+                            </View>
+                        </View>
+
+                        <Text style={[styles.photoSubtext, { color: colors.text, marginBottom: 8 }]}>Contractor(s) - Max 4</Text>
+                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
+                            {contractorLogos.map((uri, idx) => (
+                                <View key={idx} style={[styles.logoPicker, { borderColor: colors.border }]}>
+                                    <ProjectImage photoUri={uri} style={styles.logoPreview} resizeMode="contain" />
+                                    <TouchableOpacity style={styles.removeLogoBtn} onPress={() => setContractorLogos(prev => prev.filter((_, i) => i !== idx))}>
+                                        <X size={12} color="#FFF" />
+                                    </TouchableOpacity>
+                                </View>
+                            ))}
+                            {contractorLogos.length < 4 && (
+                                <TouchableOpacity style={[styles.logoPicker, { borderColor: colors.border }]} onPress={async () => { const uri = await pickLogo(); if (uri) setContractorLogos(prev => [...prev, uri]); }}>
+                                    <Plus size={24} color={colors.textMuted} />
+                                </TouchableOpacity>
+                            )}
+                        </View>
+                    </View>
+
                     <View style={{ height: 40 }} />
                 </ScrollView>
             </KeyboardAvoidingView>
@@ -429,5 +516,31 @@ const styles = StyleSheet.create({
         color: '#0F172A',
         paddingTop: 12,
         paddingBottom: 12,
+    },
+    logoPicker: {
+        width: 80,
+        height: 80,
+        borderRadius: 8,
+        borderWidth: 1,
+        borderStyle: 'dashed',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#F8FAFC',
+        overflow: 'hidden',
+    },
+    logoPreview: {
+        width: '100%',
+        height: '100%',
+    },
+    removeLogoBtn: {
+        position: 'absolute',
+        top: 4,
+        right: 4,
+        width: 20,
+        height: 20,
+        borderRadius: 10,
+        backgroundColor: 'rgba(0,0,0,0.5)',
+        alignItems: 'center',
+        justifyContent: 'center',
     },
 });
