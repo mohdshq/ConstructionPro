@@ -68,7 +68,6 @@ export interface DailyReportData {
   preparedBy: string;
   reportDate: string;
   startDate: string;              // preloaded from project
-  completionDate: string;        // preloaded from project
   forecastCompletionDate: string;// editable per report
   employerLogo?: string;         // preloaded from project
   consultantLogo?: string;       // preloaded from project
@@ -76,16 +75,9 @@ export interface DailyReportData {
 
   // Weather
   climateConditions?: string;
-  climateTemp?: string;
-  climateHumidity?: string;
-  climateVisibility?: string;
-  climateWindSpeed?: string;
 
   // Section 1 — Manpower (unified)
   manpower: ManpowerRow[];
-
-  // Section 2 — Equipment
-  equipment: EquipmentRow[];
 
   // Section 3 — Activities
   activities: ActivityRow[];
@@ -93,20 +85,44 @@ export interface DailyReportData {
   // Section 4 — Materials
   materials: MaterialRow[];
 
-  // Section 5 — Concerns
-  areasOfConcern: ConcernRow[];
-
   // Section 6 — Site Instructions / Notes
   siteNotes?: string;
-
-  // Section 7 — Photos
-  photos?: { id: string; uri: string; caption?: string }[];
 
   // Section 8 — AI Summary
   aiSummary?: string;
 
-  // Cross-cutting: hidden sections
-  hiddenSections?: string[];   // e.g. ['materials','equipment'] — hidden in form + PDF
+  // Header / meta
+  logos?: string[];
+  commencementDate?: string;
+  completionDate?: string;
+  anticipatedCompletionDate?: string;
+
+  // Weather
+  climateHumidity?: string;
+  climateVisibility?: string;
+  climateTemp?: string;
+  climateWindSpeed?: string;
+
+  // Manpower summary (kept as strings to match form inputs)
+  manpowerMainContractor?: string;
+  manpowerSubcontractors?: string;
+  manpowerOthers?: string;
+  manpowerTotal?: string;
+
+  // Itemized arrays (current model — to be replaced in Phase B)
+  mainContractorStaff?: { id: string; description: string; count: string }[];
+  subcontractorStaff?: { id: string; name: string; count: string }[];
+  mainContractorLabor?: { id: string; trade: string; inHouse: string; supply: string; total: string }[];
+  subcontractorLabor?: { id: string; name: string; count: string }[];
+  nightShift?: { id: string; trade: string; count: string }[];
+  equipment?: { id: string; description: string; count: string }[];
+  activitiesProgress?: { id: string; activityName: string; uom: string; totalQty: string; prevQty: string; todayQty: string; balanceQty: string }[];
+  areasOfConcern?: { id: string; location: string; concern: string; action: string }[];
+
+  // Photos & section control
+  photos?: any[];
+  hiddenSections?: string[];
+  transcript?: string;
 }
 
 export const DAILY_SECTIONS = [
