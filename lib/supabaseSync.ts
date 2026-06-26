@@ -276,17 +276,25 @@ export async function uploadPhoto(
  */
 export async function getSignedUrl(
     bucket: 'report-photos' | 'drawings' | 'avatars',
-    path: string,
+    path: string | null | undefined,
     expiresIn: number = 3600
 ): Promise<string | null> {
+    if (!path || path.trim() === '') return null;
+
     const { data, error } = await supabase.storage
         .from(bucket)
         .createSignedUrl(path, expiresIn);
 
     if (error) {
+        const msg = error.message?.toLowerCase() ?? '';
+        if (msg.includes('not found')) {
+            if (__DEV__) console.debug('[getSignedUrl] missing object skipped:', bucket, path);
+            return null;
+        }
         console.error('Error getting signed URL:', error.message);
         return null;
     }
+
     return data.signedUrl;
 }
 
