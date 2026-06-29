@@ -16,12 +16,13 @@ import { useAuthStore } from '../../../../store/useAuthStore';
 import { uploadPhoto } from '../../../../lib/supabaseSync';
 import { supabase } from '../../../../lib/supabase';
 import { ActivityIndicator } from 'react-native';
+import ManpowerSection from './components/ManpowerSection';
 
 export default function CreateReportScreen() {
     const { colors } = useThemeColors();
     const { id, type, editId, duplicateId, initialData } = useLocalSearchParams<{ id: string, type: ReportType, editId?: string, duplicateId?: string, initialData?: string }>();
     const router = useRouter();
-    const { addReport, updateReport, getProject, getReportsForProject } = useProjectsStore();
+    const { addReport, updateReport, getProject, getReportsForProject, updateProject } = useProjectsStore();
     const { units } = useStore();
     const isMetric = units === 'metric';
     const project = getProject(id as string);
@@ -91,9 +92,10 @@ export default function CreateReportScreen() {
                 nightShift: any[];
                 activitiesProgress: any[];
                 areasOfConcern: any[];
+                manpower: any[];
             } = {
                 logos: [], mainContractorStaff: [], subcontractorStaff: [], equipment: [],
-                mainContractorLabor: [], subcontractorLabor: [], nightShift: [], activitiesProgress: [], areasOfConcern: []
+                mainContractorLabor: [], subcontractorLabor: [], nightShift: [], activitiesProgress: [], areasOfConcern: [], manpower: []
             };
 
             if (lastDaily && lastDaily.templateData) {
@@ -107,6 +109,7 @@ export default function CreateReportScreen() {
                     preload.subcontractorLabor = old.subcontractorLabor || [];
                     preload.nightShift = old.nightShift || [];
                     preload.areasOfConcern = old.areasOfConcern || [];
+                    preload.manpower = old.manpower || [];
 
                     if (old.activitiesProgress) {
                         preload.activitiesProgress = old.activitiesProgress.map((act: any) => {
@@ -235,67 +238,6 @@ export default function CreateReportScreen() {
         hasInitialized.current = true;
     }, [type, id, editId, duplicateId, existingReport]);
 
-    // Auto Calculate Main Contractor Manpower (Reactive to array changes, allowing manual override)
-    useEffect(() => {
-        if (type === 'daily' && formData.mainContractorStaff && formData.mainContractorLabor) {
-            const staffCount = formData.mainContractorStaff.reduce((acc: number, curr: any) => acc + (Number(curr.count) || 0), 0);
-            const laborCount = formData.mainContractorLabor.reduce((acc: number, curr: any) => acc + (Number(curr.total) || 0), 0);
-            const sum = staffCount + laborCount;
-            if (sum > 0) setFormData((prev: any) => ({ ...prev, manpowerMainContractor: sum.toString() }));
-        }
-    }, [JSON.stringify(formData.mainContractorStaff), JSON.stringify(formData.mainContractorLabor), type]);
-
-    // Auto Calculate Subcontractors Manpower
-    useEffect(() => {
-        if (type === 'daily' && formData.subcontractorStaff && formData.subcontractorLabor) {
-            const staffCount = formData.subcontractorStaff.reduce((acc: number, curr: any) => acc + (Number(curr.count) || 0), 0);
-            const laborCount = formData.subcontractorLabor.reduce((acc: number, curr: any) => acc + (Number(curr.count) || 0), 0);
-            const sum = staffCount + laborCount;
-            if (sum > 0) setFormData((prev: any) => ({ ...prev, manpowerSubcontractors: sum.toString() }));
-        }
-    }, [JSON.stringify(formData.subcontractorStaff), JSON.stringify(formData.subcontractorLabor), type]);
-
-    // Auto Calculate Others Manpower (Night Shift)
-    useEffect(() => {
-        if (type === 'daily' && formData.nightShift) {
-            const nightCount = formData.nightShift.reduce((acc: number, curr: any) => acc + (Number(curr.count) || 0), 0);
-            if (nightCount > 0) setFormData((prev: any) => ({ ...prev, manpowerOthers: nightCount.toString() }));
-        }
-    }, [JSON.stringify(formData.nightShift), type]);
-
-    // Auto-calculate Grand Total for Manpower
-    useEffect(() => {
-        if (type === 'daily' && formData) {
-            const g = Number(formData.manpowerMainContractor) || 0;
-            const f = Number(formData.manpowerSubcontractors) || 0;
-            const o = Number(formData.manpowerOthers) || 0;
-            const sum = g + f + o;
-
-            if (sum > 0 && formData.manpowerTotal !== sum.toString()) {
-                setFormData((prev: any) => ({ ...prev, manpowerTotal: sum.toString() }));
-            }
-        }
-    }, [formData.manpowerMainContractor, formData.manpowerSubcontractors, formData.manpowerOthers, type]);
-
-    // Auto-calculate Totals for Main Contractor Labor
-    useEffect(() => {
-        if (type === 'daily' && formData.mainContractorLabor) {
-            const updatedLabor = formData.mainContractorLabor.map((item: any) => {
-                const inHouse = Number(item.inHouse) || 0;
-                const supply = Number(item.supply) || 0;
-                const newTotal = (inHouse + supply).toString();
-                if (item.total !== newTotal) {
-                    return { ...item, total: newTotal };
-                }
-                return item;
-            });
-            // Only update if there are actual changes to avoid infinite loop
-            if (JSON.stringify(updatedLabor) !== JSON.stringify(formData.mainContractorLabor)) {
-                setFormData((prev: any) => ({ ...prev, mainContractorLabor: updatedLabor }));
-            }
-        }
-    }, [formData.mainContractorLabor, type]);
-
     if (!type || !id || !formData) return null;
 
     const pickImage = async () => {
@@ -368,14 +310,38 @@ export default function CreateReportScreen() {
                 console.log('[handleSave] report updated:', editId);
             } else {
                 await addReport({
-                    projectId: id,
-                    type: type,
+                    projectId: id as string,
+                    type: type as ReportType,
                     date: new Date().toISOString(),
                     author: author.trim(),
                     templateData: JSON.stringify(finalFormData),
                     status: 'draft'
                 });
                 console.log('[handleSave] report added successfully');
+            }
+
+            if (type === 'daily' && finalFormData.manpower && finalFormData.manpower.length > 0 && project) {
+                const uniqueCompanies = new Set<string>();
+                finalFormData.manpower.forEach((r: any) => {
+                    if (r.company && r.company.trim()) {
+                        uniqueCompanies.add(r.company.trim());
+                    }
+                });
+                
+                const currentKnown = new Set((project.knownCompanies || []).map(c => c.toLowerCase()));
+                const newKnown = [...(project.knownCompanies || [])];
+                
+                let updated = false;
+                uniqueCompanies.forEach(company => {
+                    if (!currentKnown.has(company.toLowerCase())) {
+                        newKnown.push(company);
+                        updated = true;
+                    }
+                });
+
+                if (updated) {
+                    await updateProject(project.id, { knownCompanies: newKnown });
+                }
             }
             
             // Haptic feedback on success
@@ -603,18 +569,16 @@ export default function CreateReportScreen() {
                 </Animated.View>
             )}
 
-            {/* 2. Manpower Summary */}
-            <AccordionHeader title="Manpower Summary" id="manpowerMeta" />
-            {activeSection === 'manpowerMeta' && (
-                <Animated.View entering={FadeIn} style={[styles.accordionContent, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                    <Text style={[styles.label, { color: colors.text }, { color: colors.text }]}>Main Contractor Manpower</Text>
-                    <TextInput placeholderTextColor={colors.text + '80'} style={[styles.input, { backgroundColor: colors.inputBackground, borderColor: colors.border, color: colors.text }, { backgroundColor: colors.inputBackground, borderColor: colors.border, color: colors.text }]} keyboardType="numeric" placeholder="e.g. 489" value={formData.manpowerMainContractor} onChangeText={t => setFormData({ ...formData, manpowerMainContractor: t })} />
-                    <Text style={[styles.label, { color: colors.text }, { marginTop: 12 }]}>Subcontractors Manpower</Text>
-                    <TextInput placeholderTextColor={colors.text + '80'} style={[styles.input, { backgroundColor: colors.inputBackground, borderColor: colors.border, color: colors.text }, { backgroundColor: colors.inputBackground, borderColor: colors.border, color: colors.text }]} keyboardType="numeric" placeholder="e.g. 175" value={formData.manpowerSubcontractors} onChangeText={t => setFormData({ ...formData, manpowerSubcontractors: t })} />
-                    <Text style={[styles.label, { color: colors.text }, { marginTop: 12 }]}>Others</Text>
-                    <TextInput placeholderTextColor={colors.text + '80'} style={[styles.input, { backgroundColor: colors.inputBackground, borderColor: colors.border, color: colors.text }, { backgroundColor: colors.inputBackground, borderColor: colors.border, color: colors.text }]} keyboardType="numeric" placeholder="e.g. 68" value={formData.manpowerOthers} onChangeText={t => setFormData({ ...formData, manpowerOthers: t })} />
-                    <Text style={[styles.label, { color: colors.text }, { marginTop: 12 }]}>Grand Total</Text>
-                    <TextInput placeholderTextColor={colors.text + '80'} style={[styles.input, { backgroundColor: colors.inputBackground, borderColor: colors.border, color: colors.text }, { backgroundColor: '#EFF6FF', borderColor: '#BFDBFE', fontWeight: 'bold' }]} keyboardType="numeric" placeholder="e.g. 732" value={formData.manpowerTotal} onChangeText={t => setFormData({ ...formData, manpowerTotal: t })} />
+            {/* 1. Manpower (Unified) */}
+            <AccordionHeader title="1. Manpower" id="manpower" allowHide={true} />
+            {activeSection === 'manpower' && (
+                <Animated.View entering={FadeIn} style={[styles.accordionContent, { backgroundColor: colors.card, borderColor: colors.border, padding: 0 }]}>
+                    <ManpowerSection
+                        rows={formData.manpower || []}
+                        onChange={(rows) => setFormData({ ...formData, manpower: rows })}
+                        knownCompanies={project?.knownCompanies || []}
+                        colors={colors}
+                    />
                 </Animated.View>
             )}
 
@@ -652,60 +616,7 @@ export default function CreateReportScreen() {
                 </Animated.View>
             )}
 
-            {/* 3. Main Contractor Staff Array */}
-            <AccordionHeader title="1. Main Contractor Staff" id="mcStaff" allowHide={true} />
-            {activeSection === 'mcStaff' && (
-                <Animated.View entering={FadeIn} style={[styles.accordionContent, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                    {formData.mainContractorStaff?.map((item: any, i: number) => (
-                        <View key={item.id ?? `row-${i}`} style={[styles.arrayItemCard, { backgroundColor: colors.inputBackground, borderColor: colors.border }]}>
-                            <View style={styles.arrayRow}>
-                                <TextInput placeholderTextColor={colors.text + '80'} style={[styles.input, { backgroundColor: colors.inputBackground, borderColor: colors.border, color: colors.text }, { flex: 3 }]} placeholder="Description / Role" value={item.description} onChangeText={t => {
-                                    const newArr = [...formData.mainContractorStaff]; newArr[i].description = t; setFormData({ ...formData, mainContractorStaff: newArr });
-                                }} />
-                                <TextInput placeholderTextColor={colors.text + '80'} style={[styles.input, { backgroundColor: colors.inputBackground, borderColor: colors.border, color: colors.text }, { flex: 1, marginLeft: 8 }]} placeholder="Nos" keyboardType="numeric" value={item.count} onChangeText={t => {
-                                    const newArr = [...formData.mainContractorStaff]; newArr[i].count = t; setFormData({ ...formData, mainContractorStaff: newArr });
-                                }} />
-                                <TouchableOpacity style={styles.deleteBtn} onPress={() => setFormData({ ...formData, mainContractorStaff: formData.mainContractorStaff.filter((_: any, idx: number) => idx !== i) })}>
-                                    <Trash2 size={18} color="#EF4444" />
-                                </TouchableOpacity>
-                            </View>
-                        </View>
-                    ))}
-                    <TouchableOpacity style={styles.addButton} onPress={() => setFormData({ ...formData, mainContractorStaff: [...(formData.mainContractorStaff || []), { id: Date.now().toString(), description: '', count: '' }] })}>
-                        <Plus size={16} color="#2563EB" style={{ marginRight: 6 }} />
-                        <Text style={styles.addBtnText}>Add Staff Member</Text>
-                    </TouchableOpacity>
-                </Animated.View>
-            )
-            }
 
-            {/* 5. Subcontractor's Staff Array */}
-            <AccordionHeader title="3. Subcontractor's Staff" id="subconStaff" allowHide={true} />
-            {
-                activeSection === 'subconStaff' && (
-                    <Animated.View entering={FadeIn} style={[styles.accordionContent, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                        {formData.subcontractorStaff?.map((item: any, i: number) => (
-                            <View key={item.id ?? `row-${i}`} style={[styles.arrayItemCard, { backgroundColor: colors.inputBackground, borderColor: colors.border }]}>
-                                <View style={styles.arrayRow}>
-                                    <TextInput placeholderTextColor={colors.text + '80'} style={[styles.input, { backgroundColor: colors.inputBackground, borderColor: colors.border, color: colors.text }, { flex: 3 }]} placeholder="Name" value={item.name} onChangeText={t => {
-                                        const newArr = [...formData.subcontractorStaff]; newArr[i].name = t; setFormData({ ...formData, subcontractorStaff: newArr });
-                                    }} />
-                                    <TextInput placeholderTextColor={colors.text + '80'} style={[styles.input, { backgroundColor: colors.inputBackground, borderColor: colors.border, color: colors.text }, { flex: 1, marginLeft: 8 }]} placeholder="Nos" keyboardType="numeric" value={item.count} onChangeText={t => {
-                                        const newArr = [...formData.subcontractorStaff]; newArr[i].count = t; setFormData({ ...formData, subcontractorStaff: newArr });
-                                    }} />
-                                    <TouchableOpacity style={styles.deleteBtn} onPress={() => setFormData({ ...formData, subcontractorStaff: formData.subcontractorStaff.filter((_: any, idx: number) => idx !== i) })}>
-                                        <Trash2 size={18} color="#EF4444" />
-                                    </TouchableOpacity>
-                                </View>
-                            </View>
-                        ))}
-                        <TouchableOpacity style={styles.addButton} onPress={() => setFormData({ ...formData, subcontractorStaff: [...(formData.subcontractorStaff || []), { id: Date.now().toString(), name: '', count: '' }] })}>
-                            <Plus size={16} color="#2563EB" style={{ marginRight: 6 }} />
-                            <Text style={styles.addBtnText}>Add Subcon Staff</Text>
-                        </TouchableOpacity>
-                    </Animated.View>
-                )
-            }
 
             {/* 6. Equipment Array */}
             <AccordionHeader title="4. Equipment & Vehicles" id="equip" allowHide={true} />
@@ -735,97 +646,7 @@ export default function CreateReportScreen() {
                 )
             }
 
-            {/* 7. Main Contractor Labor Array */}
-            <AccordionHeader title="5. Main Contractor Labor" id="labor" allowHide={true} />
-            {
-                activeSection === 'labor' && (
-                    <Animated.View entering={FadeIn} style={[styles.accordionContent, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                        {formData.mainContractorLabor?.map((item: any, i: number) => (
-                            <View key={item.id ?? `row-${i}`} style={[styles.arrayItemCard, { backgroundColor: colors.inputBackground, borderColor: colors.border }]}>
-                                <TextInput placeholderTextColor={colors.text + '80'} style={[styles.input, { backgroundColor: colors.inputBackground, borderColor: colors.border, color: colors.text }, { marginBottom: 8 }]} placeholder="Trade (e.g. Mason)" value={item.trade} onChangeText={t => {
-                                    const newArr = [...formData.mainContractorLabor]; newArr[i].trade = t; setFormData({ ...formData, mainContractorLabor: newArr });
-                                }} />
-                                <View style={styles.arrayRow}>
-                                    <TextInput placeholderTextColor={colors.text + '80'} style={[styles.input, { backgroundColor: colors.inputBackground, borderColor: colors.border, color: colors.text }, { flex: 1 }]} placeholder="In House" keyboardType="numeric" value={item.inHouse} onChangeText={t => {
-                                        const newArr = [...formData.mainContractorLabor]; newArr[i].inHouse = t;
-                                        newArr[i].total = ((Number(t) || 0) + (Number(newArr[i].supply) || 0)).toString();
-                                        setFormData({ ...formData, mainContractorLabor: newArr });
-                                    }} />
-                                    <TextInput placeholderTextColor={colors.text + '80'} style={[styles.input, { backgroundColor: colors.inputBackground, borderColor: colors.border, color: colors.text }, { flex: 1, marginLeft: 8 }]} placeholder="Supply" keyboardType="numeric" value={item.supply} onChangeText={t => {
-                                        const newArr = [...formData.mainContractorLabor]; newArr[i].supply = t;
-                                        newArr[i].total = ((Number(newArr[i].inHouse) || 0) + (Number(t) || 0)).toString();
-                                        setFormData({ ...formData, mainContractorLabor: newArr });
-                                    }} />
-                                    <TextInput placeholderTextColor={colors.text + '80'} style={[styles.input, { backgroundColor: colors.inputBackground, borderColor: colors.border, color: colors.text }, { flex: 1, marginLeft: 8, backgroundColor: '#EFF6FF', fontWeight: 'bold' as const }]} placeholder="Total" keyboardType="numeric" value={item.total} editable={false} />
-                                    <TouchableOpacity style={styles.deleteBtn} onPress={() => setFormData({ ...formData, mainContractorLabor: formData.mainContractorLabor.filter((_: any, idx: number) => idx !== i) })}>
-                                        <Trash2 size={18} color="#EF4444" />
-                                    </TouchableOpacity>
-                                </View>
-                            </View>
-                        ))}
-                        <TouchableOpacity style={styles.addButton} onPress={() => setFormData({ ...formData, mainContractorLabor: [...(formData.mainContractorLabor || []), { id: Date.now().toString(), trade: '', inHouse: '', supply: '', total: '' }] })}>
-                            <Plus size={16} color="#2563EB" style={{ marginRight: 6 }} />
-                            <Text style={styles.addBtnText}>Add Labor</Text>
-                        </TouchableOpacity>
-                    </Animated.View>
-                )
-            }
 
-            {/* 8. Subcontractor Labor Array */}
-            <AccordionHeader title="6. Subcontractor Labor" id="subconLabor" />
-            {
-                activeSection === 'subconLabor' && (
-                    <Animated.View entering={FadeIn} style={[styles.accordionContent, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                        {formData.subcontractorLabor?.map((item: any, i: number) => (
-                            <View key={item.id ?? `row-${i}`} style={[styles.arrayItemCard, { backgroundColor: colors.inputBackground, borderColor: colors.border }]}>
-                                <View style={styles.arrayRow}>
-                                    <TextInput placeholderTextColor={colors.text + '80'} style={[styles.input, { backgroundColor: colors.inputBackground, borderColor: colors.border, color: colors.text }, { flex: 3 }]} placeholder="Subcon Name" value={item.name} onChangeText={t => {
-                                        const newArr = [...formData.subcontractorLabor]; newArr[i].name = t; setFormData({ ...formData, subcontractorLabor: newArr });
-                                    }} />
-                                    <TextInput placeholderTextColor={colors.text + '80'} style={[styles.input, { backgroundColor: colors.inputBackground, borderColor: colors.border, color: colors.text }, { flex: 1, marginLeft: 8 }]} placeholder="Nos" keyboardType="numeric" value={item.count} onChangeText={t => {
-                                        const newArr = [...formData.subcontractorLabor]; newArr[i].count = t; setFormData({ ...formData, subcontractorLabor: newArr });
-                                    }} />
-                                    <TouchableOpacity style={styles.deleteBtn} onPress={() => setFormData({ ...formData, subcontractorLabor: formData.subcontractorLabor.filter((_: any, idx: number) => idx !== i) })}>
-                                        <Trash2 size={18} color="#EF4444" />
-                                    </TouchableOpacity>
-                                </View>
-                            </View>
-                        ))}
-                        <TouchableOpacity style={styles.addButton} onPress={() => setFormData({ ...formData, subcontractorLabor: [...(formData.subcontractorLabor || []), { id: Date.now().toString(), name: '', count: '' }] })}>
-                            <Plus size={16} color="#2563EB" style={{ marginRight: 6 }} />
-                            <Text style={styles.addBtnText}>Add Subcon Labor</Text>
-                        </TouchableOpacity>
-                    </Animated.View>
-                )
-            }
-
-            {/* 9. Night Shift Array */}
-            <AccordionHeader title="7. Night Shift Labor" id="nightShift" allowHide={true} />
-            {
-                activeSection === 'nightShift' && (
-                    <Animated.View entering={FadeIn} style={[styles.accordionContent, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                        {formData.nightShift?.map((item: any, i: number) => (
-                            <View key={item.id ?? `row-${i}`} style={[styles.arrayItemCard, { backgroundColor: colors.inputBackground, borderColor: colors.border }]}>
-                                <View style={styles.arrayRow}>
-                                    <TextInput placeholderTextColor={colors.text + '80'} style={[styles.input, { backgroundColor: colors.inputBackground, borderColor: colors.border, color: colors.text }, { flex: 3 }]} placeholder="Trade" value={item.trade} onChangeText={t => {
-                                        const newArr = [...formData.nightShift]; newArr[i].trade = t; setFormData({ ...formData, nightShift: newArr });
-                                    }} />
-                                    <TextInput placeholderTextColor={colors.text + '80'} style={[styles.input, { backgroundColor: colors.inputBackground, borderColor: colors.border, color: colors.text }, { flex: 1, marginLeft: 8 }]} placeholder="Nos" keyboardType="numeric" value={item.count} onChangeText={t => {
-                                        const newArr = [...formData.nightShift]; newArr[i].count = t; setFormData({ ...formData, nightShift: newArr });
-                                    }} />
-                                    <TouchableOpacity style={styles.deleteBtn} onPress={() => setFormData({ ...formData, nightShift: formData.nightShift.filter((_: any, idx: number) => idx !== i) })}>
-                                        <Trash2 size={18} color="#EF4444" />
-                                    </TouchableOpacity>
-                                </View>
-                            </View>
-                        ))}
-                        <TouchableOpacity style={styles.addButton} onPress={() => setFormData({ ...formData, nightShift: [...(formData.nightShift || []), { id: Date.now().toString(), trade: '', count: '' }] })}>
-                            <Plus size={16} color="#2563EB" style={{ marginRight: 6 }} />
-                            <Text style={styles.addBtnText}>Add Night Shift</Text>
-                        </TouchableOpacity>
-                    </Animated.View>
-                )
-            }
 
             {/* 10. On-going Activities Array */}
             <AccordionHeader title="8. On-Going Activities" id="activities" allowHide={true} />

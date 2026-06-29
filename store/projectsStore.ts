@@ -18,14 +18,22 @@ export type ReportType = 'daily' | 'snagging' | 'hse' | 'quick-log';
 export type ReportStatus = 'draft' | 'submitted' | 'approved';
 
 export interface ManpowerRow {
-  id: string;
-  category: 'main' | 'subcontractor' | 'other';  // main = main contractor, other = others/night
-  company: string;        // contractor/subcontractor company name
-  trade: string;          // trade or role, e.g. "Mason", "Site Engineer"
-  inHouse?: string;       // MAIN CONTRACTOR ONLY: in-house count (number as string)
-  supply?: string;        // MAIN CONTRACTOR ONLY: supplied count (number as string)
-  count: string;          // total count; for main rows = inHouse + supply (auto-computed); for others = entered directly
+    id: string;
+    company: string;          // "Main Contractor" or a subcontractor name
+    isMainContractor: boolean;
+    trade: string;            // from PRESET_TRADES or custom
+    shift: 'day' | 'night';
+    inHouse: number;          // used only when isMainContractor
+    supply: number;           // used only when isMainContractor
+    count: number;            // used when !isMainContractor; for main contractor = inHouse + supply
 }
+
+export const PRESET_TRADES = [
+    'Mason', 'Carpenter', 'Steel Fixer', 'Electrician', 'Plumber',
+    'HVAC Technician', 'Painter', 'Welder', 'Helper / Laborer',
+    'Foreman', 'Site Engineer', 'Safety Officer', 'Surveyor',
+    'Equipment Operator', 'Driver', 'Scaffolder', 'Tiler', 'Other',
+] as const;
 
 export interface EquipmentRow {
   id: string;
@@ -77,7 +85,7 @@ export interface DailyReportData {
   climateConditions?: string;
 
   // Section 1 — Manpower (unified)
-  manpower: ManpowerRow[];
+  manpower?: ManpowerRow[];
 
   // Section 3 — Activities
   activities: ActivityRow[];
@@ -283,6 +291,7 @@ export interface Project {
     employerLogo?: string;
     consultantLogo?: string;
     contractorLogos?: string[];
+    knownCompanies?: string[];
     createdAt: string;
     updatedAt: string;
     syncStatus?: 'synced' | 'pending';
@@ -385,6 +394,13 @@ function mapProjectRow(row: any): Project {
         contractorLogosParsed = [];
     }
 
+    let knownCompaniesParsed: string[] = [];
+    try {
+        knownCompaniesParsed = JSON.parse(row.known_companies || '[]');
+    } catch (e) {
+        knownCompaniesParsed = [];
+    }
+
     return {
         id: row.id,
         name: row.name,
@@ -401,6 +417,7 @@ function mapProjectRow(row: any): Project {
         employerLogo: row.employer_logo || undefined,
         consultantLogo: row.consultant_logo || undefined,
         contractorLogos: contractorLogosParsed,
+        knownCompanies: knownCompaniesParsed,
         createdAt: row.created_at || new Date().toISOString(),
         updatedAt: row.updated_at || new Date().toISOString(),
         syncStatus: 'synced',
@@ -552,20 +569,20 @@ export const useProjectsStore = create<ProjectsState>()(
                 // Write to PowerSync local SQLite; uploadData() pushes to Supabase.
                 try {
                     await powersync.execute(
-                        `INSERT INTO projects
-                          (id, user_id, name, location, client, description, contract_value,
-                           start_date, end_date, project_manager, reference_number, status,
-                           photo_url, employer_logo, consultant_logo, contractor_logos, created_at, updated_at)
-                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                        `INSERT OR REPLACE INTO projects (
+                            id, user_id, name, location, client, description, contract_value,
+                            start_date, end_date, project_manager, reference_number, status,
+                            photo_url, employer_logo, consultant_logo, contractor_logos, known_companies, created_at, updated_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                         [
-                            localId, userId, project.name,
-                            project.location || null, project.client || null,
+                            localId, userId, project.name, project.location || null, project.client || null,
                             project.description || null, project.contractValue || null,
                             project.startDate || null, project.endDate || null,
                             project.projectManager || null, project.referenceNumber || null,
                             project.status || 'active', project.photoUri || null,
                             project.employerLogo || null, project.consultantLogo || null,
                             project.contractorLogos ? JSON.stringify(project.contractorLogos) : null,
+                            project.knownCompanies ? JSON.stringify(project.knownCompanies) : null,
                             now, now,
                         ]
                     );
@@ -600,6 +617,7 @@ export const useProjectsStore = create<ProjectsState>()(
                     if (projectUpdates.employerLogo !== undefined) add('employer_logo', projectUpdates.employerLogo);
                     if (projectUpdates.consultantLogo !== undefined) add('consultant_logo', projectUpdates.consultantLogo);
                     if (projectUpdates.contractorLogos !== undefined) add('contractor_logos', projectUpdates.contractorLogos ? JSON.stringify(projectUpdates.contractorLogos) : null);
+                    if (projectUpdates.knownCompanies !== undefined) add('known_companies', projectUpdates.knownCompanies ? JSON.stringify(projectUpdates.knownCompanies) : null);
                     add('updated_at', now);
 
                     vals.push(id);
