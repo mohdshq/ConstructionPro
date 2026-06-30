@@ -19,6 +19,9 @@ export function usePowerSyncProjects() {
       status,
       photo_url AS photoUri,
       contractor_logos AS contractorLogos,
+      employer_logo AS employerLogo,
+      consultant_logo AS consultantLogo,
+      main_contractor_name AS mainContractorName,
       known_companies AS knownCompanies,
       created_at AS createdAt,
       updated_at AS updatedAt

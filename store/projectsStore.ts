@@ -21,12 +21,16 @@ export interface ManpowerRow {
     id: string;
     company: string;          // "Main Contractor" or a subcontractor name
     isMainContractor: boolean;
+    category: 'staff' | 'labor';
     trade: string;            // from PRESET_TRADES or custom
     shift: 'day' | 'night';
     inHouse: number;          // used only when isMainContractor
     supply: number;           // used only when isMainContractor
     count: number;            // used when !isMainContractor; for main contractor = inHouse + supply
 }
+
+export const PRESET_STAFF_ROLES = ['Project Manager','Construction Manager','Site Engineer','Foreman','Safety Officer','Surveyor','QA/QC Engineer','Document Controller','Other'] as const;
+export const PRESET_LABOR_TRADES = ['Mason','Carpenter','Steel Fixer','Electrician','Plumber','HVAC Technician','Painter','Welder','Helper / Laborer','Scaffolder','Tiler','Equipment Operator','Driver','Other'] as const;
 
 export const PRESET_TRADES = [
     'Mason', 'Carpenter', 'Steel Fixer', 'Electrician', 'Plumber',
@@ -291,6 +295,7 @@ export interface Project {
     employerLogo?: string;
     consultantLogo?: string;
     contractorLogos?: string[];
+    mainContractorName?: string;
     knownCompanies?: string[];
     createdAt: string;
     updatedAt: string;
@@ -417,6 +422,7 @@ function mapProjectRow(row: any): Project {
         employerLogo: row.employer_logo || undefined,
         consultantLogo: row.consultant_logo || undefined,
         contractorLogos: contractorLogosParsed,
+        mainContractorName: row.main_contractor_name || undefined,
         knownCompanies: knownCompaniesParsed,
         createdAt: row.created_at || new Date().toISOString(),
         updatedAt: row.updated_at || new Date().toISOString(),
@@ -572,8 +578,8 @@ export const useProjectsStore = create<ProjectsState>()(
                         `INSERT OR REPLACE INTO projects (
                             id, user_id, name, location, client, description, contract_value,
                             start_date, end_date, project_manager, reference_number, status,
-                            photo_url, employer_logo, consultant_logo, contractor_logos, known_companies, created_at, updated_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                            photo_url, employer_logo, consultant_logo, contractor_logos, main_contractor_name, known_companies, created_at, updated_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                         [
                             localId, userId, project.name, project.location || null, project.client || null,
                             project.description || null, project.contractValue || null,
@@ -582,6 +588,7 @@ export const useProjectsStore = create<ProjectsState>()(
                             project.status || 'active', project.photoUri || null,
                             project.employerLogo || null, project.consultantLogo || null,
                             project.contractorLogos ? JSON.stringify(project.contractorLogos) : null,
+                            project.mainContractorName || null,
                             project.knownCompanies ? JSON.stringify(project.knownCompanies) : null,
                             now, now,
                         ]
@@ -617,6 +624,7 @@ export const useProjectsStore = create<ProjectsState>()(
                     if (projectUpdates.employerLogo !== undefined) add('employer_logo', projectUpdates.employerLogo);
                     if (projectUpdates.consultantLogo !== undefined) add('consultant_logo', projectUpdates.consultantLogo);
                     if (projectUpdates.contractorLogos !== undefined) add('contractor_logos', projectUpdates.contractorLogos ? JSON.stringify(projectUpdates.contractorLogos) : null);
+                    if (projectUpdates.mainContractorName !== undefined) add('main_contractor_name', projectUpdates.mainContractorName || null);
                     if (projectUpdates.knownCompanies !== undefined) add('known_companies', projectUpdates.knownCompanies ? JSON.stringify(projectUpdates.knownCompanies) : null);
                     add('updated_at', now);
 

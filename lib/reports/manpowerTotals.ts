@@ -4,6 +4,7 @@ export interface CompanySummary { company: string; isMainContractor: boolean; in
 export interface TradeSummary { trade: string; count: number; }
 
 export function rowTotal(r: ManpowerRow): number {
+    if (r.category === 'staff') return Number(r.count) || 0;
     return r.isMainContractor ? (Number(r.inHouse) || 0) + (Number(r.supply) || 0) : (Number(r.count) || 0);
 }
 
@@ -19,7 +20,7 @@ export function summaryByCompany(rows: ManpowerRow[]): CompanySummary[] {
             map.set(key, { company: key, isMainContractor: r.isMainContractor, inHouse: 0, supply: 0, total: 0 });
         }
         const s = map.get(key)!;
-        if (r.isMainContractor) {
+        if (r.isMainContractor && r.category !== 'staff') {
             s.inHouse += (Number(r.inHouse) || 0);
             s.supply += (Number(r.supply) || 0);
         }

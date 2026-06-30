@@ -31,38 +31,37 @@ Second, extract the details into a structured JSON object.
 Schema:
 {
   "transcript": "verbatim transcription of what was said",
-  "manpowerMainContractor": "",
-  "manpowerSubcontractors": "",
-  "manpowerOthers": "",
-  "manpowerTotal": "",
+  "manpower": [
+    { 
+      "company": "Company Name", 
+      "isMainContractor": true, 
+      "category": "staff", 
+      "trade": "Role/Trade", 
+      "shift": "day", 
+      "inHouse": 0, 
+      "supply": 0, 
+      "count": 0 
+    }
+  ],
   "climateHumidity": "",
   "climateTemp": "",
   "climateVisibility": "",
   "climateWindSpeed": "",
-  "mainContractorStaff": [ { "description": "", "count": "" } ],
-  "subcontractorStaff":  [ { "name": "", "count": "" } ],
-  "equipment":           [ { "description": "", "count": "" } ],
-  "mainContractorLabor": [ { "trade": "", "inHouse": "", "supply": "" } ],
-  "subcontractorLabor":  [ { "name": "", "count": "" } ],
-  "nightShift":          [ { "trade": "", "count": "" } ],
   "activitiesProgress":  [ { "activityName": "", "uom": "", "totalQty": "", "prevQty": "", "todayQty": "" } ],
   "areasOfConcern":      [ { "location": "", "concern": "", "action": "" } ]
 }
-Numbers only, no labels. Every manpower/count/quantity/climate field must contain ONLY the digits. If the user says 'total manpower three hundred fifty six', output manpowerTotal: "356" — never "total manpower 356". Strip all words, labels, and units from numeric fields.
-Interpret natural speech and route information to the correct field even if the user doesn't name the field. 'We had 489 from the main contractor and 175 subs' → manpowerMainContractor: '489', manpowerSubcontractors: '175'. 'Leak in basement 2' → an areasOfConcern entry. The user will NOT speak field names; infer them.
-CRITICAL: 'Manpower' and 'Staff' are TWO SEPARATE, INDEPENDENT inputs. Never compute one from the other.
+Numbers only, no labels. Every count/quantity/climate field must contain ONLY the digits. Strip all words, labels, and units from numeric fields.
+Interpret natural speech and route information to the correct field even if the user doesn't name the field. 'Leak in basement 2' → an areasOfConcern entry. The user will NOT speak field names; infer them.
 
-MANPOWER fields (manpowerMainContractor, manpowerSubcontractors, manpowerOthers, manpowerTotal) hold BULK HEADCOUNT NUMBERS that the user states explicitly (e.g. 'main contractor manpower is 489', 'subcontractors 175'). Use ONLY the numbers the user actually says. NEVER calculate manpower by counting staff roles.
+CRITICAL MANPOWER RULES:
+1. One row per distinct (company, category, trade, shift) combination spoken.
+2. category: management/supervisory roles (Project Manager, Site Engineer, Foreman, Safety Officer, Surveyor, QA/QC, Document Controller, etc.) → "staff"; physical trades (Mason, Carpenter, Steel Fixer, Electrician, Plumber, Helper, etc.) → "labor".
+3. shift: default "day" unless night is explicitly mentioned.
+4. The main contractor: set isMainContractor: true. For its LABOR rows, split into inHouse/supply if the speaker distinguishes them (else put the whole number in inHouse, supply: 0). Staff rows ALWAYS use count only (inHouse/supply = 0), even for the main contractor.
+5. Subcontractor rows: use count only; inHouse/supply = 0, isMainContractor: false.
+6. Output STRICTLY numeric integers for all number fields — never labels or words.
+7. Only include manpower explicitly mentioned; do not invent rows.
 
-STAFF fields (mainContractorStaff, subcontractorStaff with {name/description, count}) hold NAMED ROLES/POSITIONS the user lists (e.g. 'project director, project manager, two site engineers'). Populate these ONLY from explicitly named roles.
-
-If the user gives manpower numbers but no roles → fill manpower, leave staff arrays [].
-
-If the user lists roles but no bulk manpower → fill staff arrays, leave manpower fields "" (empty). Do NOT count the roles and put that count in manpower.
-
-If the user gives BOTH → fill both independently from what was said.
-
-Same rule for mainContractorLabor / subcontractorLabor (trades) — these are independent of the manpower totals.
 When the user mentions any work activity, ALWAYS create an activitiesProgress entry. If they state a quantity and unit, put the number in todayQty (and totalQty if a total is given) and the unit in uom. Example: 'poured 40 cubic meters of concrete on level 6' → { "activityName": "Level 6 concrete pour", "uom": "m3", "todayQty": "40" }. Never drop spoken quantities.
 Only include mentioned items; unmentioned arrays return [], unmentioned scalars return "". Never invent.
 Strictly valid JSON only.`

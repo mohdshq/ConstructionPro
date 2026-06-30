@@ -15,7 +15,7 @@ import ProjectImage from '../../components/ProjectImage';
 export default function CreateProjectScreen() {
     const router = useRouter();
     const { id } = useLocalSearchParams<{ id: string }>();
-    const { addProject, updateProject, getProject } = useProjectsStore();
+    const { addProject, updateProject, getProject, projects } = useProjectsStore();
     const { colors } = useThemeColors();
 
     const [name, setName] = useState('');
@@ -26,6 +26,7 @@ export default function CreateProjectScreen() {
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
     const [projectManager, setProjectManager] = useState('');
+    const [mainContractorName, setMainContractorName] = useState('');
     const [referenceNumber, setReferenceNumber] = useState('');
     const [photoUri, setPhotoUri] = useState<string | null>(null);
     const [employerLogo, setEmployerLogo] = useState<string | null>(null);
@@ -47,6 +48,7 @@ export default function CreateProjectScreen() {
                 setStartDate(project.startDate || '');
                 setEndDate(project.endDate || '');
                 setProjectManager(project.projectManager || '');
+                setMainContractorName(project.mainContractorName || '');
                 setReferenceNumber(project.referenceNumber || '');
                 setPhotoUri(project.photoUri || null);
                 setEmployerLogo(project.employerLogo || null);
@@ -74,14 +76,31 @@ export default function CreateProjectScreen() {
             mediaTypes: ['images'],
             allowsEditing: true,
             aspect: [1, 1],
-            quality: 0.8,
+            quality: 0.6,
+            base64: true,
         });
-        if (!result.canceled) return result.assets[0].uri;
+        if (!result.canceled && result.assets[0].base64) {
+            const uri = `data:image/jpeg;base64,${result.assets[0].base64}`;
+            console.log('[logo pick] first 50 chars:', uri?.slice(0, 50), 'len:', uri?.length);
+            return uri;
+        }
+        console.log('[logo pick] returned null. Canceled:', result.canceled, 'base64 exists:', !result.canceled ? !!result.assets[0].base64 : false);
         return null;
     };
 
     const handleCreate = async () => {
-        if (!name.trim()) return;
+        const trimmedName = name.trim();
+        if (!trimmedName) return;
+
+        const isDuplicate = projects.some(p => 
+            p.id !== id && p.name.toLowerCase() === trimmedName.toLowerCase()
+        );
+
+        if (isDuplicate) {
+            Alert.alert("Duplicate Project", `A project named '${trimmedName}' already exists. Choose a different name.`);
+            return;
+        }
+
         setIsSubmitting(true);
 
         const uploadIfNeeded = async (uri: string | null, prefix: string) => {
@@ -98,19 +117,14 @@ export default function CreateProjectScreen() {
         };
 
         let finalPhotoUri = photoUri;
+        // Project logos are stored as raw base64 data URIs so they render in offline PDFs
         let finalEmployerLogo = employerLogo;
         let finalConsultantLogo = consultantLogo;
-        let finalContractorLogos: string[] = [];
+        let finalContractorLogos = [...contractorLogos];
 
         try {
             finalPhotoUri = await uploadIfNeeded(photoUri, 'project_cover');
-            finalEmployerLogo = await uploadIfNeeded(employerLogo, 'logo_employer');
-            finalConsultantLogo = await uploadIfNeeded(consultantLogo, 'logo_consultant');
-            
-            for (let i = 0; i < contractorLogos.length; i++) {
-                const url = await uploadIfNeeded(contractorLogos[i], `logo_contractor_${i}`);
-                if (url) finalContractorLogos.push(url);
-            }
+            // We NO LONGER upload logos to Storage because PDF generator requires them to be base64.
         } catch (e: any) {
             Alert.alert('Upload Failed', e.message);
             setIsSubmitting(false);
@@ -118,7 +132,7 @@ export default function CreateProjectScreen() {
         }
 
         const projectData = {
-            name: name.trim(),
+            name: trimmedName,
             location: location.trim(),
             client: client.trim(),
             description: description.trim() || undefined,
@@ -126,6 +140,7 @@ export default function CreateProjectScreen() {
             startDate: startDate.trim() || undefined,
             endDate: endDate.trim() || undefined,
             projectManager: projectManager.trim() || undefined,
+            mainContractorName: mainContractorName.trim() || undefined,
             referenceNumber: referenceNumber.trim() || undefined,
             photoUri: finalPhotoUri || undefined,
             employerLogo: finalEmployerLogo || undefined,
@@ -307,6 +322,21 @@ export default function CreateProjectScreen() {
                                 placeholderTextColor={colors.textMuted}
                                 value={projectManager}
                                 onChangeText={setProjectManager}
+                                autoCapitalize="words"
+                            />
+                        </View>
+                    </View>
+
+                    <View style={styles.formGroup}>
+                        <Text style={[styles.label, { color: colors.text }]}>Main Contractor Name</Text>
+                        <View style={[styles.inputContainer, { backgroundColor: colors.inputBackground, borderColor: colors.border }]}>
+                            <Building2 size={20} color={colors.textMuted} style={styles.inputIcon} />
+                            <TextInput
+                                style={[styles.input, { color: colors.text }]}
+                                placeholder="e.g. Acme Construction Co."
+                                placeholderTextColor={colors.textMuted}
+                                value={mainContractorName}
+                                onChangeText={setMainContractorName}
                                 autoCapitalize="words"
                             />
                         </View>

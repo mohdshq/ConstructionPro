@@ -82,6 +82,14 @@ export default function CreateReportScreen() {
             const existingReports = getReportsForProject(id);
             const lastDaily = existingReports.find(r => r.type === 'daily');
 
+            const projectLogos = [
+                project?.employerLogo,
+                project?.consultantLogo,
+                ...(project?.contractorLogos || [])
+            ].filter(Boolean) as string[];
+
+            console.log('[report prefill] logos:', (projectLogos||[]).map(l => (l||'').slice(0,30)));
+
             let preload: {
                 logos: string[];
                 mainContractorStaff: any[];
@@ -93,15 +101,18 @@ export default function CreateReportScreen() {
                 activitiesProgress: any[];
                 areasOfConcern: any[];
                 manpower: any[];
+                hiddenSections: string[];
             } = {
-                logos: [], mainContractorStaff: [], subcontractorStaff: [], equipment: [],
-                mainContractorLabor: [], subcontractorLabor: [], nightShift: [], activitiesProgress: [], areasOfConcern: [], manpower: []
+                logos: projectLogos.length > 0 ? projectLogos : [], mainContractorStaff: [], subcontractorStaff: [], equipment: [],
+                mainContractorLabor: [], subcontractorLabor: [], nightShift: [], activitiesProgress: [], areasOfConcern: [], manpower: [], hiddenSections: []
             };
 
             if (lastDaily && lastDaily.templateData) {
                 try {
                     const old = JSON.parse(lastDaily.templateData) as DailyReportData;
-                    preload.logos = old.logos || [];
+                    if (projectLogos.length === 0) {
+                        preload.logos = old.logos || [];
+                    }
                     preload.mainContractorStaff = old.mainContractorStaff || [];
                     preload.subcontractorStaff = old.subcontractorStaff || [];
                     preload.equipment = old.equipment || [];
@@ -110,6 +121,7 @@ export default function CreateReportScreen() {
                     preload.nightShift = old.nightShift || [];
                     preload.areasOfConcern = old.areasOfConcern || [];
                     preload.manpower = old.manpower || [];
+                    preload.hiddenSections = old.hiddenSections || [];
 
                     if (old.activitiesProgress) {
                         preload.activitiesProgress = old.activitiesProgress.map((act: any) => {
@@ -130,6 +142,20 @@ export default function CreateReportScreen() {
                 } catch (e) { }
             }
 
+            if (!editId && !duplicateId && preload.manpower.length === 0 && project?.mainContractorName) {
+                preload.manpower = [{
+                    id: Date.now().toString() + Math.random().toString(),
+                    company: project.mainContractorName,
+                    isMainContractor: true,
+                    category: 'staff',
+                    trade: '',
+                    shift: 'day',
+                    inHouse: 0,
+                    supply: 0,
+                    count: 0
+                }];
+            }
+
             setFormData({
                 // Meta pre-filled from project
                 commencementDate: project?.startDate || '',
@@ -137,6 +163,7 @@ export default function CreateReportScreen() {
                 anticipatedCompletionDate: '',
                 climateHumidity: '', climateVisibility: '', climateTemp: '', climateWindSpeed: '',
                 manpowerMainContractor: '', manpowerSubcontractors: '', manpowerOthers: '', manpowerTotal: '',
+                aiSummary: '',
 
                 // Arrays
                 ...preload,
@@ -455,6 +482,27 @@ export default function CreateReportScreen() {
 
     const renderDailyFields = () => (
         <>
+            {/* 0. AI Executive Summary */}
+            <AccordionHeader title="AI Executive Summary" id="aiSummary" allowHide={true} />
+            {activeSection === 'aiSummary' && (
+                <Animated.View entering={FadeIn} style={[styles.accordionContent, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                    <Text style={[styles.label, { color: colors.text }]}>Executive Summary</Text>
+                    <TextInput 
+                        placeholderTextColor={colors.text + '80'} 
+                        style={[styles.input, { backgroundColor: colors.inputBackground, borderColor: colors.border, color: colors.text }, styles.textArea, { height: 120, marginBottom: 12 }]} 
+                        multiline 
+                        placeholder="AI generated summary will appear here. You can freely edit this text." 
+                        value={formData.aiSummary} 
+                        onChangeText={t => setFormData({ ...formData, aiSummary: t })} 
+                    />
+                    <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 12 }}>
+                        <TouchableOpacity style={[styles.pill, { backgroundColor: '#FEE2E2', borderColor: '#EF4444' }]} onPress={() => setFormData({ ...formData, aiSummary: '' })}>
+                            <Text style={[styles.pillText, { color: '#DC2626' }]}>Clear</Text>
+                        </TouchableOpacity>
+                    </View>
+                </Animated.View>
+            )}
+
             {/* 1. Meta Dates & Weather */}
             <AccordionHeader title="General Data & Weather" id="generalDaily" />
             {activeSection === 'generalDaily' && (
@@ -578,6 +626,8 @@ export default function CreateReportScreen() {
                         onChange={(rows) => setFormData({ ...formData, manpower: rows })}
                         knownCompanies={project?.knownCompanies || []}
                         colors={colors}
+                        hiddenSections={formData.hiddenSections || []}
+                        onHiddenSectionsChange={(hidden) => setFormData({ ...formData, hiddenSections: hidden })}
                     />
                 </Animated.View>
             )}

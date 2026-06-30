@@ -468,8 +468,9 @@ export default function ReportViewerScreen() {
             if (error) throw error;
             if (resData?.error) throw new Error(resData.error);
             
-            Alert.alert("Executive Summary", resData.summary);
+            // Optional Toast or non-blocking feedback could go here, but Alert is removed
             
+
             // Save to state and store
             const newData = { ...data, aiSummary: resData.summary };
             setData(newData);
