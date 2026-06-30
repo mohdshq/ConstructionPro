@@ -1,15 +1,16 @@
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, SafeAreaView, Platform, Alert, RefreshControl } from 'react-native';
-import { ArrowLeft, MapPin, Calendar, Clock, FileText, CheckSquare, ShieldAlert, Plus, FolderOpen, DollarSign, Briefcase, Pencil, Trash2, Zap, Users, Activity, Calculator } from "lucide-react-native";
+import { ArrowLeft, MapPin, Calendar, Clock, FileText, CheckSquare, ShieldAlert, Plus, FolderOpen, DollarSign, Briefcase, Pencil, Trash2, Zap, Users, Activity, Calculator, Eye, EyeOff } from "lucide-react-native";
 import BackButton from "../../components/BackButton";
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { Image } from 'react-native';
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import Animated, { FadeInDown, FadeIn } from 'react-native-reanimated';
 import { useProjectsStore, Project, Report } from '../../store/projectsStore';
 import { usePowerSyncReports } from '../../lib/powersync/useReports';
 import { useThemeColors } from '../../store/useThemeColors';
 import { useStore } from '../../store/useStore';
 import ProjectImage from '../../components/ProjectImage';
+import { Swipeable } from 'react-native-gesture-handler';
 
 const REPORT_CATEGORIES = [
     { id: 'daily', title: 'Daily Reports', desc: 'Progress, Weather & Workforce', icon: <FileText size={28} color="#2563EB" />, bg: '#EFF6FF', route: 'daily' },
@@ -18,10 +19,132 @@ const REPORT_CATEGORIES = [
     { id: 'quick-log', title: 'Quick Logs', desc: 'Notes, Voice & Photos', icon: <Zap size={28} color="#10B981" />, bg: '#D1FAE5', route: 'quick-log' },
 ];
 
+interface ReportCardItemProps {
+    item: Report;
+    index: number;
+    project: Project;
+    colors: any;
+    updateReport: (id: string, updates: any) => Promise<void>;
+    checkReportLimit: () => boolean;
+    handleDeleteReport: (id: string) => void;
+    router: any;
+}
+
+const ReportCardItem = ({ item, index, project, colors, updateReport, checkReportLimit, handleDeleteReport, router }: ReportCardItemProps) => {
+    const cat = REPORT_CATEGORIES.find(c => c.id === item.type);
+    const swipeableRef = useRef<Swipeable>(null);
+    if (!cat) return null;
+
+    const isDaily = item.type === 'daily';
+    
+    let hiddenSections: string[] = [];
+    if (isDaily && item.templateData) {
+        try {
+            const data = JSON.parse(item.templateData);
+            hiddenSections = data.hiddenSections || [];
+        } catch (e) {}
+    }
+
+    const toggleReportVisibility = async (key: string) => {
+        try {
+            const data = item.templateData ? JSON.parse(item.templateData) : {};
+            const hidden = data.hiddenSections || [];
+            let newHidden;
+            if (hidden.includes(key)) {
+                newHidden = hidden.filter((k: string) => k !== key);
+            } else {
+                newHidden = [...hidden, key];
+            }
+            const newData = { ...data, hiddenSections: newHidden };
+            await updateReport(item.id, { templateData: JSON.stringify(newData) });
+            swipeableRef.current?.close();
+        } catch (e) {
+            console.error('Failed to toggle visibility', e);
+        }
+    };
+
+    const renderRightActions = () => {
+        if (!isDaily) return null;
+        return (
+            <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.background, paddingRight: 10, paddingLeft: 10 }}>
+                <TouchableOpacity onPress={() => toggleReportVisibility('manpowerDetail')} style={{ padding: 10, alignItems: 'center' }}>
+                    {hiddenSections.includes('manpowerDetail') ? <EyeOff size={20} color={colors.textMuted} /> : <Eye size={20} color="#3B82F6" />}
+                    <Text style={{ fontSize: 10, color: colors.textMuted, marginTop: 4 }}>Detail</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => toggleReportVisibility('manpowerByCompany')} style={{ padding: 10, alignItems: 'center' }}>
+                    {hiddenSections.includes('manpowerByCompany') ? <EyeOff size={20} color={colors.textMuted} /> : <Eye size={20} color="#3B82F6" />}
+                    <Text style={{ fontSize: 10, color: colors.textMuted, marginTop: 4 }}>Company</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => toggleReportVisibility('manpowerByTrade')} style={{ padding: 10, alignItems: 'center' }}>
+                    {hiddenSections.includes('manpowerByTrade') ? <EyeOff size={20} color={colors.textMuted} /> : <Eye size={20} color="#3B82F6" />}
+                    <Text style={{ fontSize: 10, color: colors.textMuted, marginTop: 4 }}>Trade</Text>
+                </TouchableOpacity>
+            </View>
+        );
+    };
+
+    const cardContent = (
+        <TouchableOpacity
+            style={[styles.recentReportCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+            onPress={() => router.push(`/project/${item.projectId}/report/${item.id}` as any)}
+        >
+            <View style={[styles.recentReportIcon, { backgroundColor: cat.bg }]}>
+                {cat.icon}
+            </View>
+            <View style={styles.recentReportContent}>
+                <Text style={[styles.recentReportTitle, { color: colors.text }]}>{cat.title}</Text>
+                <Text style={[styles.recentReportDate, { color: colors.textMuted }]}>
+                    {new Date(item.date).toLocaleDateString()} - {item.author}
+                </Text>
+            </View>
+            <View style={styles.recentReportStatus}>
+                <Text style={[styles.recentReportStatusText, { color: item.status === 'approved' ? '#22C55E' : colors.textMuted }]}>
+                    {item.status.toUpperCase()}
+                </Text>
+            </View>
+            <TouchableOpacity
+                style={[styles.actionIconSm, { backgroundColor: colors.background }]}
+                onPress={(e) => { 
+                    e.stopPropagation(); 
+                    if (checkReportLimit()) {
+                        router.push(`/project/${project.id}/report/create?type=${item.type}&duplicateId=${item.id}` as any); 
+                    }
+                }}
+            >
+                <Plus size={16} color="#2563EB" />
+            </TouchableOpacity>
+            <TouchableOpacity
+                style={[styles.actionIconSm, { backgroundColor: colors.background }]}
+                onPress={(e) => { e.stopPropagation(); router.push(`/project/${project.id}/report/create?type=${item.type}&editId=${item.id}` as any); }}
+            >
+                <Pencil size={16} color={colors.textMuted} />
+            </TouchableOpacity>
+            <TouchableOpacity
+                style={styles.deleteReportIcon}
+                onPress={(e) => { e.stopPropagation(); handleDeleteReport(item.id); }}
+            >
+                <Trash2 size={16} color="#EF4444" />
+            </TouchableOpacity>
+        </TouchableOpacity>
+    );
+
+    return (
+        <Animated.View entering={FadeInDown.delay(index * 100).springify()}>
+            {isDaily ? (
+                <Swipeable ref={swipeableRef} renderRightActions={renderRightActions}>
+                    {cardContent}
+                </Swipeable>
+            ) : (
+                cardContent
+            )}
+        </Animated.View>
+    );
+};
+
 export default function ProjectDashboardScreen() {
     const { id } = useLocalSearchParams<{ id: string }>();
     const router = useRouter();
-    const { getProject, deleteProject, getReportsForProject, deleteReport, initialSync } = useProjectsStore();
+    const { getProject, deleteProject, getReportsForProject, deleteReport, updateReport, initialSync } = useProjectsStore();
     const { colors } = useThemeColors();
 
     // Make reports reactive to instantly show newly created ones
@@ -136,58 +259,6 @@ export default function ProjectDashboardScreen() {
             case 'planning': return '#EDE9FE';
             default: return '#F1F5F9';
         }
-    };
-
-    const renderReportCard = ({ item, index }: { item: Report, index: number }) => {
-        const cat = REPORT_CATEGORIES.find(c => c.id === item.type);
-        if (!cat) return null;
-
-        return (
-            <Animated.View entering={FadeInDown.delay(index * 100).springify()} key={item.id}>
-                <TouchableOpacity
-                    style={[styles.recentReportCard, { backgroundColor: colors.card, borderColor: colors.border }]}
-                    onPress={() => router.push(`/project/${item.projectId}/report/${item.id}` as any)}
-                >
-                    <View style={[styles.recentReportIcon, { backgroundColor: cat.bg }]}>
-                        {cat.icon}
-                    </View>
-                    <View style={styles.recentReportContent}>
-                        <Text style={[styles.recentReportTitle, { color: colors.text }]}>{cat.title}</Text>
-                        <Text style={[styles.recentReportDate, { color: colors.textMuted }]}>
-                            {new Date(item.date).toLocaleDateString()} - {item.author}
-                        </Text>
-                    </View>
-                    <View style={styles.recentReportStatus}>
-                        <Text style={[styles.recentReportStatusText, { color: item.status === 'approved' ? '#22C55E' : colors.textMuted }]}>
-                            {item.status.toUpperCase()}
-                        </Text>
-                    </View>
-                    <TouchableOpacity
-                        style={[styles.actionIconSm, { backgroundColor: colors.background }]}
-                        onPress={(e) => { 
-                            e.stopPropagation(); 
-                            if (checkReportLimit()) {
-                                router.push(`/project/${project.id}/report/create?type=${item.type}&duplicateId=${item.id}` as any); 
-                            }
-                        }}
-                    >
-                        <Plus size={16} color="#2563EB" />
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                        style={[styles.actionIconSm, { backgroundColor: colors.background }]}
-                        onPress={(e) => { e.stopPropagation(); router.push(`/project/${project.id}/report/create?type=${item.type}&editId=${item.id}` as any); }}
-                    >
-                        <Pencil size={16} color={colors.textMuted} />
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                        style={styles.deleteReportIcon}
-                        onPress={(e) => { e.stopPropagation(); handleDeleteReport(item.id); }}
-                    >
-                        <Trash2 size={16} color="#EF4444" />
-                    </TouchableOpacity>
-                </TouchableOpacity>
-            </Animated.View>
-        );
     };
 
     return (
@@ -390,7 +461,21 @@ export default function ProjectDashboardScreen() {
                     </View>
                 ) : (
                     <View style={styles.recentReportsList}>
-                        {reports.map((report, idx) => renderReportCard({ item: report, index: idx }))}
+                        {[...reports].sort(
+                            (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+                        ).map((report, idx) => (
+                            <ReportCardItem 
+                                key={report.id} 
+                                item={report} 
+                                index={idx} 
+                                project={project} 
+                                colors={colors} 
+                                updateReport={updateReport} 
+                                checkReportLimit={checkReportLimit} 
+                                handleDeleteReport={handleDeleteReport} 
+                                router={router} 
+                            />
+                        ))}
                     </View>
                 )}
 

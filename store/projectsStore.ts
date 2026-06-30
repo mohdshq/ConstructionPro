@@ -17,54 +17,137 @@ export type ProjectStatus = 'planning' | 'active' | 'completed' | 'on-hold';
 export type ReportType = 'daily' | 'snagging' | 'hse' | 'quick-log';
 export type ReportStatus = 'draft' | 'submitted' | 'approved';
 
-export interface DailyReportData {
-    // Top Info Bar
-    commencementDate?: string;
-    completionDate?: string;
-    anticipatedCompletionDate?: string;
-
-    manpowerMainContractor?: string;
-    manpowerSubcontractors?: string;
-    manpowerOthers?: string;
-    manpowerTotal?: string;
-
-    climateHumidity?: string;
-    climateVisibility?: string;
-    climateTemp?: string;
-    climateWindSpeed?: string;
-
-    // Logos (Array of local image URIs)
-    logos?: string[];
-
-    // 1. MAIN CONTRACTOR STAFF
-    mainContractorStaff?: { id: string; description: string; count: string }[];
-
-    // 2. SUBCONTRACTOR'S STAFF
-    subcontractorStaff?: { id: string; name: string; count: string }[];
-
-    // 3. EQUIPMENT
-    equipment?: { id: string; description: string; count: string }[];
-
-    // 4. MAIN CONTRACTOR LABOR
-    mainContractorLabor?: { id: string; trade: string; inHouse: string; supply: string; total: string }[];
-
-    // 5. SUBCONTRACTOR LABOR
-    subcontractorLabor?: { id: string; name: string; count: string }[];
-
-    // 6. Night Shift
-    nightShift?: { id: string; trade: string; count: string }[];
-
-    // 7. On-Going Activities
-    activitiesProgress?: { id: string; activityName: string; uom: string; totalQty: string; prevQty: string; todayQty: string; balanceQty: string }[];
-
-    // 8. Areas of Concern
-    areasOfConcern?: { id: string; location: string; concern: string; action: string }[];
-
-    // Original fallbacks
-    activities?: string;
-    delays?: string;
-    photos?: string[];
+export interface ManpowerRow {
+    id: string;
+    company: string;          // "Main Contractor" or a subcontractor name
+    isMainContractor: boolean;
+    category: 'staff' | 'labor';
+    trade: string;            // from PRESET_TRADES or custom
+    shift: 'day' | 'night';
+    inHouse: number;          // used only when isMainContractor
+    supply: number;           // used only when isMainContractor
+    count: number;            // used when !isMainContractor; for main contractor = inHouse + supply
 }
+
+export const PRESET_STAFF_ROLES = ['Project Manager','Construction Manager','Site Engineer','Foreman','Safety Officer','Surveyor','QA/QC Engineer','Document Controller','Other'] as const;
+export const PRESET_LABOR_TRADES = ['Mason','Carpenter','Steel Fixer','Electrician','Plumber','HVAC Technician','Painter','Welder','Helper / Laborer','Scaffolder','Tiler','Equipment Operator','Driver','Other'] as const;
+
+export const PRESET_TRADES = [
+    'Mason', 'Carpenter', 'Steel Fixer', 'Electrician', 'Plumber',
+    'HVAC Technician', 'Painter', 'Welder', 'Helper / Laborer',
+    'Foreman', 'Site Engineer', 'Safety Officer', 'Surveyor',
+    'Equipment Operator', 'Driver', 'Scaffolder', 'Tiler', 'Other',
+] as const;
+
+export interface EquipmentRow {
+  id: string;
+  description: string;    // equipment / vehicle name
+  count: string;
+  status?: 'working' | 'idle';
+}
+
+export interface ActivityRow {
+  id: string;
+  activityName: string;
+  location: string;
+  uom: string;            // unit of measure
+  totalQty: string;
+  prevQty: string;
+  todayQty: string;
+  balanceQty: string;     // auto: totalQty - (prevQty + todayQty)
+  percentComplete: string;// auto: (prevQty + todayQty) / totalQty * 100
+}
+
+export interface MaterialRow {
+  id: string;
+  material: string;
+  quantity: string;
+  supplier: string;
+}
+
+export interface ConcernRow {
+  id: string;
+  location: string;
+  concern: string;
+  action: string;
+  severity?: 'Low' | 'Moderate' | 'High';
+}
+
+export interface DailyReportData {
+  // Section 0 — Header / Meta (project-fixed fields preloaded, but stored on report for snapshot)
+  projectName: string;
+  reportNumber: string;
+  preparedBy: string;
+  reportDate: string;
+  startDate: string;              // preloaded from project
+  forecastCompletionDate: string;// editable per report
+  employerLogo?: string;         // preloaded from project
+  consultantLogo?: string;       // preloaded from project
+  contractorLogos?: string[];    // preloaded from project
+
+  // Weather
+  climateConditions?: string;
+
+  // Section 1 — Manpower (unified)
+  manpower?: ManpowerRow[];
+
+  // Section 3 — Activities
+  activities: ActivityRow[];
+
+  // Section 4 — Materials
+  materials: MaterialRow[];
+
+  // Section 6 — Site Instructions / Notes
+  siteNotes?: string;
+
+  // Section 8 — AI Summary
+  aiSummary?: string;
+
+  // Header / meta
+  logos?: string[];
+  commencementDate?: string;
+  completionDate?: string;
+  anticipatedCompletionDate?: string;
+
+  // Weather
+  climateHumidity?: string;
+  climateVisibility?: string;
+  climateTemp?: string;
+  climateWindSpeed?: string;
+
+  // Manpower summary (kept as strings to match form inputs)
+  manpowerMainContractor?: string;
+  manpowerSubcontractors?: string;
+  manpowerOthers?: string;
+  manpowerTotal?: string;
+
+  // Itemized arrays (current model — to be replaced in Phase B)
+  mainContractorStaff?: { id: string; description: string; count: string }[];
+  subcontractorStaff?: { id: string; name: string; count: string }[];
+  mainContractorLabor?: { id: string; trade: string; inHouse: string; supply: string; total: string }[];
+  subcontractorLabor?: { id: string; name: string; count: string }[];
+  nightShift?: { id: string; trade: string; count: string }[];
+  equipment?: { id: string; description: string; count: string }[];
+  activitiesProgress?: { id: string; activityName: string; uom: string; totalQty: string; prevQty: string; todayQty: string; balanceQty: string }[];
+  areasOfConcern?: { id: string; location: string; concern: string; action: string }[];
+
+  // Photos & section control
+  photos?: any[];
+  hiddenSections?: string[];
+  transcript?: string;
+}
+
+export const DAILY_SECTIONS = [
+  { key: 'header', label: 'Header & Weather' },
+  { key: 'manpower', label: 'Manpower' },
+  { key: 'equipment', label: 'Equipment & Plant' },
+  { key: 'activities', label: 'Work Activities' },
+  { key: 'materials', label: 'Materials Received' },
+  { key: 'concerns', label: 'Areas of Concern' },
+  { key: 'notes', label: 'Site Instructions / Notes' },
+  { key: 'photos', label: 'Photos' },
+  { key: 'summary', label: 'AI Executive Summary' },
+] as const;
 
 export interface HSEChecklistItem {
     id: string;
@@ -209,6 +292,11 @@ export interface Project {
     referenceNumber?: string;
     status: ProjectStatus;
     photoUri?: string;
+    employerLogo?: string;
+    consultantLogo?: string;
+    contractorLogos?: string[];
+    mainContractorName?: string;
+    knownCompanies?: string[];
     createdAt: string;
     updatedAt: string;
     syncStatus?: 'synced' | 'pending';
@@ -304,6 +392,20 @@ function getCurrentUserId(): string | null {
 
 // Helper: Convert Supabase snake_case row to camelCase Project
 function mapProjectRow(row: any): Project {
+    let contractorLogosParsed = [];
+    try {
+        contractorLogosParsed = row.contractor_logos ? JSON.parse(row.contractor_logos) : [];
+    } catch (e) {
+        contractorLogosParsed = [];
+    }
+
+    let knownCompaniesParsed: string[] = [];
+    try {
+        knownCompaniesParsed = JSON.parse(row.known_companies || '[]');
+    } catch (e) {
+        knownCompaniesParsed = [];
+    }
+
     return {
         id: row.id,
         name: row.name,
@@ -317,6 +419,11 @@ function mapProjectRow(row: any): Project {
         referenceNumber: row.reference_number || undefined,
         status: row.status || 'active',
         photoUri: row.photo_url || undefined,
+        employerLogo: row.employer_logo || undefined,
+        consultantLogo: row.consultant_logo || undefined,
+        contractorLogos: contractorLogosParsed,
+        mainContractorName: row.main_contractor_name || undefined,
+        knownCompanies: knownCompaniesParsed,
         createdAt: row.created_at || new Date().toISOString(),
         updatedAt: row.updated_at || new Date().toISOString(),
         syncStatus: 'synced',
@@ -468,18 +575,21 @@ export const useProjectsStore = create<ProjectsState>()(
                 // Write to PowerSync local SQLite; uploadData() pushes to Supabase.
                 try {
                     await powersync.execute(
-                        `INSERT INTO projects
-                          (id, user_id, name, location, client, description, contract_value,
-                           start_date, end_date, project_manager, reference_number, status,
-                           photo_url, created_at, updated_at)
-                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                        `INSERT OR REPLACE INTO projects (
+                            id, user_id, name, location, client, description, contract_value,
+                            start_date, end_date, project_manager, reference_number, status,
+                            photo_url, employer_logo, consultant_logo, contractor_logos, main_contractor_name, known_companies, created_at, updated_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                         [
-                            localId, userId, project.name,
-                            project.location || null, project.client || null,
+                            localId, userId, project.name, project.location || null, project.client || null,
                             project.description || null, project.contractValue || null,
                             project.startDate || null, project.endDate || null,
                             project.projectManager || null, project.referenceNumber || null,
                             project.status || 'active', project.photoUri || null,
+                            project.employerLogo || null, project.consultantLogo || null,
+                            project.contractorLogos ? JSON.stringify(project.contractorLogos) : null,
+                            project.mainContractorName || null,
+                            project.knownCompanies ? JSON.stringify(project.knownCompanies) : null,
                             now, now,
                         ]
                     );
@@ -511,6 +621,11 @@ export const useProjectsStore = create<ProjectsState>()(
                     if (projectUpdates.referenceNumber !== undefined) add('reference_number', projectUpdates.referenceNumber);
                     if (projectUpdates.status !== undefined) add('status', projectUpdates.status);
                     if (projectUpdates.photoUri !== undefined) add('photo_url', projectUpdates.photoUri);
+                    if (projectUpdates.employerLogo !== undefined) add('employer_logo', projectUpdates.employerLogo);
+                    if (projectUpdates.consultantLogo !== undefined) add('consultant_logo', projectUpdates.consultantLogo);
+                    if (projectUpdates.contractorLogos !== undefined) add('contractor_logos', projectUpdates.contractorLogos ? JSON.stringify(projectUpdates.contractorLogos) : null);
+                    if (projectUpdates.mainContractorName !== undefined) add('main_contractor_name', projectUpdates.mainContractorName || null);
+                    if (projectUpdates.knownCompanies !== undefined) add('known_companies', projectUpdates.knownCompanies ? JSON.stringify(projectUpdates.knownCompanies) : null);
                     add('updated_at', now);
 
                     vals.push(id);

@@ -1,5 +1,5 @@
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, SafeAreaView, Platform, KeyboardAvoidingView } from 'react-native';
-import { ArrowLeft, Image as ImageIcon, MapPin, Building2, User, FileText, DollarSign, CalendarDays, Briefcase, Hash } from "lucide-react-native";
+import { ArrowLeft, Image as ImageIcon, MapPin, Building2, User, FileText, DollarSign, CalendarDays, Briefcase, Hash, Plus, X } from "lucide-react-native";
 import BackButton from "../../components/BackButton";
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useState, createElement, useEffect } from 'react';
@@ -15,7 +15,7 @@ import ProjectImage from '../../components/ProjectImage';
 export default function CreateProjectScreen() {
     const router = useRouter();
     const { id } = useLocalSearchParams<{ id: string }>();
-    const { addProject, updateProject, getProject } = useProjectsStore();
+    const { addProject, updateProject, getProject, projects } = useProjectsStore();
     const { colors } = useThemeColors();
 
     const [name, setName] = useState('');
@@ -26,8 +26,12 @@ export default function CreateProjectScreen() {
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
     const [projectManager, setProjectManager] = useState('');
+    const [mainContractorName, setMainContractorName] = useState('');
     const [referenceNumber, setReferenceNumber] = useState('');
     const [photoUri, setPhotoUri] = useState<string | null>(null);
+    const [employerLogo, setEmployerLogo] = useState<string | null>(null);
+    const [consultantLogo, setConsultantLogo] = useState<string | null>(null);
+    const [contractorLogos, setContractorLogos] = useState<string[]>([]);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const { user } = useAuthStore();
 
@@ -44,8 +48,12 @@ export default function CreateProjectScreen() {
                 setStartDate(project.startDate || '');
                 setEndDate(project.endDate || '');
                 setProjectManager(project.projectManager || '');
+                setMainContractorName(project.mainContractorName || '');
                 setReferenceNumber(project.referenceNumber || '');
                 setPhotoUri(project.photoUri || null);
+                setEmployerLogo(project.employerLogo || null);
+                setConsultantLogo(project.consultantLogo || null);
+                setContractorLogos(project.contractorLogos || []);
             }
         }
     }, [id, getProject]);
@@ -63,25 +71,68 @@ export default function CreateProjectScreen() {
         }
     };
 
+    const pickLogo = async () => {
+        const result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ['images'],
+            allowsEditing: true,
+            aspect: [1, 1],
+            quality: 0.6,
+            base64: true,
+        });
+        if (!result.canceled && result.assets[0].base64) {
+            const uri = `data:image/jpeg;base64,${result.assets[0].base64}`;
+            console.log('[logo pick] first 50 chars:', uri?.slice(0, 50), 'len:', uri?.length);
+            return uri;
+        }
+        console.log('[logo pick] returned null. Canceled:', result.canceled, 'base64 exists:', !result.canceled ? !!result.assets[0].base64 : false);
+        return null;
+    };
+
     const handleCreate = async () => {
-        if (!name.trim()) return;
+        const trimmedName = name.trim();
+        if (!trimmedName) return;
+
+        const isDuplicate = projects.some(p => 
+            p.id !== id && p.name.toLowerCase() === trimmedName.toLowerCase()
+        );
+
+        if (isDuplicate) {
+            Alert.alert("Duplicate Project", `A project named '${trimmedName}' already exists. Choose a different name.`);
+            return;
+        }
+
         setIsSubmitting(true);
 
-        let finalPhotoUri = photoUri;
-        if (photoUri && (photoUri.includes('://') || photoUri.startsWith('data:') || photoUri.startsWith('blob:'))) {
-            try {
-                if (user?.id) {
-                    finalPhotoUri = await uploadPhoto('report-photos', user.id, photoUri, { prefix: 'project_cover' });
+        const uploadIfNeeded = async (uri: string | null, prefix: string) => {
+            if (uri && (uri.includes('://') || uri.startsWith('data:') || uri.startsWith('blob:'))) {
+                try {
+                    if (user?.id) {
+                        return await uploadPhoto('report-photos', user.id, uri, { prefix });
+                    }
+                } catch (e: any) {
+                    throw new Error(`Failed to upload ${prefix}: ${e.message}`);
                 }
-            } catch (e: any) {
-                Alert.alert('Upload Failed', 'Failed to upload project cover image. ' + e.message);
-                setIsSubmitting(false);
-                return;
             }
+            return uri;
+        };
+
+        let finalPhotoUri = photoUri;
+        // Project logos are stored as raw base64 data URIs so they render in offline PDFs
+        let finalEmployerLogo = employerLogo;
+        let finalConsultantLogo = consultantLogo;
+        let finalContractorLogos = [...contractorLogos];
+
+        try {
+            finalPhotoUri = await uploadIfNeeded(photoUri, 'project_cover');
+            // We NO LONGER upload logos to Storage because PDF generator requires them to be base64.
+        } catch (e: any) {
+            Alert.alert('Upload Failed', e.message);
+            setIsSubmitting(false);
+            return;
         }
 
         const projectData = {
-            name: name.trim(),
+            name: trimmedName,
             location: location.trim(),
             client: client.trim(),
             description: description.trim() || undefined,
@@ -89,8 +140,12 @@ export default function CreateProjectScreen() {
             startDate: startDate.trim() || undefined,
             endDate: endDate.trim() || undefined,
             projectManager: projectManager.trim() || undefined,
+            mainContractorName: mainContractorName.trim() || undefined,
             referenceNumber: referenceNumber.trim() || undefined,
             photoUri: finalPhotoUri || undefined,
+            employerLogo: finalEmployerLogo || undefined,
+            consultantLogo: finalConsultantLogo || undefined,
+            contractorLogos: finalContractorLogos.length > 0 ? finalContractorLogos : undefined,
         };
 
         if (id) {
@@ -273,6 +328,21 @@ export default function CreateProjectScreen() {
                     </View>
 
                     <View style={styles.formGroup}>
+                        <Text style={[styles.label, { color: colors.text }]}>Main Contractor Name</Text>
+                        <View style={[styles.inputContainer, { backgroundColor: colors.inputBackground, borderColor: colors.border }]}>
+                            <Building2 size={20} color={colors.textMuted} style={styles.inputIcon} />
+                            <TextInput
+                                style={[styles.input, { color: colors.text }]}
+                                placeholder="e.g. Acme Construction Co."
+                                placeholderTextColor={colors.textMuted}
+                                value={mainContractorName}
+                                onChangeText={setMainContractorName}
+                                autoCapitalize="words"
+                            />
+                        </View>
+                    </View>
+
+                    <View style={styles.formGroup}>
                         <Text style={[styles.label, { color: colors.text }]}>Project Description</Text>
                         <View style={[styles.inputContainer, styles.textAreaContainer, { backgroundColor: colors.inputBackground, borderColor: colors.border }]}>
                             <FileText size={20} color={colors.textMuted} style={[styles.inputIcon, { marginTop: 12 }]} />
@@ -285,6 +355,53 @@ export default function CreateProjectScreen() {
                                 multiline
                                 textAlignVertical="top"
                             />
+                        </View>
+                    </View>
+
+                    <View style={styles.formGroup}>
+                        <Text style={[styles.label, { color: colors.text }]}>Party Logos</Text>
+                        
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 16 }}>
+                            <View style={{ flex: 1, marginRight: 8, alignItems: 'center' }}>
+                                <Text style={[styles.photoSubtext, { color: colors.text, marginBottom: 8 }]}>Employer</Text>
+                                <TouchableOpacity style={[styles.logoPicker, { borderColor: colors.border }]} onPress={async () => { const uri = await pickLogo(); if (uri) setEmployerLogo(uri); }}>
+                                    {employerLogo ? <ProjectImage photoUri={employerLogo} style={styles.logoPreview} resizeMode="contain" /> : <Plus size={24} color={colors.textMuted} />}
+                                    {employerLogo && (
+                                        <TouchableOpacity style={styles.removeLogoBtn} onPress={() => setEmployerLogo(null)}>
+                                            <X size={12} color="#FFF" />
+                                        </TouchableOpacity>
+                                    )}
+                                </TouchableOpacity>
+                            </View>
+
+                            <View style={{ flex: 1, marginLeft: 8, alignItems: 'center' }}>
+                                <Text style={[styles.photoSubtext, { color: colors.text, marginBottom: 8 }]}>Consultant</Text>
+                                <TouchableOpacity style={[styles.logoPicker, { borderColor: colors.border }]} onPress={async () => { const uri = await pickLogo(); if (uri) setConsultantLogo(uri); }}>
+                                    {consultantLogo ? <ProjectImage photoUri={consultantLogo} style={styles.logoPreview} resizeMode="contain" /> : <Plus size={24} color={colors.textMuted} />}
+                                    {consultantLogo && (
+                                        <TouchableOpacity style={styles.removeLogoBtn} onPress={() => setConsultantLogo(null)}>
+                                            <X size={12} color="#FFF" />
+                                        </TouchableOpacity>
+                                    )}
+                                </TouchableOpacity>
+                            </View>
+                        </View>
+
+                        <Text style={[styles.photoSubtext, { color: colors.text, marginBottom: 8 }]}>Contractor(s) - Max 4</Text>
+                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
+                            {contractorLogos.map((uri, idx) => (
+                                <View key={idx} style={[styles.logoPicker, { borderColor: colors.border }]}>
+                                    <ProjectImage photoUri={uri} style={styles.logoPreview} resizeMode="contain" />
+                                    <TouchableOpacity style={styles.removeLogoBtn} onPress={() => setContractorLogos(prev => prev.filter((_, i) => i !== idx))}>
+                                        <X size={12} color="#FFF" />
+                                    </TouchableOpacity>
+                                </View>
+                            ))}
+                            {contractorLogos.length < 4 && (
+                                <TouchableOpacity style={[styles.logoPicker, { borderColor: colors.border }]} onPress={async () => { const uri = await pickLogo(); if (uri) setContractorLogos(prev => [...prev, uri]); }}>
+                                    <Plus size={24} color={colors.textMuted} />
+                                </TouchableOpacity>
+                            )}
                         </View>
                     </View>
 
@@ -429,5 +546,31 @@ const styles = StyleSheet.create({
         color: '#0F172A',
         paddingTop: 12,
         paddingBottom: 12,
+    },
+    logoPicker: {
+        width: 80,
+        height: 80,
+        borderRadius: 8,
+        borderWidth: 1,
+        borderStyle: 'dashed',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#F8FAFC',
+        overflow: 'hidden',
+    },
+    logoPreview: {
+        width: '100%',
+        height: '100%',
+    },
+    removeLogoBtn: {
+        position: 'absolute',
+        top: 4,
+        right: 4,
+        width: 20,
+        height: 20,
+        borderRadius: 10,
+        backgroundColor: 'rgba(0,0,0,0.5)',
+        alignItems: 'center',
+        justifyContent: 'center',
     },
 });

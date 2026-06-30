@@ -6,6 +6,7 @@ import { Platform, View, ActivityIndicator } from 'react-native';
 import Purchases from 'react-native-purchases';
 import 'react-native-reanimated';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useStore } from '@/store/useStore';
@@ -140,14 +141,18 @@ function RootLayout() {
     </PowerSyncContext.Provider>
   );
 
-  return (analyticsEnabled && posthogKey) ? (
-    <PostHogProvider 
-      apiKey={posthogKey}
-      options={{ host: process.env.EXPO_PUBLIC_POSTHOG_HOST }}
-    >
-      {appContent}
-    </PostHogProvider>
-  ) : appContent;
+  return (
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      {(analyticsEnabled && posthogKey) ? (
+        <PostHogProvider 
+          apiKey={posthogKey}
+          options={{ host: process.env.EXPO_PUBLIC_POSTHOG_HOST }}
+        >
+          {appContent}
+        </PostHogProvider>
+      ) : appContent}
+    </GestureHandlerRootView>
+  );
 }
 
 export default Sentry.wrap(RootLayout);
