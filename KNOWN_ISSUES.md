@@ -125,3 +125,34 @@ setupPowerSync() is NOT yet wired into app startup (deferred to M4.2). user_toke
 
 ### ~~Drawing display name is raw upload filename~~
 - ✅ RESOLVED (not a bug): Drawings already store and display the original picker filename (`asset.name`); rename works correctly. The earlier "A17E1468-...pdf" was a single old test file that genuinely had a UUID name on disk, not a code defect. No code change needed for display.
+
+# Known Issues & Phase C Backlog
+
+Deferred enhancements following the Phase B daily-report restructure. Not bugs blocking
+release — planned improvements.
+
+## UX
+- **In-report editing**: editing a report is currently only available via the Edit button
+  from the report list (the open report is view-only). Add an in-view edit affordance so a
+  report can be edited while open. Applies to all report types.
+- **Header logo packing (PDF)**: in the report header, left-zone logos should pack flush left
+  and right-zone logos flush right, rather than spreading within their zones.
+
+## PDF polish
+- **Collapse empty columns**: tables (e.g. Areas of Concern) render empty columns when data is
+  sparse; collapse or hide columns with no content.
+- **Document-control footer**: add page numbers ("Page X of Y") and a "Generated on <date/time>"
+  stamp to the PDF footer for formal document control.
+
+## Professional / contractual enhancements
+- **Materials log**: add a "Materials Delivered / Consumed" section to the daily report
+  (item, quantity, unit, supplier).
+- **Delay / disruption log** (highest value): a dedicated section logging delays with
+  start/stop times and cause codes (weather standby, late information, access, etc.) — important
+  for Extension-of-Time (EOT) and disruption claims.
+- **Man-hours**: optional man-hours (headcount × hours) alongside headcount for productivity /
+  earned-value reporting. Add without forcing entry friction.
+
+## Notes
+- Existing projects created before the base64-logo change store logos as storage paths and will
+  not render logos until re-picked (no migration by design).
