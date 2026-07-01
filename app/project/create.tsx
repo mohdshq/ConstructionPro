@@ -5,12 +5,14 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useState, createElement, useEffect } from 'react';
 import * as ImagePicker from 'expo-image-picker';
 import { Image } from 'expo-image';
-import { useProjectsStore } from '../../store/projectsStore';
+import { useProjectsStore, Building } from '../../store/projectsStore';
 import { useThemeColors } from '../../store/useThemeColors';
 import { useAuthStore } from '../../store/useAuthStore';
 import { uploadPhoto } from '../../lib/supabaseSync';
 import { ActivityIndicator, Alert } from 'react-native';
 import ProjectImage from '../../components/ProjectImage';
+import 'react-native-get-random-values';
+import { v4 as uuidv4 } from 'uuid';
 
 export default function CreateProjectScreen() {
     const router = useRouter();
@@ -32,6 +34,7 @@ export default function CreateProjectScreen() {
     const [employerLogo, setEmployerLogo] = useState<string | null>(null);
     const [consultantLogo, setConsultantLogo] = useState<string | null>(null);
     const [contractorLogos, setContractorLogos] = useState<string[]>([]);
+    const [buildings, setBuildings] = useState<Building[]>([]);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const { user } = useAuthStore();
 
@@ -54,6 +57,7 @@ export default function CreateProjectScreen() {
                 setEmployerLogo(project.employerLogo || null);
                 setConsultantLogo(project.consultantLogo || null);
                 setContractorLogos(project.contractorLogos || []);
+                setBuildings(project.buildings || []);
             }
         }
     }, [id, getProject]);
@@ -98,6 +102,15 @@ export default function CreateProjectScreen() {
 
         if (isDuplicate) {
             Alert.alert("Duplicate Project", `A project named '${trimmedName}' already exists. Choose a different name.`);
+            return;
+        }
+
+        const validBuildings = buildings.filter(b => b.code.trim());
+        const hasDuplicateBuildingCodes = validBuildings.some((b, i) => 
+            validBuildings.findIndex(other => other.code.trim().toLowerCase() === b.code.trim().toLowerCase()) !== i
+        );
+        if (hasDuplicateBuildingCodes) {
+            Alert.alert("Duplicate Buildings", "Building codes must be unique.");
             return;
         }
 
@@ -146,6 +159,7 @@ export default function CreateProjectScreen() {
             employerLogo: finalEmployerLogo || undefined,
             consultantLogo: finalConsultantLogo || undefined,
             contractorLogos: finalContractorLogos.length > 0 ? finalContractorLogos : undefined,
+            buildings: validBuildings,
         };
 
         if (id) {
@@ -356,6 +370,72 @@ export default function CreateProjectScreen() {
                                 textAlignVertical="top"
                             />
                         </View>
+                    </View>
+
+                    <View style={styles.formGroup}>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                            <Text style={[styles.label, { color: colors.text, marginBottom: 0 }]}>Buildings / Towers</Text>
+                            <TouchableOpacity onPress={() => setBuildings([...buildings, { id: uuidv4(), code: '' }])}>
+                                <Text style={{ color: colors.primary, fontWeight: 'bold' }}>+ Add building</Text>
+                            </TouchableOpacity>
+                        </View>
+                        
+                        {buildings.map((building, index) => (
+                            <View key={building.id} style={{ backgroundColor: colors.card, padding: 12, borderRadius: 8, marginBottom: 12, borderWidth: 1, borderColor: colors.border }}>
+                                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                                    <Text style={{ color: colors.text, fontWeight: '600' }}>Building {index + 1}</Text>
+                                    <TouchableOpacity onPress={() => setBuildings(buildings.filter(b => b.id !== building.id))}>
+                                        <X size={16} color="#EF4444" />
+                                    </TouchableOpacity>
+                                </View>
+                                
+                                <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
+                                    <View style={{ flex: 1 }}>
+                                        <Text style={[styles.photoSubtext, { color: colors.textMuted, marginBottom: 4 }]}>Code (e.g. A, T1) *</Text>
+                                        <TextInput
+                                            style={[styles.input, { color: colors.text, height: 40, paddingHorizontal: 12, backgroundColor: colors.inputBackground, borderColor: colors.border }]}
+                                            placeholder="Code"
+                                            placeholderTextColor={colors.textMuted}
+                                            value={building.code}
+                                            onChangeText={(t) => {
+                                                const newB = [...buildings];
+                                                newB[index].code = t;
+                                                setBuildings(newB);
+                                            }}
+                                        />
+                                    </View>
+                                    <View style={{ flex: 1 }}>
+                                        <Text style={[styles.photoSubtext, { color: colors.textMuted, marginBottom: 4 }]}>Name (Optional)</Text>
+                                        <TextInput
+                                            style={[styles.input, { color: colors.text, height: 40, paddingHorizontal: 12, backgroundColor: colors.inputBackground, borderColor: colors.border }]}
+                                            placeholder="Name"
+                                            placeholderTextColor={colors.textMuted}
+                                            value={building.name || ''}
+                                            onChangeText={(t) => {
+                                                const newB = [...buildings];
+                                                newB[index].name = t;
+                                                setBuildings(newB);
+                                            }}
+                                        />
+                                    </View>
+                                </View>
+                                
+                                <View>
+                                    <Text style={[styles.photoSubtext, { color: colors.textMuted, marginBottom: 4 }]}>Floor Spec (e.g. 3B+G+26+R - reference only)</Text>
+                                    <TextInput
+                                        style={[styles.input, { color: colors.text, height: 40, paddingHorizontal: 12, backgroundColor: colors.inputBackground, borderColor: colors.border }]}
+                                        placeholder="Floor specification"
+                                        placeholderTextColor={colors.textMuted}
+                                        value={building.floorSpec || ''}
+                                        onChangeText={(t) => {
+                                            const newB = [...buildings];
+                                            newB[index].floorSpec = t;
+                                            setBuildings(newB);
+                                        }}
+                                    />
+                                </View>
+                            </View>
+                        ))}
                     </View>
 
                     <View style={styles.formGroup}>

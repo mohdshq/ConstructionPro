@@ -11,7 +11,7 @@ const projects = new Table({
   photo_url: column.text, created_at: column.text, updated_at: column.text,
   reference_number: column.text, employer_logo: column.text, consultant_logo: column.text,
   contractor_logos: column.text, main_contractor_name: column.text, known_companies: column.text,
-  buildings: column.text,
+  buildings: column.text, snag_counter: column.integer,
 });
 const reports = new Table({
   project_id: column.text, user_id: column.text, type: column.text, date: column.text,
@@ -39,7 +39,14 @@ const activities = new Table({
   entity_type: column.text, entity_id: column.text, created_at: column.text,
 }, { indexes: { by_project: ['project_id'] } });
 
+const snags = new Table({
+  project_id: column.text, user_id: column.text, seq: column.integer, building_id: column.text,
+  floor: column.integer, flat: column.integer, area_type: column.text, severity: column.text,
+  trade: column.text, description: column.text, photos: column.text, status: column.text,
+  legacy_code: column.text, created_at: column.text,
+}, { indexes: { by_project: ['project_id'] } });
+
 export const AppSchema = new Schema({
-  profiles, projects, reports, drawings, drawing_folders, calculations, project_members, activities,
+  profiles, projects, reports, drawings, drawing_folders, calculations, project_members, activities, snags,
 });
 export type Database = (typeof AppSchema)['types'];
