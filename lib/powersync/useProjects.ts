@@ -23,6 +23,7 @@ export function usePowerSyncProjects() {
       consultant_logo AS consultantLogo,
       main_contractor_name AS mainContractorName,
       known_companies AS knownCompanies,
+      buildings,
       created_at AS createdAt,
       updated_at AS updatedAt
     FROM projects
@@ -44,10 +45,18 @@ export function usePowerSyncProjects() {
         contractorLogosParsed = [];
     }
 
+    let buildingsParsed: any[] = [];
+    try {
+        buildingsParsed = JSON.parse(row.buildings || '[]');
+    } catch (e) {
+        buildingsParsed = [];
+    }
+
     return {
       ...row,
       knownCompanies: knownCompaniesParsed,
-      contractorLogos: contractorLogosParsed
+      contractorLogos: contractorLogosParsed,
+      buildings: buildingsParsed
     } as Project;
   });
 

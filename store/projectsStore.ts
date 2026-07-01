@@ -279,6 +279,13 @@ export interface Drawing {
     author: string;
 }
 
+export interface Building {
+  id: string;            // stable uuid
+  code: string;          // short user prefix, e.g. "A", "T1" — may be empty
+  name?: string;         // optional label
+  floorSpec?: string;    // raw descriptor as typed, e.g. "3B+G+26+R" — informational only, NEVER parsed for tower count
+}
+
 export interface Project {
     id: string;
     name: string;
@@ -297,6 +304,7 @@ export interface Project {
     contractorLogos?: string[];
     mainContractorName?: string;
     knownCompanies?: string[];
+    buildings?: Building[];
     createdAt: string;
     updatedAt: string;
     syncStatus?: 'synced' | 'pending';
@@ -406,6 +414,13 @@ function mapProjectRow(row: any): Project {
         knownCompaniesParsed = [];
     }
 
+    let buildingsParsed: Building[] = [];
+    try {
+        buildingsParsed = JSON.parse(row.buildings || '[]');
+    } catch (e) {
+        buildingsParsed = [];
+    }
+
     return {
         id: row.id,
         name: row.name,
@@ -424,6 +439,7 @@ function mapProjectRow(row: any): Project {
         contractorLogos: contractorLogosParsed,
         mainContractorName: row.main_contractor_name || undefined,
         knownCompanies: knownCompaniesParsed,
+        buildings: buildingsParsed,
         createdAt: row.created_at || new Date().toISOString(),
         updatedAt: row.updated_at || new Date().toISOString(),
         syncStatus: 'synced',
@@ -578,8 +594,8 @@ export const useProjectsStore = create<ProjectsState>()(
                         `INSERT OR REPLACE INTO projects (
                             id, user_id, name, location, client, description, contract_value,
                             start_date, end_date, project_manager, reference_number, status,
-                            photo_url, employer_logo, consultant_logo, contractor_logos, main_contractor_name, known_companies, created_at, updated_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                            photo_url, employer_logo, consultant_logo, contractor_logos, main_contractor_name, known_companies, buildings, created_at, updated_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                         [
                             localId, userId, project.name, project.location || null, project.client || null,
                             project.description || null, project.contractValue || null,
@@ -590,6 +606,7 @@ export const useProjectsStore = create<ProjectsState>()(
                             project.contractorLogos ? JSON.stringify(project.contractorLogos) : null,
                             project.mainContractorName || null,
                             project.knownCompanies ? JSON.stringify(project.knownCompanies) : null,
+                            project.buildings ? JSON.stringify(project.buildings) : null,
                             now, now,
                         ]
                     );
@@ -626,6 +643,7 @@ export const useProjectsStore = create<ProjectsState>()(
                     if (projectUpdates.contractorLogos !== undefined) add('contractor_logos', projectUpdates.contractorLogos ? JSON.stringify(projectUpdates.contractorLogos) : null);
                     if (projectUpdates.mainContractorName !== undefined) add('main_contractor_name', projectUpdates.mainContractorName || null);
                     if (projectUpdates.knownCompanies !== undefined) add('known_companies', projectUpdates.knownCompanies ? JSON.stringify(projectUpdates.knownCompanies) : null);
+                    if (projectUpdates.buildings !== undefined) add('buildings', projectUpdates.buildings ? JSON.stringify(projectUpdates.buildings) : null);
                     add('updated_at', now);
 
                     vals.push(id);
