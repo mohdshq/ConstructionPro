@@ -47,6 +47,7 @@ export default function CreateReportScreen() {
         }
         return 'generalDaily';
     });
+    // LEGACY - unreachable, retire in cleanup
     const [snagFilterSystem, setSnagFilterSystem] = useState<string>('All');
     const [snagFilterSeverity, setSnagFilterSeverity] = useState<string>('All');
     const [snagFilterStatus, setSnagFilterStatus] = useState<string>('All');
@@ -171,6 +172,7 @@ export default function CreateReportScreen() {
                 ...(initialData ? JSON.parse(initialData) : {})
             });
         } else if (type === 'snagging') {
+            // LEGACY - unreachable, retire in cleanup
             const existingReports = getReportsForProject(id);
             const lastSnag = existingReports.find(r => r.type === 'snagging');
 
@@ -391,6 +393,7 @@ export default function CreateReportScreen() {
         const prefix = editId ? 'Edit' : 'New';
         switch (type) {
             case 'daily': return editId ? 'Edit Daily Report' : 'Daily Progress Report';
+            // LEGACY - unreachable, retire in cleanup
             case 'snagging': return `${prefix} Snagging List Item`;
             case 'hse': return `${prefix} HSE Safety Audit`;
             default: return `${prefix} Report`;
@@ -446,6 +449,8 @@ export default function CreateReportScreen() {
             setIsAutoSnagging(true);
             const base64Image = `data:image/jpeg;base64,${result.assets[0].base64}`;
             
+            // LEGACY - unreachable, retire in cleanup
+            // TODO S5: reattach ai-snag-from-photo to new snags/create.tsx
             const { data, error } = await supabase.functions.invoke('ai-snag-from-photo', {
                 body: { base64Image, context: formData.propertyType || project?.name }
             });
@@ -785,6 +790,7 @@ export default function CreateReportScreen() {
     );
 
     const renderSnaggingFields = () => {
+        // LEGACY - unreachable, retire in cleanup
         // Collect unique data for filters
         const allContractors = Array.from(new Set((formData.snags || []).map((s: any) => s.contractor).filter(Boolean)));
         const allLevels = Array.from(new Set((formData.snags || []).map((s: any) => s.level).filter(Boolean)));

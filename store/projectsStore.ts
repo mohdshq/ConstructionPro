@@ -1042,13 +1042,6 @@ export const useProjectsStore = create<ProjectsState>()(
                 }
                 const newSeq = (project.snagCounter || 0) + 1;
 
-                // Update local store immediately for project (optimistic)
-                set((state) => ({
-                    projects: state.projects.map(p =>
-                        p.id === snag.projectId ? { ...p, snagCounter: newSeq } : p
-                    )
-                }));
-
                 if (userId) {
                     try {
                         const photosStr = JSON.stringify(snag.photos || []);
@@ -1071,12 +1064,22 @@ export const useProjectsStore = create<ProjectsState>()(
                                 [newSeq, snag.projectId]
                             );
                         });
+                        
+                        // Update local store immediately for project (optimistic, but after successful local transaction)
+                        set((state) => ({
+                            projects: state.projects.map(p =>
+                                p.id === snag.projectId ? { ...p, snagCounter: newSeq } : p
+                            )
+                        }));
+
+                        return newSeq;
                     } catch (error: any) {
                         set({ syncError: error.message });
                         console.error('Failed to add snag:', error);
+                        return undefined;
                     }
                 }
-                return newSeq;
+                return undefined;
             },
             updateSnag: async (id, snag) => {
                 if (!getCurrentUserId()) return;

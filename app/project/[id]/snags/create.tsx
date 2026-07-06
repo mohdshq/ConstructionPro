@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import * as ImagePicker from 'expo-image-picker';
 import { useProjectsStore, ProjectSnag } from '../../../../store/projectsStore';
 import { useThemeColors } from '../../../../store/useThemeColors';
+import PhotoMarkup from '../../../../components/PhotoMarkup';
 import BackButton from '../../../../components/BackButton';
 import ProjectImage from '../../../../components/ProjectImage';
 import { Plus, X, Camera } from 'lucide-react-native';
@@ -28,6 +29,7 @@ export default function CreateSnagScreen() {
     const [description, setDescription] = useState<string>('');
     const [contextPhoto, setContextPhoto] = useState<string | null>(null);
     const [detailPhoto, setDetailPhoto] = useState<string | null>(null);
+    const [markupPhoto, setMarkupPhoto] = useState<{uri: string, target: 'context' | 'detail'} | null>(null);
     
     const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -35,18 +37,52 @@ export default function CreateSnagScreen() {
         return <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}><Text>Project not found</Text></View>;
     }
 
-    const handlePickImage = async (setter: (uri: string | null) => void) => {
-        const result = await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: ['images'],
-            allowsEditing: true,
-            aspect: [4, 3],
-            quality: 0.6,
-            base64: true,
-        });
-
-        if (!result.canceled && result.assets[0].base64) {
-            setter(`data:image/jpeg;base64,${result.assets[0].base64}`);
-        }
+    const handlePickImage = async (target: 'context' | 'detail') => {
+        Alert.alert(
+            "Add Photo",
+            "Choose a source",
+            [
+                {
+                    text: "Take Photo",
+                    onPress: async () => {
+                        const { status } = await ImagePicker.requestCameraPermissionsAsync();
+                        if (status !== 'granted') {
+                            Alert.alert("Permission Denied", "Camera permission is needed to take photos");
+                            return;
+                        }
+                        const result = await ImagePicker.launchCameraAsync({
+                            mediaTypes: ['images'],
+                            allowsEditing: true,
+                            aspect: [4, 3],
+                            quality: 0.6,
+                            base64: true,
+                        });
+                        if (!result.canceled && result.assets[0].base64) {
+                            setMarkupPhoto({ uri: `data:image/jpeg;base64,${result.assets[0].base64}`, target });
+                        }
+                    }
+                },
+                {
+                    text: "Choose from Library",
+                    onPress: async () => {
+                        const result = await ImagePicker.launchImageLibraryAsync({
+                            mediaTypes: ['images'],
+                            allowsEditing: true,
+                            aspect: [4, 3],
+                            quality: 0.6,
+                            base64: true,
+                        });
+                        if (!result.canceled && result.assets[0].base64) {
+                            setMarkupPhoto({ uri: `data:image/jpeg;base64,${result.assets[0].base64}`, target });
+                        }
+                    }
+                },
+                {
+                    text: "Cancel",
+                    style: "cancel"
+                }
+            ]
+        );
     };
 
     const handleSave = async () => {
@@ -86,10 +122,29 @@ export default function CreateSnagScreen() {
                 building
             );
             const snagRef = makeSnagRef(unitCode, newSeq);
-            Alert.alert("Success", `Snag created successfully!\nRef: ${snagRef}`);
+            Alert.alert(
+                "Success", 
+                `Snag created successfully!\nRef: ${snagRef}`,
+                [
+                    {
+                        text: "Add Another",
+                        onPress: () => {
+                            setSeverity('minor');
+                            setTrade('');
+                            setDescription('');
+                            setContextPhoto(null);
+                            setDetailPhoto(null);
+                        }
+                    },
+                    {
+                        text: "Done",
+                        onPress: () => router.back()
+                    }
+                ]
+            );
+        } else {
+            Alert.alert("Error", "Failed to save snag.");
         }
-        
-        router.back();
     };
 
     return (
@@ -214,10 +269,10 @@ export default function CreateSnagScreen() {
                     <View style={{ flexDirection: 'row', gap: 16 }}>
                         <View style={{ flex: 1, alignItems: 'center' }}>
                             <Text style={[styles.photoSubtext, { color: colors.text, marginBottom: 8 }]}>Context</Text>
-                            <TouchableOpacity style={[styles.logoPicker, { borderColor: colors.border }]} onPress={() => handlePickImage(setContextPhoto)}>
+                            <TouchableOpacity style={[styles.logoPicker, { borderColor: colors.border }]} onPress={() => contextPhoto ? setMarkupPhoto({ uri: contextPhoto, target: 'context' }) : handlePickImage('context')}>
                                 {contextPhoto ? <ProjectImage photoUri={contextPhoto} style={styles.logoPreview} resizeMode="cover" /> : <Camera size={24} color={colors.textMuted} />}
                                 {contextPhoto && (
-                                    <TouchableOpacity style={styles.removeLogoBtn} onPress={() => setContextPhoto(null)}>
+                                    <TouchableOpacity style={styles.removeLogoBtn} onPress={(e) => { e.stopPropagation(); setContextPhoto(null); }}>
                                         <X size={12} color="#FFF" />
                                     </TouchableOpacity>
                                 )}
@@ -225,10 +280,10 @@ export default function CreateSnagScreen() {
                         </View>
                         <View style={{ flex: 1, alignItems: 'center' }}>
                             <Text style={[styles.photoSubtext, { color: colors.text, marginBottom: 8 }]}>Detail</Text>
-                            <TouchableOpacity style={[styles.logoPicker, { borderColor: colors.border }]} onPress={() => handlePickImage(setDetailPhoto)}>
+                            <TouchableOpacity style={[styles.logoPicker, { borderColor: colors.border }]} onPress={() => detailPhoto ? setMarkupPhoto({ uri: detailPhoto, target: 'detail' }) : handlePickImage('detail')}>
                                 {detailPhoto ? <ProjectImage photoUri={detailPhoto} style={styles.logoPreview} resizeMode="cover" /> : <Camera size={24} color={colors.textMuted} />}
                                 {detailPhoto && (
-                                    <TouchableOpacity style={styles.removeLogoBtn} onPress={() => setDetailPhoto(null)}>
+                                    <TouchableOpacity style={styles.removeLogoBtn} onPress={(e) => { e.stopPropagation(); setDetailPhoto(null); }}>
                                         <X size={12} color="#FFF" />
                                     </TouchableOpacity>
                                 )}
@@ -239,6 +294,23 @@ export default function CreateSnagScreen() {
 
                 <View style={{ height: 40 }} />
             </ScrollView>
+
+            {markupPhoto && (
+                <PhotoMarkup 
+                    visible={true}
+                    imageUri={markupPhoto.uri}
+                    onSkip={() => {
+                        if (markupPhoto.target === 'context') setContextPhoto(markupPhoto.uri);
+                        else setDetailPhoto(markupPhoto.uri);
+                        setMarkupPhoto(null);
+                    }}
+                    onDone={(base64) => {
+                        if (markupPhoto.target === 'context') setContextPhoto(base64);
+                        else setDetailPhoto(base64);
+                        setMarkupPhoto(null);
+                    }}
+                />
+            )}
         </View>
     );
 }
