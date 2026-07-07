@@ -359,7 +359,7 @@ export interface ProjectSnag {
     trade?: string;
     description: string;
     photos: string[];   // HARD max 2: [context, detail], base64
-    status: 'open' | 'closed';
+    status: 'open' | 'in_progress' | 'closed';
     legacyCode?: string;
     createdAt: string;
 }
