@@ -1,5 +1,5 @@
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, FlatList } from 'react-native';
+import React, { useState, useMemo } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, FlatList, ScrollView } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useProjectsStore, ProjectSnag } from '../../../../store/projectsStore';
 import { useThemeColors } from '../../../../store/useThemeColors';
@@ -10,6 +10,7 @@ import { makeUnitCode } from '../../../../lib/units/unitCode';
 import { makeSnagRef } from '../../../../lib/units/snagRef';
 import { usePowerSyncSnags } from '../../../../lib/powersync/useSnags';
 import { getSnagStatusBg, getSnagStatusColor, getSnagStatusLabel } from '../../../../lib/units/snagStatus';
+import PickerDropdown from '../report/components/PickerDropdown';
 
 export default function SnagsListScreen() {
     const router = useRouter();
@@ -19,6 +20,60 @@ export default function SnagsListScreen() {
     
     const project = getProject(id);
     const snags = usePowerSyncSnags(id);
+
+    const [filterBuilding, setFilterBuilding] = useState<string>('All');
+    const [filterFloor, setFilterFloor] = useState<string>('All');
+    const [filterSeverity, setFilterSeverity] = useState<string>('All');
+    const [filterStatus, setFilterStatus] = useState<string>('All');
+    const [filterTrade, setFilterTrade] = useState<string>('All');
+
+    const filterOptions = useMemo(() => {
+        const buildings = new Set<string>();
+        const floors = new Set<string>();
+        const trades = new Set<string>();
+
+        snags.forEach(s => {
+            if (s.buildingId) {
+                const b = project?.buildings?.find(b => b.id === s.buildingId);
+                if (b && b.code) buildings.add(b.code);
+            }
+            if (s.floor !== undefined && s.floor !== null) floors.add(String(s.floor));
+            if (s.trade) trades.add(s.trade);
+        });
+
+        return {
+            buildings: ['All', ...Array.from(buildings).sort()],
+            floors: ['All', ...Array.from(floors).sort((a, b) => Number(a) - Number(b))],
+            trades: ['All', ...Array.from(trades).sort()]
+        };
+    }, [snags, project]);
+
+    const filteredSnags = useMemo(() => {
+        return snags.filter(s => {
+            if (filterBuilding !== 'All') {
+                const b = project?.buildings?.find(b => b.id === s.buildingId);
+                if (!b || b.code !== filterBuilding) return false;
+            }
+            if (filterFloor !== 'All' && String(s.floor) !== filterFloor) return false;
+            if (filterSeverity !== 'All') {
+                const prettySev = s.severity.charAt(0).toUpperCase() + s.severity.slice(1);
+                if (prettySev !== filterSeverity) return false;
+            }
+            if (filterStatus !== 'All' && getSnagStatusLabel(s.status) !== filterStatus) return false;
+            if (filterTrade !== 'All' && s.trade !== filterTrade) return false;
+            return true;
+        });
+    }, [snags, project, filterBuilding, filterFloor, filterSeverity, filterStatus, filterTrade]);
+
+    const hasFilters = filterBuilding !== 'All' || filterFloor !== 'All' || filterSeverity !== 'All' || filterStatus !== 'All' || filterTrade !== 'All';
+
+    const clearFilters = () => {
+        setFilterBuilding('All');
+        setFilterFloor('All');
+        setFilterSeverity('All');
+        setFilterStatus('All');
+        setFilterTrade('All');
+    };
 
     if (!project) {
         return <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}><Text>Project not found</Text></View>;
@@ -74,13 +129,74 @@ export default function SnagsListScreen() {
                 </TouchableOpacity>
             </View>
 
+            {snags.length > 0 && (
+                <View style={[styles.filterContainer, { borderBottomColor: colors.border }]}>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterScroll}>
+                        <View style={styles.filterItem}>
+                            <PickerDropdown
+                                value={filterBuilding === 'All' ? '' : filterBuilding}
+                                placeholder="Building"
+                                options={filterOptions.buildings}
+                                onSelect={setFilterBuilding}
+                                colors={colors}
+                            />
+                        </View>
+                        <View style={styles.filterItem}>
+                            <PickerDropdown
+                                value={filterFloor === 'All' ? '' : filterFloor}
+                                placeholder="Floor"
+                                options={filterOptions.floors}
+                                onSelect={setFilterFloor}
+                                colors={colors}
+                            />
+                        </View>
+                        <View style={styles.filterItem}>
+                            <PickerDropdown
+                                value={filterSeverity === 'All' ? '' : filterSeverity}
+                                placeholder="Severity"
+                                options={['All', 'Critical', 'Major', 'Minor', 'Cosmetic']}
+                                onSelect={setFilterSeverity}
+                                colors={colors}
+                            />
+                        </View>
+                        <View style={styles.filterItem}>
+                            <PickerDropdown
+                                value={filterStatus === 'All' ? '' : filterStatus}
+                                placeholder="Status"
+                                options={['All', getSnagStatusLabel('open'), getSnagStatusLabel('in_progress'), getSnagStatusLabel('closed')]}
+                                onSelect={setFilterStatus}
+                                colors={colors}
+                            />
+                        </View>
+                        <View style={styles.filterItem}>
+                            <PickerDropdown
+                                value={filterTrade === 'All' ? '' : filterTrade}
+                                placeholder="Trade"
+                                options={filterOptions.trades}
+                                onSelect={setFilterTrade}
+                                colors={colors}
+                            />
+                        </View>
+                    </ScrollView>
+                    {hasFilters && (
+                        <TouchableOpacity onPress={clearFilters} style={styles.clearFiltersBtn}>
+                            <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '600' }}>Clear filters</Text>
+                        </TouchableOpacity>
+                    )}
+                </View>
+            )}
+
             {snags.length === 0 ? (
                 <View style={styles.emptyContainer}>
                     <Text style={[styles.emptyText, { color: colors.textMuted }]}>No snags yet — tap + to add one.</Text>
                 </View>
+            ) : filteredSnags.length === 0 ? (
+                <View style={styles.emptyContainer}>
+                    <Text style={[styles.emptyText, { color: colors.textMuted }]}>No snags match your filters.</Text>
+                </View>
             ) : (
                 <FlatList
-                    data={snags}
+                    data={filteredSnags}
                     keyExtractor={item => item.id}
                     renderItem={renderSnag}
                     contentContainerStyle={styles.listContent}
@@ -102,6 +218,23 @@ const styles = StyleSheet.create({
         borderBottomWidth: 1,
     },
     headerTitle: { fontSize: 18, fontWeight: '600' },
+    filterContainer: {
+        borderBottomWidth: 1,
+        paddingVertical: 8,
+    },
+    filterScroll: {
+        paddingHorizontal: 16,
+        gap: 8,
+        alignItems: 'center',
+    },
+    filterItem: { width: 130 },
+    clearFiltersBtn: {
+        alignSelf: 'flex-start',
+        marginLeft: 16,
+        marginTop: 8,
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+    },
     emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
     emptyText: { fontSize: 16 },
     listContent: { padding: 16, gap: 12 },
