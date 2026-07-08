@@ -201,12 +201,13 @@ export default function CreateSnagScreen() {
                         <Text style={[styles.label, { color: colors.text }]}>Flat / Unit</Text>
                         <TextInput
                             style={[styles.input, { color: colors.text, backgroundColor: colors.inputBackground, borderColor: colors.border }]}
-                            placeholder="e.g. 501"
+                            placeholder="e.g. 1"
                             placeholderTextColor={colors.textMuted}
                             value={flat}
                             onChangeText={setFlat}
                             keyboardType="numeric"
                         />
+                        <Text style={{ fontSize: 10, color: colors.textMuted, marginTop: 4 }}>Unit number on the floor</Text>
                     </View>
                 </View>
 
