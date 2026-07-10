@@ -1,7 +1,7 @@
 import { useQuery } from '@powersync/react';
 import { ProjectSnag } from '../../store/projectsStore';
 
-const SNAG_SELECT = 'id, project_id, seq, building_id, floor, flat, area_type, severity, trade, description, photos, status, legacy_code, created_at';
+const SNAG_SELECT = 'id, project_id, seq, building_id, floor, flat, area_type, severity, trade, room, description, photos, status, legacy_code, created_at';
 
 export function usePowerSyncSnags(projectId?: string): ProjectSnag[] {
     const { data } = useQuery(
@@ -28,6 +28,7 @@ export function usePowerSyncSnags(projectId?: string): ProjectSnag[] {
             areaType: row.area_type,
             severity: row.severity,
             trade: row.trade || undefined,
+            room: row.room || undefined,
             description: row.description,
             photos,
             status: row.status,
@@ -62,6 +63,7 @@ export function usePowerSyncSnag(snagId?: string): ProjectSnag | undefined {
         areaType: row.area_type,
         severity: row.severity,
         trade: row.trade || undefined,
+        room: row.room || undefined,
         description: row.description,
         photos,
         status: row.status,

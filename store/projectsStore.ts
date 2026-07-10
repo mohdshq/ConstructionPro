@@ -357,6 +357,7 @@ export interface ProjectSnag {
     areaType: 'unit' | 'elevation' | 'parking' | 'landscape' | 'roof' | 'mep' | 'common';
     severity: 'critical' | 'major' | 'minor' | 'cosmetic';
     trade?: string;
+    room?: string;
     description: string;
     photos: string[];   // HARD max 2: [context, detail], base64
     status: 'open' | 'in_progress' | 'closed';
@@ -1042,20 +1043,20 @@ export const useProjectsStore = create<ProjectsState>()(
                 }
                 const newSeq = (project.snagCounter || 0) + 1;
 
-                if (userId) {
+                        if (userId) {
                     try {
                         const photosStr = JSON.stringify(snag.photos || []);
                         await powersync.writeTransaction(async (tx) => {
                             await tx.execute(
                                 `INSERT INTO snags (
                                     id, project_id, user_id, seq, building_id, floor, flat,
-                                    area_type, severity, trade, description, photos, status,
+                                    area_type, severity, trade, room, description, photos, status,
                                     legacy_code, created_at
-                                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                                 [
                                     localId, snag.projectId, userId, newSeq, snag.buildingId || null,
                                     snag.floor ?? null, snag.flat ?? null, snag.areaType, snag.severity,
-                                    snag.trade || null, snag.description, photosStr, snag.status,
+                                    snag.trade || null, snag.room || null, snag.description, photosStr, snag.status,
                                     snag.legacyCode || null, now
                                 ]
                             );
@@ -1094,6 +1095,7 @@ export const useProjectsStore = create<ProjectsState>()(
                     if (snag.areaType !== undefined) { updates.push('area_type = ?'); vals.push(snag.areaType); }
                     if (snag.severity !== undefined) { updates.push('severity = ?'); vals.push(snag.severity); }
                     if (snag.trade !== undefined) { updates.push('trade = ?'); vals.push(snag.trade); }
+                    if (snag.room !== undefined) { updates.push('room = ?'); vals.push(snag.room); }
                     if (snag.description !== undefined) { updates.push('description = ?'); vals.push(snag.description); }
                     if (snag.photos !== undefined) { updates.push('photos = ?'); vals.push(JSON.stringify(snag.photos)); }
                     if (snag.status !== undefined) { updates.push('status = ?'); vals.push(snag.status); }

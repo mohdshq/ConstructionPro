@@ -5,7 +5,7 @@ import { useProjectsStore, ProjectSnag } from '../../../../store/projectsStore';
 import { useThemeColors } from '../../../../store/useThemeColors';
 import BackButton from '../../../../components/BackButton';
 import ProjectImage from '../../../../components/ProjectImage';
-import { Plus, Camera } from 'lucide-react-native';
+import { Plus, Camera, FileText } from 'lucide-react-native';
 import { makeUnitCode } from '../../../../lib/units/unitCode';
 import { makeSnagRef } from '../../../../lib/units/snagRef';
 import { usePowerSyncSnags } from '../../../../lib/powersync/useSnags';
@@ -124,9 +124,14 @@ export default function SnagsListScreen() {
             <View style={[styles.header, { backgroundColor: colors.card, borderBottomColor: colors.border }]} >
                 <BackButton />
                 <Text style={[styles.headerTitle, { color: colors.text }]}>Snags</Text>
-                <TouchableOpacity onPress={() => router.push(`/project/${id}/snags/create` as any)}>
-                    <Plus size={24} color={colors.primary} />
-                </TouchableOpacity>
+                <View style={{ flexDirection: 'row', gap: 16 }}>
+                    <TouchableOpacity onPress={() => router.push({ pathname: `/project/${id}/snags/report`, params: { building: filterBuilding, floor: filterFloor, severity: filterSeverity, status: filterStatus, trade: filterTrade } } as any)}>
+                        <FileText size={24} color={colors.primary} />
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => router.push(`/project/${id}/snags/create` as any)}>
+                        <Plus size={24} color={colors.primary} />
+                    </TouchableOpacity>
+                </View>
             </View>
 
             {snags.length > 0 && (

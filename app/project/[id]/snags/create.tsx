@@ -10,6 +10,8 @@ import ProjectImage from '../../../../components/ProjectImage';
 import { Plus, X, Camera } from 'lucide-react-native';
 import { makeUnitCode } from '../../../../lib/units/unitCode';
 import { makeSnagRef } from '../../../../lib/units/snagRef';
+import PickerDropdown from '../report/components/PickerDropdown';
+import { ROOM_PRESETS } from '../../../../lib/units/roomPresets';
 
 export default function CreateSnagScreen() {
     const router = useRouter();
@@ -24,8 +26,14 @@ export default function CreateSnagScreen() {
     const [floor, setFloor] = useState<string>('');
     const [flat, setFlat] = useState<string>('');
     const [areaType, setAreaType] = useState<ProjectSnag['areaType']>('unit');
+
+    const onAreaTypeChange = (val: string) => {
+        setAreaType(val as ProjectSnag['areaType']);
+        if (val !== 'unit') setFlat('');
+    };
     const [severity, setSeverity] = useState<ProjectSnag['severity']>('minor');
     const [trade, setTrade] = useState<string>('');
+    const [room, setRoom] = useState<string>('');
     const [description, setDescription] = useState<string>('');
     const [contextPhoto, setContextPhoto] = useState<string | null>(null);
     const [detailPhoto, setDetailPhoto] = useState<string | null>(null);
@@ -105,6 +113,7 @@ export default function CreateSnagScreen() {
             areaType,
             severity,
             trade: trade.trim() || undefined,
+            room: room.trim() || undefined,
             description: description.trim(),
             photos,
             status: 'open',
@@ -119,7 +128,8 @@ export default function CreateSnagScreen() {
                 snagData.floor, 
                 snagData.flat, 
                 project, 
-                building
+                building, 
+                snagData.areaType
             );
             const snagRef = makeSnagRef(unitCode, newSeq);
             Alert.alert(
@@ -131,6 +141,7 @@ export default function CreateSnagScreen() {
                         onPress: () => {
                             setSeverity('minor');
                             setTrade('');
+                            setRoom('');
                             setDescription('');
                             setContextPhoto(null);
                             setDetailPhoto(null);
@@ -200,12 +211,17 @@ export default function CreateSnagScreen() {
                     <View style={[styles.formGroup, { flex: 1 }]}>
                         <Text style={[styles.label, { color: colors.text }]}>Flat / Unit</Text>
                         <TextInput
-                            style={[styles.input, { color: colors.text, backgroundColor: colors.inputBackground, borderColor: colors.border }]}
-                            placeholder="e.g. 1"
+                            style={[
+                                styles.input, 
+                                { color: colors.text, backgroundColor: colors.inputBackground, borderColor: colors.border },
+                                areaType !== 'unit' && styles.inputDisabled
+                            ]}
+                            placeholder={areaType === 'unit' ? "e.g. 1" : "—"}
                             placeholderTextColor={colors.textMuted}
-                            value={flat}
+                            value={areaType === 'unit' ? flat : ''}
                             onChangeText={setFlat}
                             keyboardType="numeric"
+                            editable={areaType === 'unit'}
                         />
                         <Text style={{ fontSize: 10, color: colors.textMuted, marginTop: 4 }}>Unit number on the floor</Text>
                     </View>
@@ -218,7 +234,7 @@ export default function CreateSnagScreen() {
                             <TouchableOpacity 
                                 key={type} 
                                 style={[styles.chip, areaType === type && { backgroundColor: colors.primary }]}
-                                onPress={() => setAreaType(type as any)}
+                                onPress={() => onAreaTypeChange(type)}
                             >
                                 <Text style={[styles.chipText, areaType === type && { color: '#fff' }]}>{type}</Text>
                             </TouchableOpacity>
@@ -249,6 +265,18 @@ export default function CreateSnagScreen() {
                         placeholderTextColor={colors.textMuted}
                         value={trade}
                         onChangeText={setTrade}
+                    />
+                </View>
+
+                <View style={styles.formGroup}>
+                    <Text style={[styles.label, { color: colors.text }]}>Room (Optional)</Text>
+                    <PickerDropdown
+                        value={room}
+                        options={ROOM_PRESETS}
+                        allowCustom
+                        onSelect={setRoom}
+                        placeholder="Select or type a room"
+                        colors={colors}
                     />
                 </View>
 
@@ -337,6 +365,10 @@ const styles = StyleSheet.create({
         paddingHorizontal: 12,
         height: 44,
         fontSize: 16,
+    },
+    inputDisabled: {
+        backgroundColor: '#F1F5F9',
+        color: '#94A3B8',
     },
     textArea: {
         borderWidth: 1,

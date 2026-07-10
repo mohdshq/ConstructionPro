@@ -12,6 +12,8 @@ import { X, Camera, Trash2 } from 'lucide-react-native';
 import { makeUnitCode } from '../../../../lib/units/unitCode';
 import { makeSnagRef } from '../../../../lib/units/snagRef';
 import { getSnagStatusBg, getSnagStatusColor, getSnagStatusLabel } from '../../../../lib/units/snagStatus';
+import PickerDropdown from '../report/components/PickerDropdown';
+import { ROOM_PRESETS } from '../../../../lib/units/roomPresets';
 
 export default function EditSnagScreen() {
     const router = useRouter();
@@ -25,6 +27,7 @@ export default function EditSnagScreen() {
     const [areaType, setAreaType] = useState<ProjectSnag['areaType']>('unit');
     const [severity, setSeverity] = useState<ProjectSnag['severity']>('minor');
     const [trade, setTrade] = useState<string>('');
+    const [room, setRoom] = useState<string>('');
     const [description, setDescription] = useState<string>('');
     const [status, setStatus] = useState<ProjectSnag['status']>('open');
     const [contextPhoto, setContextPhoto] = useState<string | null>(null);
@@ -35,12 +38,17 @@ export default function EditSnagScreen() {
 
     const hydratedSnagId = useRef<string | null>(null);
 
+    const onAreaTypeChange = (val: string) => {
+        setAreaType(val as ProjectSnag['areaType']);
+    };
+
     // Initialize from loaded snag
     useEffect(() => {
         if (snag && hydratedSnagId.current !== snag.id) {
             setAreaType(snag.areaType);
             setSeverity(snag.severity);
             setTrade(snag.trade || '');
+            setRoom(snag.room || '');
             setDescription(snag.description);
             setStatus(snag.status);
             setContextPhoto(snag.photos && snag.photos[0] ? snag.photos[0] : null);
@@ -121,6 +129,7 @@ export default function EditSnagScreen() {
             areaType,
             severity,
             trade: trade.trim() || undefined,
+            room: room.trim() || undefined,
             description: description.trim(),
             photos,
             status,
@@ -239,7 +248,7 @@ export default function EditSnagScreen() {
                             <TouchableOpacity 
                                 key={type} 
                                 style={[styles.chip, areaType === type && { backgroundColor: colors.primary }]}
-                                onPress={() => setAreaType(type as any)}
+                                onPress={() => onAreaTypeChange(type)}
                             >
                                 <Text style={[styles.chipText, areaType === type && { color: '#fff' }]}>{type}</Text>
                             </TouchableOpacity>
@@ -255,6 +264,18 @@ export default function EditSnagScreen() {
                         placeholderTextColor={colors.textMuted}
                         value={trade}
                         onChangeText={setTrade}
+                    />
+                </View>
+
+                <View style={styles.formGroup}>
+                    <Text style={[styles.label, { color: colors.text }]}>Room (Optional)</Text>
+                    <PickerDropdown
+                        value={room}
+                        options={ROOM_PRESETS}
+                        allowCustom
+                        onSelect={setRoom}
+                        placeholder="Select or type a room"
+                        colors={colors}
                     />
                 </View>
 

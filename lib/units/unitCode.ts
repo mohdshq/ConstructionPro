@@ -6,15 +6,26 @@ export function isMultiBuilding(project: Project): boolean {
 }
 
 // Generation-only. Display layer (S2) will prefer unit.legacyCode when present; never regenerate legacy codes.
-export function makeUnitCode(floor: number | undefined, flat: number | undefined, project: Project, building?: Building): string {
-  if (floor === undefined || flat === undefined) return '';
-  const flatStr = String(flat).padStart(2, '0');     // "01"
-  const stack = `${floor}${flatStr}`;                 // "101"
-  
-  // Prefix ONLY when multi-building AND this unit has a building with a non-empty code
-  if (isMultiBuilding(project) && building?.code?.trim()) {
-    return `${building.code.trim()}${stack}`;         // "A101"
+export function makeUnitCode(
+  floor: number | undefined,
+  flat: number | undefined,
+  project: Project,
+  building?: Building,
+  areaType?: string,
+): string {
+  const prefix =
+    isMultiBuilding(project) && building?.code?.trim()
+      ? building.code.trim()
+      : '';
+
+  // Non-unit (common/other): building marker only, floor-independent.
+  if (areaType && areaType !== 'unit') {
+    return prefix ? `${prefix}-C` : 'C';
   }
-  
-  return stack;                                       // "101" fallback
+
+  // Unit snag: prefix + floor + padded flat.
+  if (floor === undefined || flat === undefined) return '';
+  const flatStr = String(flat).padStart(2, '0');
+  const stack = `${floor}${flatStr}`;
+  return prefix ? `${prefix}${stack}` : stack;
 }

@@ -3,9 +3,36 @@ import { getSnagStatusColor, getSnagStatusLabel } from '../../units/snagStatus';
 import { makeUnitCode } from '../../units/unitCode';
 import { makeSnagRef } from '../../units/snagRef';
 
+function formatSnagLocation(snag: ProjectSnag, project: Project, building?: any): string {
+    const unitCode = makeUnitCode(snag.floor, snag.flat, project, building, snag.areaType);
+    const hasUnitCode = !!unitCode;
+    const isUnitType = snag.areaType === 'unit' && snag.flat !== undefined && snag.flat !== null;
+
+    if (hasUnitCode && isUnitType) {
+        let loc = `Unit ${unitCode}`;
+        if (snag.room && snag.room.trim()) {
+            loc += ` · ${snag.room.trim()}`;
+        }
+        return loc;
+    } else {
+        const parts: string[] = [];
+        if (building && (building.name || building.code)) {
+            parts.push(building.name || building.code);
+        }
+        if (snag.floor !== undefined && snag.floor !== null) {
+            parts.push(`Floor ${snag.floor}`);
+        }
+        if (snag.room && snag.room.trim()) {
+            parts.push(snag.room.trim());
+        }
+        return parts.length ? parts.join(' · ') : '—';
+    }
+}
+
 export interface SnagReportOptions {
     format: 'detailed' | 'summary';
     filterSummary?: string;
+    snagsPerPage?: 2 | 3 | 4;
 }
 
 export function generateSnagReportHTML(
@@ -13,6 +40,8 @@ export function generateSnagReportHTML(
     project: Project,
     options: SnagReportOptions
 ): string {
+    const perPage = options.snagsPerPage ?? 2;
+    const densityClass = perPage >= 3 ? `snags-compact snags-per-${perPage}` : '';
     const dateStr = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 
     const validateLogo = (l: any) => l && typeof l === 'string' && l.length > 100 && l.startsWith('data:image') && !l.includes('undefined') && !l.includes('null');
@@ -79,31 +108,44 @@ export function generateSnagReportHTML(
 
     let summaryHTML = `
         <div class="section-heading">SUMMARY</div>
-        <table style="width: 100%; border: none; margin-bottom: 20px;">
-            <tr>
-                <td style="border: none; padding: 0 10px; width: 33%;">
-                    <div style="font-size: 12px; color: #64748B;">Total Snags</div>
-                    <div style="font-size: 24px; font-weight: bold; color: #1E3A5F;">${totalCount}</div>
-                </td>
-                <td style="border: none; padding: 0 10px; width: 33%;">
-                    <div style="font-size: 12px; color: #64748B;">By Status</div>
-                    <div style="font-size: 12px;">
-                        <span style="color: ${getSnagStatusColor('open')};">Open: <b>${openCount}</b></span> &nbsp;
-                        <span style="color: ${getSnagStatusColor('in_progress')};">In Progress: <b>${inProgressCount}</b></span> &nbsp;
-                        <span style="color: ${getSnagStatusColor('closed')};">Closed: <b>${closedCount}</b></span>
-                    </div>
-                </td>
-                <td style="border: none; padding: 0 10px; width: 33%;">
-                    <div style="font-size: 12px; color: #64748B;">By Severity</div>
-                    <div style="font-size: 12px;">
-                        <span style="color: #EF4444;">Critical: <b>${criticalCount}</b></span> &nbsp;
-                        <span style="color: #F97316;">Major: <b>${majorCount}</b></span> &nbsp;
-                        <span style="color: #EAB308;">Minor: <b>${minorCount}</b></span> &nbsp;
-                        <span style="color: #64748B;">Cosmetic: <b>${cosmeticCount}</b></span>
-                    </div>
-                </td>
-            </tr>
-        </table>
+        <div style="margin-bottom: 20px; page-break-inside: avoid;">
+            <div class="stat-row">
+                <div class="stat-card" style="border-top: 3px solid #1E3A5F;">
+                    <div class="stat-num" style="color: #1E3A5F;">${totalCount}</div>
+                    <div class="stat-label">Total Snags</div>
+                </div>
+                <div class="stat-card" style="border-top: 3px solid #D97706;">
+                    <div class="stat-num" style="color: #D97706;">${openCount}</div>
+                    <div class="stat-label">Open</div>
+                </div>
+                <div class="stat-card" style="border-top: 3px solid #2563EB;">
+                    <div class="stat-num" style="color: #2563EB;">${inProgressCount}</div>
+                    <div class="stat-label">In Progress</div>
+                </div>
+                <div class="stat-card" style="border-top: 3px solid #059669;">
+                    <div class="stat-num" style="color: #059669;">${closedCount}</div>
+                    <div class="stat-label">Closed</div>
+                </div>
+            </div>
+            <div class="stat-row">
+                <div class="stat-card" style="border-top: 3px solid #EF4444;">
+                    <div class="stat-num" style="color: #EF4444;">${criticalCount}</div>
+                    <div class="stat-label">Critical</div>
+                </div>
+                <div class="stat-card" style="border-top: 3px solid #F97316;">
+                    <div class="stat-num" style="color: #F97316;">${majorCount}</div>
+                    <div class="stat-label">Major</div>
+                </div>
+                <div class="stat-card" style="border-top: 3px solid #EAB308;">
+                    <div class="stat-num" style="color: #EAB308;">${minorCount}</div>
+                    <div class="stat-label">Minor</div>
+                </div>
+                <div class="stat-card" style="border-top: 3px solid #64748B;">
+                    <div class="stat-num" style="color: #64748B;">${cosmeticCount}</div>
+                    <div class="stat-label">Cosmetic</div>
+                </div>
+            </div>
+        </div>
     `;
 
     // Grouping
@@ -152,14 +194,19 @@ export function generateSnagReportHTML(
                 bodyHTML += `<tr style="background-color: #E2E8F0;"><td colspan="7" class="text-left font-bold" style="padding: 6px 8px; color: #1E3A5F; font-size: 12px;">${flName}</td></tr>`;
                 
                 const floorSnags = floorMap.get(fl)!;
-                floorSnags.sort((a, b) => a.seq - b.seq);
+                floorSnags.sort((a, b) => {
+                    const flatA = a.flat || 0;
+                    const flatB = b.flat || 0;
+                    if (flatA !== flatB) return flatA - flatB;
+                    return a.seq - b.seq;
+                });
                 
                 floorSnags.forEach(snag => {
-                    const ref = makeSnagRef(snag.legacyCode || makeUnitCode(snag.floor, snag.flat, project, building), snag.seq);
-                    const loc = snag.areaType ? snag.areaType.toUpperCase() : '-';
+                    const ref = makeSnagRef(snag.legacyCode || makeUnitCode(snag.floor, snag.flat, project, building, snag.areaType), snag.seq);
+                    const loc = formatSnagLocation(snag, project, building);
                     const desc = snag.description || '-';
                     const trade = snag.trade || '-';
-                    const dateStr = snag.createdAt ? new Date(snag.createdAt).toLocaleDateString('en-GB') : '-';
+                    const snagDateStr = snag.createdAt ? new Date(snag.createdAt).toLocaleDateString('en-GB') : '-';
                     
                     bodyHTML += `<tr>
                         <td class="text-left font-bold" style="white-space: nowrap;">${ref}</td>
@@ -168,7 +215,7 @@ export function generateSnagReportHTML(
                         <td class="text-center"><span class="badge badge-sev-${snag.severity}" style="font-size: 9px;">${snag.severity.toUpperCase()}</span></td>
                         <td class="text-left">${trade}</td>
                         <td class="text-center"><span class="badge" style="background-color: ${getSnagStatusColor(snag.status)}20; color: ${getSnagStatusColor(snag.status)}; border: 1px solid ${getSnagStatusColor(snag.status)}; font-size: 9px;">${getSnagStatusLabel(snag.status)}</span></td>
-                        <td class="text-center" style="white-space: nowrap;">${dateStr}</td>
+                        <td class="text-center" style="white-space: nowrap;">${snagDateStr}</td>
                     </tr>`;
                 });
             });
@@ -179,28 +226,35 @@ export function generateSnagReportHTML(
                 bodyHTML += `<div style="font-weight: bold; font-size: 14px; margin-top: 15px; margin-bottom: 10px; color: #334155; border-bottom: 1px solid #CBD5E1; padding-bottom: 5px;">${flName}</div>`;
                 
                 const floorSnags = floorMap.get(fl)!;
-                floorSnags.sort((a, b) => a.seq - b.seq);
+                floorSnags.sort((a, b) => {
+                    const flatA = a.flat || 0;
+                    const flatB = b.flat || 0;
+                    if (flatA !== flatB) return flatA - flatB;
+                    return a.seq - b.seq;
+                });
                 
                 floorSnags.forEach(snag => {
-                    const ref = makeSnagRef(snag.legacyCode || makeUnitCode(snag.floor, snag.flat, project, building), snag.seq);
+                    const ref = makeSnagRef(snag.legacyCode || makeUnitCode(snag.floor, snag.flat, project, building, snag.areaType), snag.seq);
                     const ctxPhoto = snag.photos && snag.photos[0] && validateLogo(snag.photos[0]) ? snag.photos[0] : null;
                     const detPhoto = snag.photos && snag.photos[1] && validateLogo(snag.photos[1]) ? snag.photos[1] : null;
-                    const dateStr = snag.createdAt ? new Date(snag.createdAt).toLocaleDateString('en-GB') : '-';
+                    const snagDateStr = snag.createdAt ? new Date(snag.createdAt).toLocaleDateString('en-GB') : '-';
                     
                     bodyHTML += `
-                        <div class="snag-block">
-                            <div class="snag-header">
-                                <div class="snag-ref">${ref}</div>
-                                <div class="snag-badges">
-                                    <span class="badge badge-sev-${snag.severity}">${snag.severity.toUpperCase()}</span>
-                                    <span class="badge" style="background-color: ${getSnagStatusColor(snag.status)}20; color: ${getSnagStatusColor(snag.status)}; border: 1px solid ${getSnagStatusColor(snag.status)};">${getSnagStatusLabel(snag.status)}</span>
+                        <div class="snag-block snag-sev-${snag.severity} ${densityClass}">
+                            <div class="snag-details">
+                                <div class="snag-header">
+                                    <div class="snag-ref">${ref}</div>
+                                    <div class="snag-badges">
+                                        <span class="badge badge-sev-${snag.severity}">${snag.severity.toUpperCase()}</span>
+                                        <span class="badge" style="background-color: ${getSnagStatusColor(snag.status)}20; color: ${getSnagStatusColor(snag.status)}; border: 1px solid ${getSnagStatusColor(snag.status)};">${getSnagStatusLabel(snag.status)}</span>
+                                    </div>
                                 </div>
-                            </div>
-                            <div class="snag-desc">${snag.description || 'No description provided.'}</div>
-                            <div class="snag-meta">
-                                ${snag.trade ? `<span><strong>Trade:</strong> ${snag.trade}</span>` : ''}
-                                ${snag.areaType ? `<span><strong>Area:</strong> ${snag.areaType.toUpperCase()}</span>` : ''}
-                                <span><strong>Date:</strong> ${dateStr}</span>
+                                <div class="snag-loc">${formatSnagLocation(snag, project, building)}</div>
+                                <div class="snag-desc">${snag.description || 'No description provided.'}</div>
+                                <div class="snag-meta">
+                                    ${snag.trade ? `<span><strong>Trade:</strong> ${snag.trade}</span>` : ''}
+                                    <span><strong>Date:</strong> ${snagDateStr}</span>
+                                </div>
                             </div>
                             
                             <div class="snag-photos">
@@ -232,6 +286,11 @@ export function generateSnagReportHTML(
                     .text-left { text-align: left; }
                     .text-center { text-align: center; }
 
+                    .stat-row { display: flex; gap: 10px; margin-bottom: 10px; page-break-inside: avoid; }
+                    .stat-card { flex: 1; background-color: #FFF; border: 1px solid #E2E8F0; border-radius: 6px; padding: 12px; text-align: center; }
+                    .stat-num { font-size: 22px; font-weight: bold; margin-bottom: 4px; }
+                    .stat-label { font-size: 10px; text-transform: uppercase; color: #64748B; }
+
                     .header-container { display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid #E2E8F0; padding-bottom: 15px; margin-bottom: 20px; background: #FFF; position: relative; }
                     .logo-container { flex: 1; display: flex; gap: 15px; align-items: center; justify-content: flex-start; }
                     .logo-container.right { justify-content: flex-end; }
@@ -253,13 +312,27 @@ export function generateSnagReportHTML(
                     .badge-sev-cosmetic { background-color: #F1F5F9; color: #64748B; border: 1px solid #64748B; }
                     
                     .snag-meta { font-size: 11px; color: #475569; margin-bottom: 12px; display: flex; gap: 15px; }
-                    .snag-desc { font-size: 12px; color: #1E293B; margin-bottom: 10px; line-height: 1.4; white-space: pre-wrap; font-weight: bold; }
+                    .snag-desc { font-size: 13px; font-weight: normal; color: #1E293B; margin-bottom: 10px; line-height: 1.5; white-space: pre-wrap; }
+                    .snag-loc { font-size: 11px; color: #64748B; margin-bottom: 8px; }
+                    .snag-sev-critical { border-left: 4px solid #EF4444; }
+                    .snag-sev-major { border-left: 4px solid #F97316; }
+                    .snag-sev-minor { border-left: 4px solid #EAB308; }
+                    .snag-sev-cosmetic { border-left: 4px solid #64748B; }
                     
                     .snag-photos { display: flex; gap: 15px; }
                     .snag-photo { flex: 1; border: 1px solid #CBD5E1; background-color: #F8FAFC; border-radius: 4px; overflow: hidden; }
                     .snag-photo img { width: 100%; height: 200px; object-fit: contain; background-color: #FFF; display: block; }
                     .photo-caption { font-size: 10px; text-align: center; padding: 6px; background-color: #F1F5F9; color: #475569; border-top: 1px solid #CBD5E1; font-weight: bold; }
                     .no-photo { display: flex; align-items: center; justify-content: center; height: 200px; color: #94A3B8; font-style: italic; font-size: 12px; }
+
+                    .snags-compact .snag-block { display: flex; gap: 12px; page-break-inside: avoid; }
+                    .snags-compact .snag-details { flex: 1; min-width: 0; }
+                    .snags-compact .snag-photos { display: flex; flex-direction: column; gap: 8px; flex: 0 0 auto; }
+                    .snags-compact .snag-photos img { aspect-ratio: 1 / 1; object-fit: cover; border-radius: 6px; }
+                    .snags-per-3 .snag-photos img { width: 150px; height: 150px; }
+                    .snags-per-3 .snag-block { font-size: 11px; padding: 10px; }
+                    .snags-per-4 .snag-photos img { width: 120px; height: 120px; }
+                    .snags-per-4 .snag-block { font-size: 10px; padding: 8px; }
 
                     @media print {
                         @page { margin: 10mm; }

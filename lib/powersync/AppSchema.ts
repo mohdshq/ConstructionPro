@@ -42,7 +42,7 @@ const activities = new Table({
 const snags = new Table({
   project_id: column.text, user_id: column.text, seq: column.integer, building_id: column.text,
   floor: column.integer, flat: column.integer, area_type: column.text, severity: column.text,
-  trade: column.text, description: column.text, photos: column.text, status: column.text,
+  trade: column.text, room: column.text, description: column.text, photos: column.text, status: column.text,
   legacy_code: column.text, created_at: column.text,
 }, { indexes: { by_project: ['project_id'] } });
 
