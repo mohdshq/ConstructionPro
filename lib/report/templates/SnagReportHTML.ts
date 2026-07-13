@@ -167,106 +167,110 @@ export function generateSnagReportHTML(
         return a.localeCompare(b);
     });
 
-    sortedBuildings.forEach(bId => {
-        const floorMap = grouped.get(bId)!;
-        const building = project.buildings?.find(b => b.id === bId);
-        const bName = building ? `${building.code}${building.name ? ` - ${building.name}` : ''}` : (bId === 'unassigned' ? 'Unassigned Building' : bId);
+    const renderSnagCard = (snag: ProjectSnag, building: any) => {
+        const ref = makeSnagRef(snag.legacyCode || makeUnitCode(snag.floor, snag.flat, project, building, snag.areaType), snag.seq);
+        const ctxPhoto = snag.photos && snag.photos[0] && validateLogo(snag.photos[0]) ? snag.photos[0] : null;
+        const detPhoto = snag.photos && snag.photos[1] && validateLogo(snag.photos[1]) ? snag.photos[1] : null;
+        const snagDateStr = snag.createdAt ? new Date(snag.createdAt).toLocaleDateString('en-GB') : '-';
         
-        bodyHTML += `<div class="section-heading" style="margin-top: 30px; font-size: 16px;">BUILDING: ${bName}</div>`;
-        
-        // Sort floors properly
-        const floors = Array.from(floorMap.keys()).sort((a, b) => a - b);
-        
-        if (options.format === 'summary') {
-            bodyHTML += `<table style="width: 100%; border: none; margin-bottom: 20px;">`;
-            bodyHTML += `<thead><tr>
-                <th class="blue-hdr text-left" style="width:12%">Ref</th>
-                <th class="blue-hdr text-left" style="width:15%">Location</th>
-                <th class="blue-hdr text-left" style="width:33%">Description</th>
-                <th class="blue-hdr text-center" style="width:10%">Severity</th>
-                <th class="blue-hdr text-left" style="width:10%">Trade</th>
-                <th class="blue-hdr text-center" style="width:10%">Status</th>
-                <th class="blue-hdr text-center" style="width:10%">Date</th>
-            </tr></thead><tbody>`;
-            
-            floors.forEach(fl => {
-                const flName = fl === -999 ? 'Unassigned Floor' : `Floor ${fl}`;
-                bodyHTML += `<tr style="background-color: #E2E8F0;"><td colspan="7" class="text-left font-bold" style="padding: 6px 8px; color: #1E3A5F; font-size: 12px;">${flName}</td></tr>`;
-                
-                const floorSnags = floorMap.get(fl)!;
-                floorSnags.sort((a, b) => {
-                    const flatA = a.flat || 0;
-                    const flatB = b.flat || 0;
-                    if (flatA !== flatB) return flatA - flatB;
-                    return a.seq - b.seq;
-                });
-                
-                floorSnags.forEach(snag => {
-                    const ref = makeSnagRef(snag.legacyCode || makeUnitCode(snag.floor, snag.flat, project, building, snag.areaType), snag.seq);
-                    const loc = formatSnagLocation(snag, project, building);
-                    const desc = snag.description || '-';
-                    const trade = snag.trade || '-';
-                    const snagDateStr = snag.createdAt ? new Date(snag.createdAt).toLocaleDateString('en-GB') : '-';
-                    
-                    bodyHTML += `<tr>
-                        <td class="text-left font-bold" style="white-space: nowrap;">${ref}</td>
-                        <td class="text-left">${loc}</td>
-                        <td class="text-left" style="white-space: pre-wrap;">${desc}</td>
-                        <td class="text-center"><span class="badge badge-sev-${snag.severity}" style="font-size: 9px;">${snag.severity.toUpperCase()}</span></td>
-                        <td class="text-left">${trade}</td>
-                        <td class="text-center"><span class="badge" style="background-color: ${getSnagStatusColor(snag.status)}20; color: ${getSnagStatusColor(snag.status)}; border: 1px solid ${getSnagStatusColor(snag.status)}; font-size: 9px;">${getSnagStatusLabel(snag.status)}</span></td>
-                        <td class="text-center" style="white-space: nowrap;">${snagDateStr}</td>
-                    </tr>`;
-                });
-            });
-            bodyHTML += `</tbody></table>`;
-        } else {
-            floors.forEach(fl => {
-                const flName = fl === -999 ? 'Unassigned Floor' : `Floor ${fl}`;
-                bodyHTML += `<div style="font-weight: bold; font-size: 14px; margin-top: 15px; margin-bottom: 10px; color: #334155; border-bottom: 1px solid #CBD5E1; padding-bottom: 5px;">${flName}</div>`;
-                
-                const floorSnags = floorMap.get(fl)!;
-                floorSnags.sort((a, b) => {
-                    const flatA = a.flat || 0;
-                    const flatB = b.flat || 0;
-                    if (flatA !== flatB) return flatA - flatB;
-                    return a.seq - b.seq;
-                });
-                
-                floorSnags.forEach(snag => {
-                    const ref = makeSnagRef(snag.legacyCode || makeUnitCode(snag.floor, snag.flat, project, building, snag.areaType), snag.seq);
-                    const ctxPhoto = snag.photos && snag.photos[0] && validateLogo(snag.photos[0]) ? snag.photos[0] : null;
-                    const detPhoto = snag.photos && snag.photos[1] && validateLogo(snag.photos[1]) ? snag.photos[1] : null;
-                    const snagDateStr = snag.createdAt ? new Date(snag.createdAt).toLocaleDateString('en-GB') : '-';
-                    
-                    bodyHTML += `
-                        <div class="snag-block snag-sev-${snag.severity} ${densityClass}">
-                            <div class="snag-details">
-                                <div class="snag-header">
-                                    <div class="snag-ref">${ref}</div>
-                                    <div class="snag-badges">
-                                        <span class="badge badge-sev-${snag.severity}">${snag.severity.toUpperCase()}</span>
-                                        <span class="badge" style="background-color: ${getSnagStatusColor(snag.status)}20; color: ${getSnagStatusColor(snag.status)}; border: 1px solid ${getSnagStatusColor(snag.status)};">${getSnagStatusLabel(snag.status)}</span>
-                                    </div>
-                                </div>
-                                <div class="snag-loc">${formatSnagLocation(snag, project, building)}</div>
-                                <div class="snag-desc">${snag.description || 'No description provided.'}</div>
-                                <div class="snag-meta">
-                                    ${snag.trade ? `<span><strong>Trade:</strong> ${snag.trade}</span>` : ''}
-                                    <span><strong>Date:</strong> ${snagDateStr}</span>
-                                </div>
-                            </div>
-                            
-                            <div class="snag-photos">
-                                ${ctxPhoto ? `<div class="snag-photo"><img src="${ctxPhoto}" /><div class="photo-caption">Context</div></div>` : `<div class="snag-photo no-photo">No Context Photo</div>`}
-                                ${detPhoto ? `<div class="snag-photo"><img src="${detPhoto}" /><div class="photo-caption">Detail</div></div>` : `<div class="snag-photo no-photo">No Detail Photo</div>`}
-                            </div>
+        return `
+            <div class="snag-block snag-sev-${snag.severity} ${densityClass}">
+                <div class="snag-details">
+                    <div class="snag-header">
+                        <div class="snag-ref">${ref}</div>
+                        <div class="snag-badges">
+                            <span class="badge badge-sev-${snag.severity}">${snag.severity.toUpperCase()}</span>
+                            <span class="badge" style="background-color: ${getSnagStatusColor(snag.status)}20; color: ${getSnagStatusColor(snag.status)}; border: 1px solid ${getSnagStatusColor(snag.status)};">${getSnagStatusLabel(snag.status)}</span>
                         </div>
-                    `;
+                    </div>
+                    <div class="snag-loc">${formatSnagLocation(snag, project, building)}</div>
+                    <div class="snag-desc">${snag.description || 'No description provided.'}</div>
+                    <div class="snag-meta">
+                        ${snag.trade ? `<span><strong>Trade:</strong> ${snag.trade}</span>` : ''}
+                        <span><strong>Date:</strong> ${snagDateStr}</span>
+                    </div>
+                </div>
+                
+                <div class="snag-photos">
+                    ${ctxPhoto ? `<div class="snag-photo"><img src="${ctxPhoto}" /><div class="photo-caption">Context</div></div>` : `<div class="snag-photo no-photo">No Context Photo</div>`}
+                    ${detPhoto ? `<div class="snag-photo"><img src="${detPhoto}" /><div class="photo-caption">Detail</div></div>` : `<div class="snag-photo no-photo">No Detail Photo</div>`}
+                </div>
+            </div>
+        `;
+    };
+
+    sortedBuildings.forEach(bId => {
+            const floorMap = grouped.get(bId)!;
+            const building = project.buildings?.find(b => b.id === bId);
+            const bName = building ? `${building.code}${building.name ? ` - ${building.name}` : ''}` : (bId === 'unassigned' ? 'Unassigned Building' : bId);
+            
+            bodyHTML += `<div class="section-heading" style="margin-top: 30px; font-size: 16px;">BUILDING: ${bName}</div>`;
+            
+            // Sort floors properly
+            const floors = Array.from(floorMap.keys()).sort((a, b) => a - b);
+            
+            if (options.format === 'summary') {
+                bodyHTML += `<table style="width: 100%; border: none; margin-bottom: 20px;">`;
+                bodyHTML += `<thead><tr>
+                    <th class="blue-hdr text-left" style="width:12%">Ref</th>
+                    <th class="blue-hdr text-left" style="width:15%">Location</th>
+                    <th class="blue-hdr text-left" style="width:33%">Description</th>
+                    <th class="blue-hdr text-center" style="width:10%">Severity</th>
+                    <th class="blue-hdr text-left" style="width:10%">Trade</th>
+                    <th class="blue-hdr text-center" style="width:10%">Status</th>
+                    <th class="blue-hdr text-center" style="width:10%">Date</th>
+                </tr></thead><tbody>`;
+                
+                floors.forEach(fl => {
+                    const flName = fl === -999 ? 'Unassigned Floor' : `Floor ${fl}`;
+                    bodyHTML += `<tr style="background-color: #E2E8F0;"><td colspan="7" class="text-left font-bold" style="padding: 6px 8px; color: #1E3A5F; font-size: 12px;">${flName}</td></tr>`;
+                    
+                    const floorSnags = floorMap.get(fl)!;
+                    floorSnags.sort((a, b) => {
+                        const flatA = a.flat || 0;
+                        const flatB = b.flat || 0;
+                        if (flatA !== flatB) return flatA - flatB;
+                        return a.seq - b.seq;
+                    });
+                    
+                    floorSnags.forEach(snag => {
+                        const ref = makeSnagRef(snag.legacyCode || makeUnitCode(snag.floor, snag.flat, project, building, snag.areaType), snag.seq);
+                        const loc = formatSnagLocation(snag, project, building);
+                        const desc = snag.description || '-';
+                        const trade = snag.trade || '-';
+                        const snagDateStr = snag.createdAt ? new Date(snag.createdAt).toLocaleDateString('en-GB') : '-';
+                        
+                        bodyHTML += `<tr>
+                            <td class="text-left font-bold" style="white-space: nowrap;">${ref}</td>
+                            <td class="text-left">${loc}</td>
+                            <td class="text-left" style="white-space: pre-wrap;">${desc}</td>
+                            <td class="text-center"><span class="badge badge-sev-${snag.severity}" style="font-size: 9px;">${snag.severity.toUpperCase()}</span></td>
+                            <td class="text-left">${trade}</td>
+                            <td class="text-center"><span class="badge" style="background-color: ${getSnagStatusColor(snag.status)}20; color: ${getSnagStatusColor(snag.status)}; border: 1px solid ${getSnagStatusColor(snag.status)}; font-size: 9px;">${getSnagStatusLabel(snag.status)}</span></td>
+                            <td class="text-center" style="white-space: nowrap;">${snagDateStr}</td>
+                        </tr>`;
+                    });
                 });
-            });
-        }
-    });
+                bodyHTML += `</tbody></table>`;
+            } else {
+                floors.forEach(fl => {
+                    const flName = fl === -999 ? 'Unassigned Floor' : `Floor ${fl}`;
+                    bodyHTML += `<div style="font-weight: bold; font-size: 14px; margin-top: 15px; margin-bottom: 10px; color: #334155; border-bottom: 1px solid #CBD5E1; padding-bottom: 5px;">${flName}</div>`;
+                    
+                    const floorSnags = floorMap.get(fl)!;
+                    floorSnags.sort((a, b) => {
+                        const flatA = a.flat || 0;
+                        const flatB = b.flat || 0;
+                        if (flatA !== flatB) return flatA - flatB;
+                        return a.seq - b.seq;
+                    });
+                    
+                    floorSnags.forEach(snag => {
+                        bodyHTML += renderSnagCard(snag, building);
+                    });
+                });
+            }
+        });
 
     return `
         <!DOCTYPE html>
@@ -325,14 +329,15 @@ export function generateSnagReportHTML(
                     .photo-caption { font-size: 10px; text-align: center; padding: 6px; background-color: #F1F5F9; color: #475569; border-top: 1px solid #CBD5E1; font-weight: bold; }
                     .no-photo { display: flex; align-items: center; justify-content: center; height: 200px; color: #94A3B8; font-style: italic; font-size: 12px; }
 
-                    .snags-compact .snag-block { display: flex; gap: 12px; page-break-inside: avoid; }
-                    .snags-compact .snag-details { flex: 1; min-width: 0; }
-                    .snags-compact .snag-photos { display: flex; flex-direction: column; gap: 8px; flex: 0 0 auto; }
-                    .snags-compact .snag-photos img { aspect-ratio: 1 / 1; object-fit: cover; border-radius: 6px; }
-                    .snags-per-3 .snag-photos img { width: 150px; height: 150px; }
-                    .snags-per-3 .snag-block { font-size: 11px; padding: 10px; }
-                    .snags-per-4 .snag-photos img { width: 120px; height: 120px; }
-                    .snags-per-4 .snag-block { font-size: 10px; padding: 8px; }
+                    .snag-block.snags-compact { display: flex; gap: 12px; align-items: flex-start; page-break-inside: avoid; box-sizing: border-box; }
+                    .snag-block.snags-compact .snag-details { flex: 1; min-width: 0; }
+                    .snag-block.snags-compact .snag-photos { flex-direction: column; gap: 6px; flex: 0 0 auto; }
+                    .snag-block.snags-per-3 .snag-photo, .snag-block.snags-per-3 .no-photo { width: 130px; }
+                    .snag-block.snags-per-3 .snag-photo img { width: 130px; height: 130px; object-fit: cover; }
+                    .snag-block.snags-per-3 .no-photo { height: 130px; }
+                    .snag-block.snags-per-4 .snag-photo, .snag-block.snags-per-4 .no-photo { width: 100px; }
+                    .snag-block.snags-per-4 .snag-photo img { width: 100px; height: 100px; object-fit: cover; }
+                    .snag-block.snags-per-4 .no-photo { height: 100px; }
 
                     @media print {
                         @page { margin: 10mm; }

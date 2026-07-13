@@ -154,5 +154,8 @@ describe('generateSnagReportHTML', () => {
         // *applied* to a snag-block container element.
         expect(html).not.toMatch(/class="snag-block[^"]*snags-compact/);
         expect(html).not.toMatch(/class="snag-block[^"]*snags-per-/);
+        
+        // Default (2-up) should SHOULD contain Floor headers
+        expect(html).toContain('Floor 1');
     });
 });

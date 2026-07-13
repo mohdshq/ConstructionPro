@@ -25,7 +25,8 @@ export default function SnagReportScreen() {
     const project = getProject(id);
     const snags = usePowerSyncSnags(id);
 
-    const [format, setFormat] = useState<'detailed' | 'summary'>('detailed');
+    type ReportStyle = 'detailed' | 'compact' | 'summary';
+    const [reportStyle, setReportStyle] = useState<ReportStyle>('detailed');
     const [filterBuilding, setFilterBuilding] = useState<string>(params.building || 'All');
     const [filterFloor, setFilterFloor] = useState<string>(params.floor || 'All');
     const [filterSeverity, setFilterSeverity] = useState<string>(params.severity || 'All');
@@ -81,8 +82,14 @@ export default function SnagReportScreen() {
 
     const html = useMemo(() => {
         if (!project) return '';
-        return generateSnagReportHTML(filteredSnags, project, { format, filterSummary: filterSummaryString });
-    }, [filteredSnags, project, format, filterSummaryString]);
+        const format = reportStyle === 'summary' ? 'summary' : 'detailed';
+        const snagsPerPage = reportStyle === 'compact' ? 4 : 2;
+        return generateSnagReportHTML(filteredSnags, project, { 
+            format, 
+            filterSummary: filterSummaryString,
+            snagsPerPage
+        });
+    }, [filteredSnags, project, reportStyle, filterSummaryString]);
 
     if (!project) {
         return <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}><Text>Project not found</Text></View>;
@@ -143,18 +150,17 @@ export default function SnagReportScreen() {
             {/* Config Bar */}
             <View style={[styles.configBar, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
                 <View style={[styles.segmentControl, { backgroundColor: colors.background, borderColor: colors.border }]}>
-                    <TouchableOpacity 
-                        style={[styles.segmentBtn, format === 'detailed' && { backgroundColor: colors.primary }]}
-                        onPress={() => setFormat('detailed')}
-                    >
-                        <Text style={[styles.segmentText, { color: format === 'detailed' ? '#FFF' : colors.text }]}>Detailed</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity 
-                        style={[styles.segmentBtn, format === 'summary' && { backgroundColor: colors.primary }]}
-                        onPress={() => setFormat('summary')}
-                    >
-                        <Text style={[styles.segmentText, { color: format === 'summary' ? '#FFF' : colors.text }]}>Summary</Text>
-                    </TouchableOpacity>
+                    {(['detailed', 'compact', 'summary'] as const).map((s) => (
+                        <TouchableOpacity
+                            key={s}
+                            style={[styles.segmentBtn, reportStyle === s && { backgroundColor: colors.primary }]}
+                            onPress={() => setReportStyle(s)}
+                        >
+                            <Text style={[styles.segmentText, { color: reportStyle === s ? '#FFF' : colors.text }]}>
+                                {s === 'detailed' ? 'Detailed' : s === 'compact' ? 'Compact' : 'Summary'}
+                            </Text>
+                        </TouchableOpacity>
+                    ))}
                 </View>
 
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterScroll}>
