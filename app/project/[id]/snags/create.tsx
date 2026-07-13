@@ -1,6 +1,6 @@
 import { View, Text, StyleSheet, TextInput, ScrollView, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import * as ImagePicker from 'expo-image-picker';
 import { useProjectsStore, ProjectSnag } from '../../../../store/projectsStore';
 import { useThemeColors } from '../../../../store/useThemeColors';
@@ -12,15 +12,27 @@ import { makeUnitCode } from '../../../../lib/units/unitCode';
 import { makeSnagRef } from '../../../../lib/units/snagRef';
 import PickerDropdown from '../report/components/PickerDropdown';
 import { ROOM_PRESETS } from '../../../../lib/units/roomPresets';
+import { normalizeName, namesMatch } from '../../../../lib/units/normalizeName';
 
 export default function CreateSnagScreen() {
     const router = useRouter();
     const { id } = useLocalSearchParams<{ id: string }>();
-    const { getProject, addSnag } = useProjectsStore();
+    const { getProject, addSnag, addKnownRoom } = useProjectsStore();
     const { colors } = useThemeColors();
     
     const project = getProject(id);
     const buildings = project?.buildings || [];
+
+    const roomOptions = useMemo(() => {
+        const list = [...ROOM_PRESETS];
+        const knownRooms = project?.knownRooms || [];
+        for (const kr of knownRooms) {
+            if (!list.some(p => namesMatch(p, kr))) {
+                list.push(kr);
+            }
+        }
+        return list;
+    }, [project?.knownRooms]);
     
     const [buildingId, setBuildingId] = useState<string>('');
     const [floor, setFloor] = useState<string>('');
@@ -40,6 +52,29 @@ export default function CreateSnagScreen() {
     const [markupPhoto, setMarkupPhoto] = useState<{uri: string, target: 'context' | 'detail'} | null>(null);
     
     const [isSubmitting, setIsSubmitting] = useState(false);
+
+    const handleRoomSelect = async (val: string) => {
+        const normalized = normalizeName(val);
+        // Only attempt to add if it's not empty
+        if (normalized) {
+            const result = await addKnownRoom(id, normalized);
+            if (result === 'exists' && val !== normalized) {
+                // Not strictly necessary to alert here, but user asked for "already exists" if custom
+                // Wait, if it already exists, just silently select the existing one or alert.
+                // Let's only alert if it's a genuine custom entry and it matches an existing one.
+                // Actually, the user asked for a lightweight notice if it returns 'exists'.
+                // If it's a preset selected from the dropdown, `addKnownRoom` will be called, it returns 'exists'.
+                // A toast might be annoying on normal selection. The prompt says:
+                // "On custom room entry (the allowCustom path of PickerDropdown): normalize via normalizeName, then call addKnownRoom. If it returns exists, show a lightweight notice ... and select the existing entry"
+                // PickerDropdown calls `onSelect` with the value. There's no separate event for custom vs select.
+                // I will alert if the exact `val` is not in `roomOptions` initially but `result === 'exists'`.
+                if (result === 'exists' && !roomOptions.includes(val)) {
+                    Alert.alert("Notice", "This room already exists.");
+                }
+            }
+        }
+        setRoom(normalized);
+    };
 
     if (!project) {
         return <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}><Text>Project not found</Text></View>;
@@ -272,9 +307,9 @@ export default function CreateSnagScreen() {
                     <Text style={[styles.label, { color: colors.text }]}>Room (Optional)</Text>
                     <PickerDropdown
                         value={room}
-                        options={ROOM_PRESETS}
+                        options={roomOptions}
                         allowCustom
-                        onSelect={setRoom}
+                        onSelect={handleRoomSelect}
                         placeholder="Select or type a room"
                         colors={colors}
                     />

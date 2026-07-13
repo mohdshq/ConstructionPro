@@ -1,6 +1,6 @@
 import { View, Text, StyleSheet, TextInput, ScrollView, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import * as ImagePicker from 'expo-image-picker';
 import { useProjectsStore, ProjectSnag } from '../../../../store/projectsStore';
 import { usePowerSyncSnag } from '../../../../lib/powersync/useSnags';
@@ -14,11 +14,12 @@ import { makeSnagRef } from '../../../../lib/units/snagRef';
 import { getSnagStatusBg, getSnagStatusColor, getSnagStatusLabel } from '../../../../lib/units/snagStatus';
 import PickerDropdown from '../report/components/PickerDropdown';
 import { ROOM_PRESETS } from '../../../../lib/units/roomPresets';
+import { normalizeName, namesMatch } from '../../../../lib/units/normalizeName';
 
 export default function EditSnagScreen() {
     const router = useRouter();
     const { id, snagId } = useLocalSearchParams<{ id: string, snagId: string }>();
-    const { getProject, updateSnag, deleteSnag } = useProjectsStore();
+    const { getProject, updateSnag, deleteSnag, addKnownRoom } = useProjectsStore();
     const { colors } = useThemeColors();
     
     const project = getProject(id);
@@ -40,6 +41,28 @@ export default function EditSnagScreen() {
 
     const onAreaTypeChange = (val: string) => {
         setAreaType(val as ProjectSnag['areaType']);
+    };
+
+    const roomOptions = useMemo(() => {
+        const list = [...ROOM_PRESETS];
+        const knownRooms = project?.knownRooms || [];
+        for (const kr of knownRooms) {
+            if (!list.some(p => namesMatch(p, kr))) {
+                list.push(kr);
+            }
+        }
+        return list;
+    }, [project?.knownRooms]);
+
+    const handleRoomSelect = async (val: string) => {
+        const normalized = normalizeName(val);
+        if (normalized) {
+            const result = await addKnownRoom(id, normalized);
+            if (result === 'exists' && !roomOptions.includes(val)) {
+                Alert.alert("Notice", "This room already exists.");
+            }
+        }
+        setRoom(normalized);
     };
 
     // Initialize from loaded snag
@@ -271,9 +294,9 @@ export default function EditSnagScreen() {
                     <Text style={[styles.label, { color: colors.text }]}>Room (Optional)</Text>
                     <PickerDropdown
                         value={room}
-                        options={ROOM_PRESETS}
+                        options={roomOptions}
                         allowCustom
-                        onSelect={setRoom}
+                        onSelect={handleRoomSelect}
                         placeholder="Select or type a room"
                         colors={colors}
                     />

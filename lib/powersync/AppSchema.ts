@@ -11,7 +11,7 @@ const projects = new Table({
   photo_url: column.text, created_at: column.text, updated_at: column.text,
   reference_number: column.text, employer_logo: column.text, consultant_logo: column.text,
   contractor_logos: column.text, main_contractor_name: column.text, known_companies: column.text,
-  buildings: column.text, snag_counter: column.integer,
+  known_rooms: column.text, buildings: column.text, snag_counter: column.integer,
 });
 const reports = new Table({
   project_id: column.text, user_id: column.text, type: column.text, date: column.text,

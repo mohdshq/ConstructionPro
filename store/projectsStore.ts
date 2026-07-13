@@ -304,6 +304,7 @@ export interface Project {
     contractorLogos?: string[];
     mainContractorName?: string;
     knownCompanies?: string[];
+    knownRooms?: string[];
     buildings?: Building[];
     snagCounter?: number;
     createdAt: string;
@@ -382,6 +383,7 @@ interface ProjectsState {
     updateProject: (id: string, project: Partial<Project>) => Promise<void>;
     deleteProject: (id: string) => Promise<void>;
     getProject: (id: string) => Project | undefined;
+    addKnownRoom: (projectId: string, room: string) => Promise<'added' | 'exists' | 'error'>;
 
     // Report Actions
     addReport: (report: Omit<Report, 'id' | 'createdAt' | 'updatedAt'>) => Promise<void>;
@@ -438,6 +440,13 @@ function mapProjectRow(row: any): Project {
         knownCompaniesParsed = [];
     }
 
+    let knownRoomsParsed: string[] = [];
+    try {
+        knownRoomsParsed = JSON.parse(row.known_rooms || '[]');
+    } catch (e) {
+        knownRoomsParsed = [];
+    }
+
     let buildingsParsed: Building[] = [];
     try {
         buildingsParsed = JSON.parse(row.buildings || '[]');
@@ -463,6 +472,7 @@ function mapProjectRow(row: any): Project {
         contractorLogos: contractorLogosParsed,
         mainContractorName: row.main_contractor_name || undefined,
         knownCompanies: knownCompaniesParsed,
+        knownRooms: knownRoomsParsed,
         buildings: buildingsParsed,
         snagCounter: row.snag_counter || 0,
         createdAt: row.created_at || new Date().toISOString(),
@@ -619,8 +629,8 @@ export const useProjectsStore = create<ProjectsState>()(
                         `INSERT OR REPLACE INTO projects (
                             id, user_id, name, location, client, description, contract_value,
                             start_date, end_date, project_manager, reference_number, status,
-                            photo_url, employer_logo, consultant_logo, contractor_logos, main_contractor_name, known_companies, buildings, created_at, updated_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                            photo_url, employer_logo, consultant_logo, contractor_logos, main_contractor_name, known_companies, known_rooms, buildings, created_at, updated_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                         [
                             localId, userId, project.name, project.location || null, project.client || null,
                             project.description || null, project.contractValue || null,
@@ -631,6 +641,7 @@ export const useProjectsStore = create<ProjectsState>()(
                             project.contractorLogos ? JSON.stringify(project.contractorLogos) : null,
                             project.mainContractorName || null,
                             project.knownCompanies ? JSON.stringify(project.knownCompanies) : null,
+                            project.knownRooms ? JSON.stringify(project.knownRooms) : null,
                             project.buildings ? JSON.stringify(project.buildings) : null,
                             now, now,
                         ]
@@ -668,6 +679,7 @@ export const useProjectsStore = create<ProjectsState>()(
                     if (projectUpdates.contractorLogos !== undefined) add('contractor_logos', projectUpdates.contractorLogos ? JSON.stringify(projectUpdates.contractorLogos) : null);
                     if (projectUpdates.mainContractorName !== undefined) add('main_contractor_name', projectUpdates.mainContractorName || null);
                     if (projectUpdates.knownCompanies !== undefined) add('known_companies', projectUpdates.knownCompanies ? JSON.stringify(projectUpdates.knownCompanies) : null);
+                    if (projectUpdates.knownRooms !== undefined) add('known_rooms', projectUpdates.knownRooms ? JSON.stringify(projectUpdates.knownRooms) : null);
                     if (projectUpdates.buildings !== undefined) add('buildings', projectUpdates.buildings ? JSON.stringify(projectUpdates.buildings) : null);
                     add('updated_at', now);
 
@@ -682,6 +694,32 @@ export const useProjectsStore = create<ProjectsState>()(
                 } catch (error) {
                     console.error('Failed to update project in PowerSync:', error);
                 }
+            },
+
+            addKnownRoom: async (projectId: string, room: string) => {
+                const { projects, updateProject } = get();
+                const project = projects.find(p => p.id === projectId);
+                if (!project) return 'error';
+
+                // We need to import ROOM_PRESETS and namesMatch, normalizeName
+                // But since we can't easily import them at the top without replacing the whole file,
+                // we can dynamically require or just import them at the top. I'll add the imports at the top next.
+                // For now, assume normalizeName, namesMatch, ROOM_PRESETS are available.
+                // Actually, I must add imports at the top. I'll do that in another chunk.
+                const { normalizeName, namesMatch } = require('../lib/units/normalizeName');
+                const { ROOM_PRESETS } = require('../lib/units/roomPresets');
+
+                const normalizedRoom = normalizeName(room);
+                const existingKnownRooms = project.knownRooms || [];
+                
+                const exists = ROOM_PRESETS.some((p: string) => namesMatch(p, normalizedRoom)) ||
+                               existingKnownRooms.some(r => namesMatch(r, normalizedRoom));
+                
+                if (exists) return 'exists';
+
+                const newKnownRooms = [...existingKnownRooms, normalizedRoom];
+                await updateProject(projectId, { knownRooms: newKnownRooms });
+                return 'added';
             },
 
             deleteProject: async (id) => {
