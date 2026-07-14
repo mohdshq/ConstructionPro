@@ -1,9 +1,11 @@
 import React from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from 'react-native';
 import { Plus, Trash2 } from 'lucide-react-native';
-import { ManpowerRow, PRESET_STAFF_ROLES, PRESET_LABOR_TRADES } from '../../../../../store/projectsStore';
+import { useLocalSearchParams } from 'expo-router';
+import { ManpowerRow, PRESET_STAFF_ROLES, PRESET_LABOR_TRADES, useProjectsStore } from '../../../../../store/projectsStore';
 import { summaryByCompany, summaryByTrade, grandTotal, nightShiftTotal } from '../../../../../lib/reports/manpowerTotals';
 import PickerDropdown from './PickerDropdown';
+import { normalizeCompanyName, companyNamesMatch } from '../../../../../lib/units/normalizeName';
 
 interface Props {
     rows: ManpowerRow[];
@@ -15,6 +17,9 @@ interface Props {
 }
 
 export default function ManpowerSection({ rows, onChange, knownCompanies = [], colors, hiddenSections = [], onHiddenSectionsChange }: Props) {
+    const { id } = useLocalSearchParams<{ id: string }>();
+    const { addKnownCompany } = useProjectsStore();
+
     const toggleSection = (key: string) => {
         if (!onHiddenSectionsChange) return;
         if (hiddenSections.includes(key)) {
@@ -83,15 +88,25 @@ export default function ManpowerSection({ rows, onChange, knownCompanies = [], c
         ]);
     };
 
-    const updateCompanyGroup = (oldCompany: string, newCompany: string) => {
-        const trimmedNew = newCompany.trim();
+    const updateCompanyGroup = async (oldCompany: string, newCompany: string) => {
+        const normalizedNew = normalizeCompanyName(newCompany);
+        if (!normalizedNew) return;
+
         const usedCompanies = new Set(groups.map(g => g.company.toLowerCase()));
-        if (usedCompanies.has(trimmedNew.toLowerCase()) && trimmedNew.toLowerCase() !== oldCompany.toLowerCase()) {
+        if (usedCompanies.has(normalizedNew.toLowerCase()) && normalizedNew.toLowerCase() !== oldCompany.toLowerCase()) {
             Alert.alert("Duplicate Company", "This company already exists in the report.");
             return;
         }
 
-        const newRows = rows.map(r => (r.company || '') === oldCompany ? { ...r, company: trimmedNew } : r);
+        const result = await addKnownCompany(id, normalizedNew);
+        if (result === 'exists' && !knownCompanies.some(c => companyNamesMatch(c, newCompany))) {
+            // Note: If they selected a preset, newCompany already matches a known company.
+            // If it's a custom typed entry that normalizes to an existing one, show notice.
+            // Only show notice if the exact typed string wasn't already in the dropdown list
+            Alert.alert("Notice", "This company already exists.");
+        }
+
+        const newRows = rows.map(r => (r.company || '') === oldCompany ? { ...r, company: normalizedNew } : r);
         onChange(newRows);
     };
 

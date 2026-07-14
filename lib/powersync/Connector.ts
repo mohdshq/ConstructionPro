@@ -38,6 +38,10 @@ export class Connector implements PowerSyncBackendConnector {
           try { op.opData.data = JSON.parse(op.opData.data); } catch { op.opData.data = {}; }
         }
 
+        if (op.table === 'snags' && data && typeof data.photos === 'string') {
+          try { data.photos = JSON.parse(data.photos); } catch { data.photos = []; }
+        }
+
         let result;
         switch (op.op) {
           case UpdateType.PUT:

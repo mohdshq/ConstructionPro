@@ -304,7 +304,9 @@ export interface Project {
     contractorLogos?: string[];
     mainContractorName?: string;
     knownCompanies?: string[];
+    knownRooms?: string[];
     buildings?: Building[];
+    snagCounter?: number;
     createdAt: string;
     updatedAt: string;
     syncStatus?: 'synced' | 'pending';
@@ -346,6 +348,24 @@ export interface Calculation {
     createdAt: string;
 }
 
+export interface ProjectSnag {
+    id: string;
+    projectId: string;
+    seq: number;
+    buildingId?: string;
+    floor?: number;
+    flat?: number;
+    areaType: 'unit' | 'elevation' | 'parking' | 'landscape' | 'roof' | 'mep' | 'common';
+    severity: 'critical' | 'major' | 'minor' | 'cosmetic';
+    trade?: string;
+    room?: string;
+    description: string;
+    photos: string[];   // HARD max 2: [context, detail], base64
+    status: 'open' | 'in_progress' | 'closed';
+    legacyCode?: string;
+    createdAt: string;
+}
+
 interface ProjectsState {
     projects: Project[];
     reports: Report[];
@@ -363,6 +383,8 @@ interface ProjectsState {
     updateProject: (id: string, project: Partial<Project>) => Promise<void>;
     deleteProject: (id: string) => Promise<void>;
     getProject: (id: string) => Project | undefined;
+    addKnownRoom: (projectId: string, room: string) => Promise<'added' | 'exists' | 'error'>;
+    addKnownCompany: (projectId: string, company: string) => Promise<'added' | 'exists' | 'error'>;
 
     // Report Actions
     addReport: (report: Omit<Report, 'id' | 'createdAt' | 'updatedAt'>) => Promise<void>;
@@ -387,6 +409,11 @@ interface ProjectsState {
     addActivity: (activity: Omit<Activity, 'id' | 'createdAt' | 'profile'>) => Promise<void>;
     addCalculation: (calc: Omit<Calculation, 'id' | 'createdAt'>) => Promise<void>;
     getCalculationsForProject: (projectId: string) => Calculation[];
+
+    // Snags (Phase S2)
+    addSnag: (snag: Omit<ProjectSnag, 'id' | 'seq' | 'createdAt'>) => Promise<number | undefined>;
+    updateSnag: (id: string, snag: Partial<ProjectSnag>) => Promise<void>;
+    deleteSnag: (id: string) => Promise<void>;
 
     // Sync Actions
     initialSync: () => Promise<void>;
@@ -414,6 +441,13 @@ function mapProjectRow(row: any): Project {
         knownCompaniesParsed = [];
     }
 
+    let knownRoomsParsed: string[] = [];
+    try {
+        knownRoomsParsed = JSON.parse(row.known_rooms || '[]');
+    } catch (e) {
+        knownRoomsParsed = [];
+    }
+
     let buildingsParsed: Building[] = [];
     try {
         buildingsParsed = JSON.parse(row.buildings || '[]');
@@ -439,7 +473,9 @@ function mapProjectRow(row: any): Project {
         contractorLogos: contractorLogosParsed,
         mainContractorName: row.main_contractor_name || undefined,
         knownCompanies: knownCompaniesParsed,
+        knownRooms: knownRoomsParsed,
         buildings: buildingsParsed,
+        snagCounter: row.snag_counter || 0,
         createdAt: row.created_at || new Date().toISOString(),
         updatedAt: row.updated_at || new Date().toISOString(),
         syncStatus: 'synced',
@@ -594,8 +630,8 @@ export const useProjectsStore = create<ProjectsState>()(
                         `INSERT OR REPLACE INTO projects (
                             id, user_id, name, location, client, description, contract_value,
                             start_date, end_date, project_manager, reference_number, status,
-                            photo_url, employer_logo, consultant_logo, contractor_logos, main_contractor_name, known_companies, buildings, created_at, updated_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                            photo_url, employer_logo, consultant_logo, contractor_logos, main_contractor_name, known_companies, known_rooms, buildings, created_at, updated_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                         [
                             localId, userId, project.name, project.location || null, project.client || null,
                             project.description || null, project.contractValue || null,
@@ -606,6 +642,7 @@ export const useProjectsStore = create<ProjectsState>()(
                             project.contractorLogos ? JSON.stringify(project.contractorLogos) : null,
                             project.mainContractorName || null,
                             project.knownCompanies ? JSON.stringify(project.knownCompanies) : null,
+                            project.knownRooms ? JSON.stringify(project.knownRooms) : null,
                             project.buildings ? JSON.stringify(project.buildings) : null,
                             now, now,
                         ]
@@ -643,6 +680,7 @@ export const useProjectsStore = create<ProjectsState>()(
                     if (projectUpdates.contractorLogos !== undefined) add('contractor_logos', projectUpdates.contractorLogos ? JSON.stringify(projectUpdates.contractorLogos) : null);
                     if (projectUpdates.mainContractorName !== undefined) add('main_contractor_name', projectUpdates.mainContractorName || null);
                     if (projectUpdates.knownCompanies !== undefined) add('known_companies', projectUpdates.knownCompanies ? JSON.stringify(projectUpdates.knownCompanies) : null);
+                    if (projectUpdates.knownRooms !== undefined) add('known_rooms', projectUpdates.knownRooms ? JSON.stringify(projectUpdates.knownRooms) : null);
                     if (projectUpdates.buildings !== undefined) add('buildings', projectUpdates.buildings ? JSON.stringify(projectUpdates.buildings) : null);
                     add('updated_at', now);
 
@@ -657,6 +695,51 @@ export const useProjectsStore = create<ProjectsState>()(
                 } catch (error) {
                     console.error('Failed to update project in PowerSync:', error);
                 }
+            },
+
+            addKnownRoom: async (projectId: string, room: string) => {
+                const { projects, updateProject } = get();
+                const project = projects.find(p => p.id === projectId);
+                if (!project) return 'error';
+
+                // We need to import ROOM_PRESETS and namesMatch, normalizeName
+                // But since we can't easily import them at the top without replacing the whole file,
+                // we can dynamically require or just import them at the top. I'll add the imports at the top next.
+                // For now, assume normalizeName, namesMatch, ROOM_PRESETS are available.
+                // Actually, I must add imports at the top. I'll do that in another chunk.
+                const { normalizeName, namesMatch } = require('../lib/units/normalizeName');
+                const { ROOM_PRESETS } = require('../lib/units/roomPresets');
+
+                const normalizedRoom = normalizeName(room);
+                const existingKnownRooms = project.knownRooms || [];
+                
+                const exists = ROOM_PRESETS.some((p: string) => namesMatch(p, normalizedRoom)) ||
+                               existingKnownRooms.some(r => namesMatch(r, normalizedRoom));
+                
+                if (exists) return 'exists';
+
+                const newKnownRooms = [...existingKnownRooms, normalizedRoom];
+                await updateProject(projectId, { knownRooms: newKnownRooms });
+                return 'added';
+            },
+
+            addKnownCompany: async (projectId: string, company: string) => {
+                const { projects, updateProject } = get();
+                const project = projects.find(p => p.id === projectId);
+                if (!project) return 'error';
+
+                const { normalizeCompanyName, companyNamesMatch } = require('../lib/units/normalizeName');
+                const normalizedCompany = normalizeCompanyName(company);
+                const existingKnownCompanies = project.knownCompanies || [];
+
+                const isMain = companyNamesMatch("Main Contractor", normalizedCompany);
+                const exists = isMain || existingKnownCompanies.some(c => companyNamesMatch(c, normalizedCompany));
+                
+                if (exists) return 'exists';
+
+                const newKnownCompanies = [...existingKnownCompanies, normalizedCompany];
+                await updateProject(projectId, { knownCompanies: newKnownCompanies });
+                return 'added';
             },
 
             deleteProject: async (id) => {
@@ -1003,6 +1086,95 @@ export const useProjectsStore = create<ProjectsState>()(
             },
             
             getCalculationsForProject: (projectId) => get().calculations.filter((c) => c.projectId === projectId),
+
+            // Snags
+            addSnag: async (snag) => {
+                const userId = getCurrentUserId();
+                const now = new Date().toISOString();
+                const localId = uuidv4();
+
+                // Get project to get the current counter
+                const project = get().projects.find(p => p.id === snag.projectId);
+                if (!project) {
+                    console.error('Project not found for snag');
+                    return undefined;
+                }
+                const newSeq = (project.snagCounter || 0) + 1;
+
+                        if (userId) {
+                    try {
+                        const photosStr = JSON.stringify(snag.photos || []);
+                        await powersync.writeTransaction(async (tx) => {
+                            await tx.execute(
+                                `INSERT INTO snags (
+                                    id, project_id, user_id, seq, building_id, floor, flat,
+                                    area_type, severity, trade, room, description, photos, status,
+                                    legacy_code, created_at
+                                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                                [
+                                    localId, snag.projectId, userId, newSeq, snag.buildingId || null,
+                                    snag.floor ?? null, snag.flat ?? null, snag.areaType, snag.severity,
+                                    snag.trade || null, snag.room || null, snag.description, photosStr, snag.status,
+                                    snag.legacyCode || null, now
+                                ]
+                            );
+                            await tx.execute(
+                                `UPDATE projects SET snag_counter = ? WHERE id = ?`,
+                                [newSeq, snag.projectId]
+                            );
+                        });
+                        
+                        // Update local store immediately for project (optimistic, but after successful local transaction)
+                        set((state) => ({
+                            projects: state.projects.map(p =>
+                                p.id === snag.projectId ? { ...p, snagCounter: newSeq } : p
+                            )
+                        }));
+
+                        return newSeq;
+                    } catch (error: any) {
+                        set({ syncError: error.message });
+                        console.error('Failed to add snag:', error);
+                        return undefined;
+                    }
+                }
+                return undefined;
+            },
+            updateSnag: async (id, snag) => {
+                if (!getCurrentUserId()) return;
+                
+                try {
+                    const updates: any[] = [];
+                    const vals: any[] = [];
+                    
+                    if (snag.buildingId !== undefined) { updates.push('building_id = ?'); vals.push(snag.buildingId); }
+                    if (snag.floor !== undefined) { updates.push('floor = ?'); vals.push(snag.floor); }
+                    if (snag.flat !== undefined) { updates.push('flat = ?'); vals.push(snag.flat); }
+                    if (snag.areaType !== undefined) { updates.push('area_type = ?'); vals.push(snag.areaType); }
+                    if (snag.severity !== undefined) { updates.push('severity = ?'); vals.push(snag.severity); }
+                    if (snag.trade !== undefined) { updates.push('trade = ?'); vals.push(snag.trade); }
+                    if (snag.room !== undefined) { updates.push('room = ?'); vals.push(snag.room); }
+                    if (snag.description !== undefined) { updates.push('description = ?'); vals.push(snag.description); }
+                    if (snag.photos !== undefined) { updates.push('photos = ?'); vals.push(JSON.stringify(snag.photos)); }
+                    if (snag.status !== undefined) { updates.push('status = ?'); vals.push(snag.status); }
+                    if (snag.legacyCode !== undefined) { updates.push('legacy_code = ?'); vals.push(snag.legacyCode); }
+                    
+                    if (updates.length > 0) {
+                        vals.push(id);
+                        await powersync.execute(`UPDATE snags SET ${updates.join(', ')} WHERE id = ?`, vals);
+                    }
+                } catch (error: any) {
+                    console.error('Failed to update snag:', error);
+                }
+            },
+            deleteSnag: async (id) => {
+                if (!getCurrentUserId()) return;
+                try {
+                    await powersync.execute(`DELETE FROM snags WHERE id = ?`, [id]);
+                } catch (error: any) {
+                    console.error('Failed to delete snag:', error);
+                }
+            },
 
         }),
         {

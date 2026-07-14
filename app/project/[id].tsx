@@ -14,7 +14,7 @@ import { Swipeable } from 'react-native-gesture-handler';
 
 const REPORT_CATEGORIES = [
     { id: 'daily', title: 'Daily Reports', desc: 'Progress, Weather & Workforce', icon: <FileText size={28} color="#2563EB" />, bg: '#EFF6FF', route: 'daily' },
-    { id: 'snagging', title: 'Snagging', desc: 'Defects & Punch Lists', icon: <CheckSquare size={28} color="#F59E0B" />, bg: '#FEF3C7', route: 'snagging' },
+    { id: 'snagging', title: 'Snagging', desc: 'Defects & Punch Lists', icon: <CheckSquare size={28} color="#F59E0B" />, bg: '#FEF3C7', route: 'snags/create' },
     { id: 'hse', title: 'HSE Audits', desc: 'Safety & Incidents', icon: <ShieldAlert size={28} color="#E11D48" />, bg: '#FFE4E6', route: 'hse' },
     { id: 'quick-log', title: 'Quick Logs', desc: 'Notes, Voice & Photos', icon: <Zap size={28} color="#10B981" />, bg: '#D1FAE5', route: 'quick-log' },
 ];
@@ -427,6 +427,8 @@ export default function ProjectDashboardScreen() {
                                     if (checkReportLimit()) {
                                         if (cat.route === 'quick-log') {
                                             router.push({ pathname: '/quick-log', params: { projectId: project.id } } as any);
+                                        } else if (cat.route === 'snags/create') {
+                                            router.push(`/project/${project.id}/snags` as any);
                                         } else {
                                             router.push(`/project/${project.id}/report/create?type=${cat.route}` as any);
                                         }
