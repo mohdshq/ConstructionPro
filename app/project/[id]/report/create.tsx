@@ -349,29 +349,7 @@ export default function CreateReportScreen() {
                 console.log('[handleSave] report added successfully');
             }
 
-            if (type === 'daily' && finalFormData.manpower && finalFormData.manpower.length > 0 && project) {
-                const uniqueCompanies = new Set<string>();
-                finalFormData.manpower.forEach((r: any) => {
-                    if (r.company && r.company.trim()) {
-                        uniqueCompanies.add(r.company.trim());
-                    }
-                });
-                
-                const currentKnown = new Set((project.knownCompanies || []).map(c => c.toLowerCase()));
-                const newKnown = [...(project.knownCompanies || [])];
-                
-                let updated = false;
-                uniqueCompanies.forEach(company => {
-                    if (!currentKnown.has(company.toLowerCase())) {
-                        newKnown.push(company);
-                        updated = true;
-                    }
-                });
 
-                if (updated) {
-                    await updateProject(project.id, { knownCompanies: newKnown });
-                }
-            }
             
             // Haptic feedback on success
             if (Platform.OS !== 'web') {

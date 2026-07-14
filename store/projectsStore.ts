@@ -384,6 +384,7 @@ interface ProjectsState {
     deleteProject: (id: string) => Promise<void>;
     getProject: (id: string) => Project | undefined;
     addKnownRoom: (projectId: string, room: string) => Promise<'added' | 'exists' | 'error'>;
+    addKnownCompany: (projectId: string, company: string) => Promise<'added' | 'exists' | 'error'>;
 
     // Report Actions
     addReport: (report: Omit<Report, 'id' | 'createdAt' | 'updatedAt'>) => Promise<void>;
@@ -719,6 +720,25 @@ export const useProjectsStore = create<ProjectsState>()(
 
                 const newKnownRooms = [...existingKnownRooms, normalizedRoom];
                 await updateProject(projectId, { knownRooms: newKnownRooms });
+                return 'added';
+            },
+
+            addKnownCompany: async (projectId: string, company: string) => {
+                const { projects, updateProject } = get();
+                const project = projects.find(p => p.id === projectId);
+                if (!project) return 'error';
+
+                const { normalizeCompanyName, companyNamesMatch } = require('../lib/units/normalizeName');
+                const normalizedCompany = normalizeCompanyName(company);
+                const existingKnownCompanies = project.knownCompanies || [];
+
+                const isMain = companyNamesMatch("Main Contractor", normalizedCompany);
+                const exists = isMain || existingKnownCompanies.some(c => companyNamesMatch(c, normalizedCompany));
+                
+                if (exists) return 'exists';
+
+                const newKnownCompanies = [...existingKnownCompanies, normalizedCompany];
+                await updateProject(projectId, { knownCompanies: newKnownCompanies });
                 return 'added';
             },
 
