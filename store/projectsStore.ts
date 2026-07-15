@@ -130,6 +130,7 @@ export interface DailyReportData {
   equipment?: { id: string; description: string; count: string }[];
   activitiesProgress?: { id: string; activityName: string; uom: string; totalQty: string; prevQty: string; todayQty: string; balanceQty: string }[];
   areasOfConcern?: { id: string; location: string; concern: string; action: string }[];
+  delays?: { id: string; startTime?: string; endTime?: string; cause: string; description: string; affectedActivity?: string }[];
 
   // Photos & section control
   photos?: any[];
@@ -144,6 +145,7 @@ export const DAILY_SECTIONS = [
   { key: 'activities', label: 'Work Activities' },
   { key: 'materials', label: 'Materials Received' },
   { key: 'concerns', label: 'Areas of Concern' },
+  { key: 'delays', label: 'Delays / Disruptions' },
   { key: 'notes', label: 'Site Instructions / Notes' },
   { key: 'photos', label: 'Photos' },
   { key: 'summary', label: 'AI Executive Summary' },

@@ -1,10 +1,16 @@
 import { Report, Project } from '../../../store/projectsStore';
 import { summaryByCompany, summaryByTrade, grandTotal, nightShiftTotal, rowTotal } from '../../reports/manpowerTotals';
+import { getSectionLabel } from '../../report/dailySections';
+import { delayMinutes, formatDuration, totalDelayMinutes } from '../../reports/delayDuration';
 
 /**
  * Generates the Daily Progress Report HTML.
  * Extracted from the monolithic [reportId].tsx for maintainability.
  */
+function sectionHeader(key: string): string {
+    return `<div class="section-header"><span class="section-title">${getSectionLabel(key).toUpperCase()}</span></div>`;
+}
+
 export function generateDailyReportHTML(
     data: any,
     report: Report,
@@ -309,6 +315,7 @@ export function generateDailyReportHTML(
                     .header-meta-strip { font-size: 11px; color: #64748B; font-weight: 500; }
                     .header-logo { height: 50px; width: 100px; background-size: contain; background-repeat: no-repeat; background-position: center; }
 
+                    .section-header { font-size: 14px; font-weight: bold; background-color: #1E3A5F; color: #FFF; margin: 25px 0 10px 0; padding: 8px; text-transform: uppercase; page-break-after: avoid; border: 1px solid #1E3A5F; }
                     .section-heading { font-size: 14px; font-weight: bold; color: #1E3A5F; margin: 25px 0 10px 0; padding-left: 8px; border-left: 4px solid #2563EB; text-transform: uppercase; page-break-after: avoid; }
                     .section-container { margin-bottom: 15px; page-break-inside: auto; }
 
@@ -395,6 +402,7 @@ export function generateDailyReportHTML(
                         </tr>
                     </table>
 
+                    ${sectionHeader('manpower')}
                     ${isNewModel ? renderNewManpowerSection() : `
                     ${(!data.hiddenSections?.includes('mcStaff') || !data.hiddenSections?.includes('subconStaff') || !data.hiddenSections?.includes('equip')) ? `
                     <table style="width: 100%; border: none; margin-bottom: 15px; page-break-inside: auto;">
@@ -403,7 +411,7 @@ export function generateDailyReportHTML(
                             <td style="width: 33.33%; padding: 0 5px 0 0; border: none; background: transparent;">
                                 <div class="section-container" style="margin-bottom: 0;">
                                     <table style="margin-bottom: 0;">
-                                        <thead><tr><th class="blue-hdr" colspan="3">1. MAIN CONTRACTOR STAFF</th></tr><tr><th>Sr.No.</th><th>Role / Description</th><th>Nos.</th></tr></thead>
+                                        <thead><tr><th class="blue-hdr" colspan="3">MAIN CONTRACTOR STAFF</th></tr><tr><th>Sr.No.</th><th>Role / Description</th><th>Nos.</th></tr></thead>
                                         <tbody>
                                             ${renderTableRows(data.mainContractorStaff, (row, i) => `<td style="width:10%">${i + 1}</td><td class="text-left">${row.description || ''}</td><td style="width:20%">${row.count || ''}</td>`)}
                                             <tr class="total-row"><td colspan="2" class="text-left">TOTAL</td><td>${sumCount(data.mainContractorStaff) || '0'}</td></tr>
@@ -415,7 +423,7 @@ export function generateDailyReportHTML(
                             <td style="width: 33.33%; padding: 0 5px; border: none; background: transparent;">
                                 <div class="section-container" style="margin-bottom: 0;">
                                     <table style="margin-bottom: 0;">
-                                        <thead><tr><th class="blue-hdr" colspan="2">2. SUBCONTRACTOR'S STAFF</th></tr><tr><th>Company / Name</th><th>Nos</th></tr></thead>
+                                        <thead><tr><th class="blue-hdr" colspan="2">SUBCONTRACTOR'S STAFF</th></tr><tr><th>Company / Name</th><th>Nos</th></tr></thead>
                                         <tbody>
                                             ${renderTableRows(data.subcontractorStaff, (row) => `<td class="text-left">${row.name || ''}</td><td style="width:25%">${row.count || ''}</td>`)}
                                             <tr class="total-row"><td class="text-left">TOTAL</td><td>${sumCount(data.subcontractorStaff) || '0'}</td></tr>
@@ -425,9 +433,10 @@ export function generateDailyReportHTML(
                             </td>` : ''}
                             ${!data.hiddenSections?.includes('equip') ? `
                             <td style="width: 33.33%; padding: 0 0 0 5px; border: none; background: transparent;">
+                                ${sectionHeader('equipment')}
                                 <div class="section-container" style="margin-bottom: 0;">
                                     <table style="margin-bottom: 0;">
-                                        <thead><tr><th class="blue-hdr" colspan="2">3. EQUIPMENT & VEHICLES</th></tr><tr><th>Description</th><th>Nos.</th></tr></thead>
+                                        <thead><tr><th>Description</th><th>Nos.</th></tr></thead>
                                         <tbody>
                                             ${renderTableRows(data.equipment, (row) => `<td class="text-left">${row.description || ''}</td><td style="width:25%">${row.count || ''}</td>`)}
                                             <tr class="total-row"><td class="text-left">TOTAL</td><td>${sumCount(data.equipment) || '0'}</td></tr>
@@ -441,7 +450,7 @@ export function generateDailyReportHTML(
                     ${!data.hiddenSections?.includes('labor') ? `
                     <div class="section-container">
                         <table>
-                            <thead style="display: table-header-group;"><tr><th class="blue-hdr" colspan="5">4. MAIN CONTRACTOR LABOR</th></tr><tr><th>S.NO</th><th>TRADES</th><th>IN HOUSE</th><th>SUPPLY</th><th>TOTAL</th></tr></thead>
+                            <thead style="display: table-header-group;"><tr><th class="blue-hdr" colspan="5">MAIN CONTRACTOR LABOR</th></tr><tr><th>S.NO</th><th>TRADES</th><th>IN HOUSE</th><th>SUPPLY</th><th>TOTAL</th></tr></thead>
                             <tbody>
                                 ${renderTableRows(data.mainContractorLabor, (row, i) => `<td style="width:5%">${i + 1}</td><td class="text-left" style="width:45%">${row.trade || ''}</td><td style="width:15%">${row.inHouse || ''}</td><td style="width:15%">${row.supply || ''}</td><td class="font-bold" style="width:20%;">${row.total || ''}</td>`)}
                                 <tr class="total-row"><td colspan="4" class="text-left">TOTAL MAIN CONTRACTOR LABOR</td><td>${sumTotal(data.mainContractorLabor) || '0'}</td></tr>
@@ -452,7 +461,7 @@ export function generateDailyReportHTML(
                     ${!data.hiddenSections?.includes('subconLabor') ? `
                     <div class="section-container">
                         <table>
-                            <thead style="display: table-header-group;"><tr><th class="blue-hdr" colspan="3">5. SUBCONTRACTOR LABOR</th></tr><tr><th>S.NO</th><th>SUBCON NAME</th><th>NOS.</th></tr></thead>
+                            <thead style="display: table-header-group;"><tr><th class="blue-hdr" colspan="3">SUBCONTRACTOR LABOR</th></tr><tr><th>S.NO</th><th>SUBCON NAME</th><th>NOS.</th></tr></thead>
                             <tbody>
                                 ${renderTableRows(data.subcontractorLabor, (row, i) => `<td style="width:10%">${i + 1}</td><td class="text-left" style="width:60%">${row.name || ''}</td><td style="width:30%">${row.count || ''}</td>`)}
                                 <tr class="total-row"><td colspan="2" class="text-left">TOTAL SUBCON LABOR</td><td>${sumCount(data.subcontractorLabor) || '0'}</td></tr>
@@ -463,7 +472,7 @@ export function generateDailyReportHTML(
                     ${!data.hiddenSections?.includes('nightShift') ? `
                     <div class="section-container">
                         <table>
-                            <thead style="display: table-header-group;"><tr><th class="blue-hdr" colspan="3">6. NIGHT SHIFT</th></tr><tr><th>S.NO</th><th>Trade</th><th>NOS.</th></tr></thead>
+                            <thead style="display: table-header-group;"><tr><th class="blue-hdr" colspan="3">NIGHT SHIFT</th></tr><tr><th>S.NO</th><th>Trade</th><th>NOS.</th></tr></thead>
                             <tbody>
                                 ${renderTableRows(data.nightShift, (row, i) => `<td style="width:15%">${i + 1}</td><td class="text-left">${row.trade || ''}</td><td style="width:25%">${row.count || ''}</td>`)}
                                 <tr class="total-row"><td colspan="2" class="text-left">TOTAL NIGHT SHIFT</td><td>${sumCount(data.nightShift) || '0'}</td></tr>
@@ -473,10 +482,10 @@ export function generateDailyReportHTML(
                     `}
 
                     ${!data.hiddenSections?.includes('activities') ? `
+                    ${sectionHeader('activities')}
                     <div class="section-container">
                         <table>
                             <thead style="display: table-header-group;">
-                                <tr><th class="blue-hdr" colspan="8">7. ON-GOING ACTIVITIES & PROGRESS</th></tr>
                                 <tr><th style="width:5%">S.No</th><th class="text-left" style="width:35%">Activity Description</th><th style="width:8%">UOM</th><th style="width:10%">Total Qty</th><th style="width:10%">Prev Qty</th><th style="width:10%">Today Qty</th><th style="width:10%">Balance Qty</th><th style="width:12%">Progress indicator (%)</th></tr>
                             </thead>
                             <tbody>
@@ -494,10 +503,10 @@ export function generateDailyReportHTML(
                     </div>` : ''}
 
                     ${!data.hiddenSections?.includes('concerns') ? `
+                    ${sectionHeader('concerns')}
                     <div class="section-container">
                         <table>
                             <thead style="display: table-header-group;">
-                                <tr><th class="blue-hdr" colspan="4">8. AREAS OF CONCERN / ISSUES</th></tr>
                                 <tr><th style="width:5%">S.No</th><th class="text-left" style="width:25%">Location / Building No</th><th class="text-left" style="width:40%">Description of Concern</th><th class="text-left" style="width:30%">Corrective Action Required</th></tr>
                             </thead>
                             <tbody>
@@ -505,6 +514,23 @@ export function generateDailyReportHTML(
                             </tbody>
                         </table>
                     </div>` : ''}
+
+                    ${!data.hiddenSections?.includes('delays') && data.delays?.length ? `
+                    ${sectionHeader('delays')}
+                    <div class="section-container">
+                        <table>
+                            <thead style="display: table-header-group;">
+                                <tr><th style="width:5%">S.No</th><th style="width:10%">Start</th><th style="width:10%">End</th><th style="width:10%">Duration</th><th class="text-left" style="width:20%">Cause</th><th class="text-left" style="width:30%">Description</th><th class="text-left" style="width:15%">Affected Activity</th></tr>
+                            </thead>
+                            <tbody>
+                                ${renderTableRows(data.delays, (row, i) => `<td>${i + 1}</td><td>${row.startTime || ''}</td><td>${row.endTime || ''}</td><td>${formatDuration(delayMinutes(row.startTime, row.endTime) || 0)}</td><td class="text-left">${row.cause || ''}</td><td class="text-left" style="white-space: pre-wrap;">${row.description || ''}</td><td class="text-left">${row.affectedActivity || ''}</td>`)}
+                            </tbody>
+                        </table>
+                        <div style="text-align: right; font-weight: bold; margin-top: 8px; margin-right: 12px; font-size: 14px;">
+                            Total delay time today: ${formatDuration(totalDelayMinutes(data.delays))}
+                        </div>
+                    </div>` : ''}
+
 
                     <!-- Author Sign Off -->
                     <div style="margin-top: 25px; margin-bottom: 25px; text-align: right; margin-right: 50px;">

@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Modal, ScrollView, Alert, ActivityIndicator } from 'react-native';
 import { FolderOpen, X } from 'lucide-react-native';
+import React, { useState } from 'react';
+import { ActivityIndicator, Alert, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useProjectsStore } from '../store/projectsStore';
 import { useAuthStore } from '../store/useAuthStore';
 import { useThemeColors } from '../store/useThemeColors';
@@ -58,8 +58,8 @@ export default function SaveCalculationModal({ visible, onClose, calculationType
                             <Text style={[styles.emptyText, { color: colors.textMuted }]}>No active projects found.</Text>
                         ) : (
                             activeProjects.map(proj => (
-                                <TouchableOpacity 
-                                    key={proj.id} 
+                                <TouchableOpacity
+                                    key={proj.id}
                                     style={[styles.projectItem, { borderBottomColor: colors.border }]}
                                     onPress={() => handleSave(proj.id)}
                                     disabled={isSaving}
@@ -69,7 +69,9 @@ export default function SaveCalculationModal({ visible, onClose, calculationType
                                     </View>
                                     <View style={styles.projectInfo}>
                                         <Text style={[styles.projectName, { color: colors.text }]}>{proj.name}</Text>
-                                        <Text style={[styles.projectRef, { color: colors.textMuted }]}>{proj.referenceNumber}</Text>
+                                        {proj.referenceNumber ? (
+                                            <Text style={[styles.projectRef, { color: colors.textMuted }]}>{proj.referenceNumber}</Text>
+                                        ) : null}
                                     </View>
                                 </TouchableOpacity>
                             ))

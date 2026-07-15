@@ -17,6 +17,10 @@ import { uploadPhoto } from '../../../../lib/supabaseSync';
 import { supabase } from '../../../../lib/supabase';
 import { ActivityIndicator } from 'react-native';
 import ManpowerSection from './components/ManpowerSection';
+import PickerDropdown from './components/PickerDropdown';
+import { DELAY_CAUSES } from '../../../../lib/units/delayCauses';
+import { normalizeName } from '../../../../lib/units/normalizeName';
+import { getSectionLabel } from '../../../../lib/report/dailySections';
 
 export default function CreateReportScreen() {
     const { colors } = useThemeColors();
@@ -101,11 +105,12 @@ export default function CreateReportScreen() {
                 nightShift: any[];
                 activitiesProgress: any[];
                 areasOfConcern: any[];
+                delays: any[];
                 manpower: any[];
                 hiddenSections: string[];
             } = {
                 logos: projectLogos.length > 0 ? projectLogos : [], mainContractorStaff: [], subcontractorStaff: [], equipment: [],
-                mainContractorLabor: [], subcontractorLabor: [], nightShift: [], activitiesProgress: [], areasOfConcern: [], manpower: [], hiddenSections: []
+                mainContractorLabor: [], subcontractorLabor: [], nightShift: [], activitiesProgress: [], areasOfConcern: [], delays: [], manpower: [], hiddenSections: []
             };
 
             if (lastDaily && lastDaily.templateData) {
@@ -121,6 +126,7 @@ export default function CreateReportScreen() {
                     preload.subcontractorLabor = old.subcontractorLabor || [];
                     preload.nightShift = old.nightShift || [];
                     preload.areasOfConcern = old.areasOfConcern || [];
+                    preload.delays = old.delays || [];
                     preload.manpower = old.manpower || [];
                     preload.hiddenSections = old.hiddenSections || [];
 
@@ -465,8 +471,8 @@ export default function CreateReportScreen() {
 
     const renderDailyFields = () => (
         <>
-            {/* 0. AI Executive Summary */}
-            <AccordionHeader title="AI Executive Summary" id="aiSummary" allowHide={true} />
+            {/* AI Executive Summary */}
+            <AccordionHeader title={getSectionLabel('aiSummary')} id="aiSummary" allowHide={true} />
             {activeSection === 'aiSummary' && (
                 <Animated.View entering={FadeIn} style={[styles.accordionContent, { backgroundColor: colors.card, borderColor: colors.border }]}>
                     <Text style={[styles.label, { color: colors.text }]}>Executive Summary</Text>
@@ -486,8 +492,8 @@ export default function CreateReportScreen() {
                 </Animated.View>
             )}
 
-            {/* 1. Meta Dates & Weather */}
-            <AccordionHeader title="General Data & Weather" id="generalDaily" />
+            {/* General Data & Weather */}
+            <AccordionHeader title={getSectionLabel('general')} id="generalDaily" />
             {activeSection === 'generalDaily' && (
                 <Animated.View entering={FadeIn} style={[styles.accordionContent, { backgroundColor: colors.card, borderColor: colors.border }]}>
                     <Text style={[styles.label, { color: colors.text }, { color: colors.text }]}>Commencement Date</Text>
@@ -600,8 +606,8 @@ export default function CreateReportScreen() {
                 </Animated.View>
             )}
 
-            {/* 1. Manpower (Unified) */}
-            <AccordionHeader title="1. Manpower" id="manpower" allowHide={true} />
+            {/* Manpower (Unified) */}
+            <AccordionHeader title={getSectionLabel('manpower')} id="manpower" allowHide={true} />
             {activeSection === 'manpower' && (
                 <Animated.View entering={FadeIn} style={[styles.accordionContent, { backgroundColor: colors.card, borderColor: colors.border, padding: 0 }]}>
                     <ManpowerSection
@@ -616,7 +622,7 @@ export default function CreateReportScreen() {
             )}
 
             {/* Project Logos */}
-            <AccordionHeader title="Project Logos / Header Images" id="logos" />
+            <AccordionHeader title={getSectionLabel('logos')} id="logos" />
             {activeSection === 'logos' && (
                 <Animated.View entering={FadeIn} style={[styles.accordionContent, { backgroundColor: colors.card, borderColor: colors.border }]}>
                     <Text style={[styles.label, { color: colors.text }, { color: colors.text }]}>Select up to 4 logos to display in the header</Text>
@@ -651,8 +657,8 @@ export default function CreateReportScreen() {
 
 
 
-            {/* 6. Equipment Array */}
-            <AccordionHeader title="4. Equipment & Vehicles" id="equip" allowHide={true} />
+            {/* Equipment & Vehicles */}
+            <AccordionHeader title={getSectionLabel('equipment')} id="equip" allowHide={true} />
             {
                 activeSection === 'equip' && (
                     <Animated.View entering={FadeIn} style={[styles.accordionContent, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -681,8 +687,8 @@ export default function CreateReportScreen() {
 
 
 
-            {/* 10. On-going Activities Array */}
-            <AccordionHeader title="8. On-Going Activities" id="activities" allowHide={true} />
+            {/* On-Going Activities */}
+            <AccordionHeader title={getSectionLabel('activities')} id="activities" allowHide={true} />
             {
                 activeSection === 'activities' && (
                     <Animated.View entering={FadeIn} style={[styles.accordionContent, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -734,8 +740,8 @@ export default function CreateReportScreen() {
                 )
             }
 
-            {/* 11. Areas of Concern */}
-            <AccordionHeader title="9. Areas of Concern" id="concerns" allowHide={true} />
+            {/* Areas of Concern */}
+            <AccordionHeader title={getSectionLabel('concerns')} id="concerns" allowHide={true} />
             {
                 activeSection === 'concerns' && (
                     <Animated.View entering={FadeIn} style={[styles.accordionContent, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -760,6 +766,55 @@ export default function CreateReportScreen() {
                         <TouchableOpacity style={styles.addButton} onPress={() => setFormData({ ...formData, areasOfConcern: [...(formData.areasOfConcern || []), { id: Date.now().toString(), location: '', concern: '', action: '' }] })}>
                             <Plus size={16} color="#2563EB" style={{ marginRight: 6 }} />
                             <Text style={styles.addBtnText}>Add Concern</Text>
+                        </TouchableOpacity>
+                    </Animated.View>
+                )
+            }
+
+            {/* Delays / Disruptions */}
+            <AccordionHeader title={getSectionLabel('delays')} id="delays" allowHide={true} />
+            {
+                activeSection === 'delays' && (
+                    <Animated.View entering={FadeIn} style={[styles.accordionContent, { backgroundColor: colors.card, borderColor: colors.border, zIndex: 999 }]}>
+                        {formData.delays?.map((item: any, i: number) => (
+                            <View key={item.id ?? `row-${i}`} style={[styles.arrayItemCard, { backgroundColor: colors.inputBackground, borderColor: colors.border, zIndex: formData.delays.length - i }]}>
+                                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8, gap: 8 }}>
+                                    <View style={{ flex: 1, flexDirection: 'row', gap: 8 }}>
+                                        <TextInput placeholderTextColor={colors.text + '80'} style={[styles.input, { backgroundColor: colors.inputBackground, borderColor: colors.border, color: colors.text }, { flex: 1 }]} placeholder="08:30" value={item.startTime} onChangeText={t => {
+                                            const newArr = [...formData.delays]; newArr[i].startTime = t; setFormData({ ...formData, delays: newArr });
+                                        }} />
+                                        <TextInput placeholderTextColor={colors.text + '80'} style={[styles.input, { backgroundColor: colors.inputBackground, borderColor: colors.border, color: colors.text }, { flex: 1 }]} placeholder="11:00" value={item.endTime} onChangeText={t => {
+                                            const newArr = [...formData.delays]; newArr[i].endTime = t; setFormData({ ...formData, delays: newArr });
+                                        }} />
+                                    </View>
+                                    <TouchableOpacity style={styles.deleteBtn} onPress={() => setFormData({ ...formData, delays: formData.delays.filter((_: any, idx: number) => idx !== i) })}>
+                                        <Trash2 size={18} color="#EF4444" />
+                                    </TouchableOpacity>
+                                </View>
+                                <View style={{ marginBottom: 8, zIndex: 10 }}>
+                                    <PickerDropdown
+                                        value={item.cause}
+                                        options={DELAY_CAUSES}
+                                        allowCustom
+                                        onSelect={(v) => {
+                                            const normalized = normalizeName(v);
+                                            const newArr = [...formData.delays]; newArr[i].cause = normalized; setFormData({ ...formData, delays: newArr });
+                                        }}
+                                        placeholder="Select or type cause"
+                                        colors={colors}
+                                    />
+                                </View>
+                                <TextInput placeholderTextColor={colors.text + '80'} style={[styles.input, { backgroundColor: colors.inputBackground, borderColor: colors.border, color: colors.text }, styles.textArea, { marginBottom: 8 }]} multiline placeholder="Description" value={item.description} onChangeText={t => {
+                                    const newArr = [...formData.delays]; newArr[i].description = t; setFormData({ ...formData, delays: newArr });
+                                }} />
+                                <TextInput placeholderTextColor={colors.text + '80'} style={[styles.input, { backgroundColor: colors.inputBackground, borderColor: colors.border, color: colors.text }, styles.textArea]} multiline placeholder="Affected Activity (Optional)" value={item.affectedActivity} onChangeText={t => {
+                                    const newArr = [...formData.delays]; newArr[i].affectedActivity = t; setFormData({ ...formData, delays: newArr });
+                                }} />
+                            </View>
+                        ))}
+                        <TouchableOpacity style={styles.addButton} onPress={() => setFormData({ ...formData, delays: [...(formData.delays || []), { id: Date.now().toString(), startTime: '', endTime: '', cause: '', description: '', affectedActivity: '' }] })}>
+                            <Plus size={16} color="#2563EB" style={{ marginRight: 6 }} />
+                            <Text style={styles.addBtnText}>Add Delay</Text>
                         </TouchableOpacity>
                     </Animated.View>
                 )
@@ -1316,7 +1371,7 @@ export default function CreateReportScreen() {
                     {type === 'hse' && renderHSEFields()}
 
                     {/* Universal Photos Section */}
-                    <AccordionHeader title="Photographic Evidence" id="photos" />
+                    <AccordionHeader title={type === 'daily' ? getSectionLabel('photos') : "Photographic Evidence"} id="photos" />
                     {activeSection === 'photos' && (
                         <Animated.View entering={FadeIn} style={[styles.accordionContent, { backgroundColor: colors.card, borderColor: colors.border }]}>
                             <Text style={[styles.label, { color: colors.text }, { color: colors.text }]}>Tip: Pre-markup your photos using your native phone gallery tools before uploading.</Text>
