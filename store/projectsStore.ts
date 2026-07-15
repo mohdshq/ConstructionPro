@@ -1,17 +1,18 @@
-import { create } from 'zustand';
-import { persist, createJSONStorage } from 'zustand/middleware';
+import { powersync } from '@/lib/powersync/system';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import 'react-native-get-random-values';
 import { v4 as uuidv4 } from 'uuid';
+import { create } from 'zustand';
+import { createJSONStorage, persist } from 'zustand/middleware';
 import {
-    fetchUserProjects,
-    fetchUserReports,
+    deleteStorageFile,
+    fetchUserCalculations,
+    fetchUserDrawings,
     fetchUserFolders,
-    fetchUserDrawings, uploadDrawingFile, deleteStorageFile,
-    fetchUserCalculations
+    fetchUserProjects,
+    fetchUserReports
 } from '../lib/supabaseSync';
 import { useAuthStore } from './useAuthStore';
-import { powersync } from '@/lib/powersync/system';
 
 export type ProjectStatus = 'planning' | 'active' | 'completed' | 'on-hold';
 export type ReportType = 'daily' | 'snagging' | 'hse' | 'quick-log';
@@ -29,8 +30,8 @@ export interface ManpowerRow {
     count: number;            // used when !isMainContractor; for main contractor = inHouse + supply
 }
 
-export const PRESET_STAFF_ROLES = ['Project Manager','Construction Manager','Site Engineer','Foreman','Safety Officer','Surveyor','QA/QC Engineer','Document Controller','Other'] as const;
-export const PRESET_LABOR_TRADES = ['Mason','Carpenter','Steel Fixer','Electrician','Plumber','HVAC Technician','Painter','Welder','Helper / Laborer','Scaffolder','Tiler','Equipment Operator','Driver','Other'] as const;
+export const PRESET_STAFF_ROLES = ['Project Manager', 'Construction Manager', 'Site Engineer', 'Foreman', 'Safety Officer', 'Surveyor', 'QA/QC Engineer', 'Document Controller', 'Other'] as const;
+export const PRESET_LABOR_TRADES = ['Mason', 'Carpenter', 'Steel Fixer', 'Electrician', 'Plumber', 'HVAC Technician', 'Painter', 'Welder', 'Helper / Laborer', 'Scaffolder', 'Tiler', 'Equipment Operator', 'Driver', 'Other'] as const;
 
 export const PRESET_TRADES = [
     'Mason', 'Carpenter', 'Steel Fixer', 'Electrician', 'Plumber',
@@ -40,115 +41,115 @@ export const PRESET_TRADES = [
 ] as const;
 
 export interface EquipmentRow {
-  id: string;
-  description: string;    // equipment / vehicle name
-  count: string;
-  status?: 'working' | 'idle';
+    id: string;
+    description: string;    // equipment / vehicle name
+    count: string;
+    status?: 'working' | 'idle';
 }
 
 export interface ActivityRow {
-  id: string;
-  activityName: string;
-  location: string;
-  uom: string;            // unit of measure
-  totalQty: string;
-  prevQty: string;
-  todayQty: string;
-  balanceQty: string;     // auto: totalQty - (prevQty + todayQty)
-  percentComplete: string;// auto: (prevQty + todayQty) / totalQty * 100
+    id: string;
+    activityName: string;
+    location: string;
+    uom: string;            // unit of measure
+    totalQty: string;
+    prevQty: string;
+    todayQty: string;
+    balanceQty: string;     // auto: totalQty - (prevQty + todayQty)
+    percentComplete: string;// auto: (prevQty + todayQty) / totalQty * 100
 }
 
 export interface MaterialRow {
-  id: string;
-  material: string;
-  quantity: string;
-  supplier: string;
+    id: string;
+    material: string;
+    quantity: string;
+    supplier: string;
 }
 
 export interface ConcernRow {
-  id: string;
-  location: string;
-  concern: string;
-  action: string;
-  severity?: 'Low' | 'Moderate' | 'High';
+    id: string;
+    location: string;
+    concern: string;
+    action: string;
+    severity?: 'Low' | 'Moderate' | 'High';
 }
 
 export interface DailyReportData {
-  // Section 0 — Header / Meta (project-fixed fields preloaded, but stored on report for snapshot)
-  projectName: string;
-  reportNumber: string;
-  preparedBy: string;
-  reportDate: string;
-  startDate: string;              // preloaded from project
-  forecastCompletionDate: string;// editable per report
-  employerLogo?: string;         // preloaded from project
-  consultantLogo?: string;       // preloaded from project
-  contractorLogos?: string[];    // preloaded from project
+    // Section 0 — Header / Meta (project-fixed fields preloaded, but stored on report for snapshot)
+    projectName: string;
+    reportNumber: string;
+    preparedBy: string;
+    reportDate: string;
+    startDate: string;              // preloaded from project
+    forecastCompletionDate: string;// editable per report
+    employerLogo?: string;         // preloaded from project
+    consultantLogo?: string;       // preloaded from project
+    contractorLogos?: string[];    // preloaded from project
 
-  // Weather
-  climateConditions?: string;
+    // Weather
+    climateConditions?: string;
 
-  // Section 1 — Manpower (unified)
-  manpower?: ManpowerRow[];
+    // Section 1 — Manpower (unified)
+    manpower?: ManpowerRow[];
 
-  // Section 3 — Activities
-  activities: ActivityRow[];
+    // Section 3 — Activities
+    activities: ActivityRow[];
 
-  // Section 4 — Materials
-  materials: MaterialRow[];
+    // Section 4 — Materials
+    materials: MaterialRow[];
 
-  // Section 6 — Site Instructions / Notes
-  siteNotes?: string;
+    // Section 6 — Site Instructions / Notes
+    siteNotes?: string;
 
-  // Section 8 — AI Summary
-  aiSummary?: string;
+    // Section 8 — AI Summary
+    aiSummary?: string;
 
-  // Header / meta
-  logos?: string[];
-  commencementDate?: string;
-  completionDate?: string;
-  anticipatedCompletionDate?: string;
+    // Header / meta
+    logos?: string[];
+    commencementDate?: string;
+    completionDate?: string;
+    anticipatedCompletionDate?: string;
 
-  // Weather
-  climateHumidity?: string;
-  climateVisibility?: string;
-  climateTemp?: string;
-  climateWindSpeed?: string;
+    // Weather
+    climateHumidity?: string;
+    climateVisibility?: string;
+    climateTemp?: string;
+    climateWindSpeed?: string;
 
-  // Manpower summary (kept as strings to match form inputs)
-  manpowerMainContractor?: string;
-  manpowerSubcontractors?: string;
-  manpowerOthers?: string;
-  manpowerTotal?: string;
+    // Manpower summary (kept as strings to match form inputs)
+    manpowerMainContractor?: string;
+    manpowerSubcontractors?: string;
+    manpowerOthers?: string;
+    manpowerTotal?: string;
 
-  // Itemized arrays (current model — to be replaced in Phase B)
-  mainContractorStaff?: { id: string; description: string; count: string }[];
-  subcontractorStaff?: { id: string; name: string; count: string }[];
-  mainContractorLabor?: { id: string; trade: string; inHouse: string; supply: string; total: string }[];
-  subcontractorLabor?: { id: string; name: string; count: string }[];
-  nightShift?: { id: string; trade: string; count: string }[];
-  equipment?: { id: string; description: string; count: string }[];
-  activitiesProgress?: { id: string; activityName: string; uom: string; totalQty: string; prevQty: string; todayQty: string; balanceQty: string }[];
-  areasOfConcern?: { id: string; location: string; concern: string; action: string }[];
-  delays?: { id: string; startTime?: string; endTime?: string; cause: string; description: string; affectedActivity?: string }[];
+    // Itemized arrays (current model — to be replaced in Phase B)
+    mainContractorStaff?: { id: string; description: string; count: string }[];
+    subcontractorStaff?: { id: string; name: string; count: string }[];
+    mainContractorLabor?: { id: string; trade: string; inHouse: string; supply: string; total: string }[];
+    subcontractorLabor?: { id: string; name: string; count: string }[];
+    nightShift?: { id: string; trade: string; count: string }[];
+    equipment?: { id: string; description: string; count: string }[];
+    activitiesProgress?: { id: string; activityName: string; uom: string; totalQty: string; prevQty: string; todayQty: string; balanceQty: string }[];
+    areasOfConcern?: { id: string; location: string; concern: string; action: string }[];
+    delays?: { id: string; startTime?: string; endTime?: string; cause: string; description: string; affectedActivity?: string }[];
 
-  // Photos & section control
-  photos?: any[];
-  hiddenSections?: string[];
-  transcript?: string;
+    // Photos & section control
+    photos?: any[];
+    hiddenSections?: string[];
+    transcript?: string;
 }
 
 export const DAILY_SECTIONS = [
-  { key: 'header', label: 'Header & Weather' },
-  { key: 'manpower', label: 'Manpower' },
-  { key: 'equipment', label: 'Equipment & Plant' },
-  { key: 'activities', label: 'Work Activities' },
-  { key: 'materials', label: 'Materials Received' },
-  { key: 'concerns', label: 'Areas of Concern' },
-  { key: 'delays', label: 'Delays / Disruptions' },
-  { key: 'notes', label: 'Site Instructions / Notes' },
-  { key: 'photos', label: 'Photos' },
-  { key: 'summary', label: 'AI Executive Summary' },
+    { key: 'header', label: 'Header & Weather' },
+    { key: 'manpower', label: 'Manpower' },
+    { key: 'equipment', label: 'Equipment & Plant' },
+    { key: 'activities', label: 'Work Activities' },
+    { key: 'materials', label: 'Materials Received' },
+    { key: 'concerns', label: 'Areas of Concern' },
+    { key: 'delays', label: 'Delays / Disruptions' },
+    { key: 'notes', label: 'Site Instructions / Notes' },
+    { key: 'photos', label: 'Photos' },
+    { key: 'summary', label: 'AI Executive Summary' },
 ] as const;
 
 export interface HSEChecklistItem {
@@ -196,12 +197,12 @@ export interface Snag {
     issue: string;
     recommendation: string;
     severity: 'High' | 'Moderate' | 'Low';
-    
+
     // Management Fields
     contractor: string; // Responsible party
     targetDate: string; // Deadline
     status: 'Pending' | 'In Progress' | 'Completed' | 'Defect Remains';
-    
+
     reinspectionNotes: string;
     photoUri: string;
 }
@@ -220,7 +221,7 @@ export interface SnaggingReportData {
     propertyName: string;
     propertyAddress: string;
     city: string;
-    
+
     // specific Location Details
     buildingName: string;
     floorLevel: string;
@@ -282,10 +283,10 @@ export interface Drawing {
 }
 
 export interface Building {
-  id: string;            // stable uuid
-  code: string;          // short user prefix, e.g. "A", "T1" — may be empty
-  name?: string;         // optional label
-  floorSpec?: string;    // raw descriptor as typed, e.g. "3B+G+26+R" — informational only, NEVER parsed for tower count
+    id: string;            // stable uuid
+    code: string;          // short user prefix, e.g. "A", "T1" — may be empty
+    name?: string;         // optional label
+    floorSpec?: string;    // raw descriptor as typed, e.g. "3B+G+26+R" — informational only, NEVER parsed for tower count
 }
 
 export interface Project {
@@ -374,7 +375,7 @@ interface ProjectsState {
     folders: DrawingFolder[];
     drawings: Drawing[];
     calculations: Calculation[];
-    
+
     // Sync state
     isSyncing: boolean;
     syncError: string | null;
@@ -552,7 +553,7 @@ export const useProjectsStore = create<ProjectsState>()(
             folders: [],
             drawings: [],
             calculations: [],
-            
+
             isSyncing: false,
             syncError: null,
             lastSyncAt: null,
@@ -563,10 +564,10 @@ export const useProjectsStore = create<ProjectsState>()(
             initialSync: async () => {
                 const userId = getCurrentUserId();
                 if (!userId) {
-                    set({ 
+                    set({
                         projects: [], reports: [], folders: [], drawings: [],
                         calculations: [],
-                        isSyncing: false 
+                        isSyncing: false
                     });
                     return;
                 }
@@ -714,10 +715,10 @@ export const useProjectsStore = create<ProjectsState>()(
 
                 const normalizedRoom = normalizeName(room);
                 const existingKnownRooms = project.knownRooms || [];
-                
+
                 const exists = ROOM_PRESETS.some((p: string) => namesMatch(p, normalizedRoom)) ||
-                               existingKnownRooms.some(r => namesMatch(r, normalizedRoom));
-                
+                    existingKnownRooms.some(r => namesMatch(r, normalizedRoom));
+
                 if (exists) return 'exists';
 
                 const newKnownRooms = [...existingKnownRooms, normalizedRoom];
@@ -736,7 +737,7 @@ export const useProjectsStore = create<ProjectsState>()(
 
                 const isMain = companyNamesMatch("Main Contractor", normalizedCompany);
                 const exists = isMain || existingKnownCompanies.some(c => companyNamesMatch(c, normalizedCompany));
-                
+
                 if (exists) return 'exists';
 
                 const newKnownCompanies = [...existingKnownCompanies, normalizedCompany];
@@ -784,19 +785,19 @@ export const useProjectsStore = create<ProjectsState>()(
                 if (userId) {
                     try {
                         await powersync.execute(
-                          `INSERT INTO reports
+                            `INSERT INTO reports
                             (id, project_id, user_id, type, date, author, template_data, status, created_at, updated_at)
                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                          [
-                            localId, report.projectId, userId, report.type, report.date,
-                            report.author || null, report.templateData, report.status || 'draft',
-                            now, now,
-                          ]
+                            [
+                                localId, report.projectId, userId, report.type, report.date,
+                                report.author || null, report.templateData, report.status || 'draft',
+                                now, now,
+                            ]
                         );
                         set((state) => ({
-                          reports: state.reports.map((r) =>
-                            r.id === localId ? { ...r, syncStatus: 'synced' } : r
-                          ),
+                            reports: state.reports.map((r) =>
+                                r.id === localId ? { ...r, syncStatus: 'synced' } : r
+                            ),
                         }));
 
                         await get().addActivity({
@@ -814,7 +815,8 @@ export const useProjectsStore = create<ProjectsState>()(
 
             updateReport: async (id, reportUpdates) => {
                 const now = new Date().toISOString();
-                // M3.3: pending flag set on edit; M3.3b reconcile preserves unsynced CREATES only — offline EDIT conflict resolution deferred to M4 (PowerSync).
+                // M3.3 RESOLVED: offline CREATE/EDIT/DELETE reconciliation now handled by
+                // PowerSync CRUD upload queue (UpdateType.PUT/PATCH/DELETE in lib/powersync/Connector.ts).
                 set((state) => ({
                     reports: state.reports.map((r) =>
                         r.id === id ? { ...r, ...reportUpdates, updatedAt: now, syncStatus: 'pending' } : r
@@ -907,7 +909,7 @@ export const useProjectsStore = create<ProjectsState>()(
                         const add = (col: string, val: any) => { cols.push(`${col} = ?`); vals.push(val); };
                         if (updatedFields.name !== undefined) add('name', updatedFields.name);
                         if (updatedFields.parentId !== undefined) add('parent_id', updatedFields.parentId);
-                        
+
                         if (cols.length > 0) {
                             vals.push(id);
                             await powersync.execute(`UPDATE drawing_folders SET ${cols.join(', ')} WHERE id = ?`, vals);
@@ -971,7 +973,7 @@ export const useProjectsStore = create<ProjectsState>()(
                             `INSERT INTO drawings (id, project_id, user_id, folder_id, name, type, storage_path, size, uploaded_at, author)
                              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                             [localId, drawing.projectId, userId, drawing.folderId ?? null, drawing.name,
-                             drawing.type ?? 'other', drawing.uri ?? null, drawing.size ?? 0, now, drawing.author ?? null]
+                                drawing.type ?? 'other', drawing.uri ?? null, drawing.size ?? 0, now, drawing.author ?? null]
                         );
 
                         await get().addActivity({
@@ -1004,7 +1006,7 @@ export const useProjectsStore = create<ProjectsState>()(
                         if (updatedFields.uri !== undefined) add('storage_path', updatedFields.uri);
                         if (updatedFields.size !== undefined) add('size', updatedFields.size);
                         if (updatedFields.author !== undefined) add('author', updatedFields.author);
-                        
+
                         if (cols.length > 0) {
                             vals.push(id);
                             await powersync.execute(`UPDATE drawings SET ${cols.join(', ')} WHERE id = ?`, vals);
@@ -1060,20 +1062,20 @@ export const useProjectsStore = create<ProjectsState>()(
                     console.error('Failed to write activity to PowerSync:', error);
                 }
             },
-            
+
             addCalculation: async (calc) => {
                 const userId = getCurrentUserId();
                 const now = new Date().toISOString();
                 const localId = uuidv4();
-                
+
                 const newCalc: Calculation = {
                     ...calc,
                     id: localId,
                     createdAt: now,
                 };
-                
+
                 set(state => ({ calculations: [newCalc, ...state.calculations] }));
-                
+
                 if (userId) {
                     try {
                         await powersync.execute(
@@ -1086,7 +1088,7 @@ export const useProjectsStore = create<ProjectsState>()(
                     }
                 }
             },
-            
+
             getCalculationsForProject: (projectId) => get().calculations.filter((c) => c.projectId === projectId),
 
             // Snags
@@ -1103,7 +1105,7 @@ export const useProjectsStore = create<ProjectsState>()(
                 }
                 const newSeq = (project.snagCounter || 0) + 1;
 
-                        if (userId) {
+                if (userId) {
                     try {
                         const photosStr = JSON.stringify(snag.photos || []);
                         await powersync.writeTransaction(async (tx) => {
@@ -1125,7 +1127,7 @@ export const useProjectsStore = create<ProjectsState>()(
                                 [newSeq, snag.projectId]
                             );
                         });
-                        
+
                         // Update local store immediately for project (optimistic, but after successful local transaction)
                         set((state) => ({
                             projects: state.projects.map(p =>
@@ -1144,11 +1146,11 @@ export const useProjectsStore = create<ProjectsState>()(
             },
             updateSnag: async (id, snag) => {
                 if (!getCurrentUserId()) return;
-                
+
                 try {
                     const updates: any[] = [];
                     const vals: any[] = [];
-                    
+
                     if (snag.buildingId !== undefined) { updates.push('building_id = ?'); vals.push(snag.buildingId); }
                     if (snag.floor !== undefined) { updates.push('floor = ?'); vals.push(snag.floor); }
                     if (snag.flat !== undefined) { updates.push('flat = ?'); vals.push(snag.flat); }
@@ -1160,7 +1162,7 @@ export const useProjectsStore = create<ProjectsState>()(
                     if (snag.photos !== undefined) { updates.push('photos = ?'); vals.push(JSON.stringify(snag.photos)); }
                     if (snag.status !== undefined) { updates.push('status = ?'); vals.push(snag.status); }
                     if (snag.legacyCode !== undefined) { updates.push('legacy_code = ?'); vals.push(snag.legacyCode); }
-                    
+
                     if (updates.length > 0) {
                         vals.push(id);
                         await powersync.execute(`UPDATE snags SET ${updates.join(', ')} WHERE id = ?`, vals);

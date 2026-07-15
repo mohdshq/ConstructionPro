@@ -28,7 +28,7 @@ we proceed to Milestone 2 (Sentry/PostHog observability).
       `proj.referenceNumber` which does not exist on the Project type.
 ## M2b — PostHog runtime verification ✅ VERIFIED
 - Verified live on iOS Simulator dev build: 'M2b Test Event' captured via usePostHog().capture() + flush() appeared in PostHog Events dashboard (US region). Autocapture (Application Opened) also confirmed firing.
-## M3.3 — Offline data-loss: partial fix (projects + reports only)
+## M3.3 ✅ RESOLVED — Offline data-loss: partial fix (projects + reports only) 
 - M3.3b made initialSync NON-DESTRUCTIVE for projects and reports: local records
   with syncStatus === 'pending' that are absent from the server are now PRESERVED
   (not wiped), fixing the catastrophic "offline-created report disappears on sync" bug.
@@ -42,7 +42,7 @@ we proceed to Milestone 2 (Sentry/PostHog observability).
 - Offline EDITS to existing records: server wins on sync (edit-conflict resolution
   deferred to M4). Only offline CREATES are preserved.
 
-## M3.3c — Network detection + offline banner (NOT STARTED)
+## M3.3c ✅ RESOLVED — — Network detection + offline banner (NOT STARTED)  
 - Plan reviewed and approved: use @react-native-community/netinfo, add
   lib/useNetworkStatus.ts hook + components/OfflineBanner.tsx, mount banner in
   app/_layout.tsx (inside appContent's SafeAreaProvider).
@@ -52,7 +52,7 @@ we proceed to Milestone 2 (Sentry/PostHog observability).
   PostHogProvider structure (the originally-proposed diff was against the pre-M2b layout).
 - Scope: detection + display only. No sync/queue/retry (that's M4).
 
-## M3.3b — Offline reconcile ✅ VERIFIED (with known gap)
+## M3.3b ✅ RESOLVED — Offline reconcile ✅ VERIFIED (with known gap)
 - Verified live: a report created OFFLINE survived reconnection / initialSync (no longer wiped). Data-loss-on-overwrite bug confirmed fixed.
 - KNOWN GAP: offline-created records are PRESERVED locally (syncStatus 'pending') but are NEVER auto-pushed to Supabase after reconnect. Needs flush-on-reconnect / mutation queue. Deferred to M4 (PowerSync).
 
@@ -81,7 +81,7 @@ we proceed to Milestone 2 (Sentry/PostHog observability).
       traces and reproduction context.
 - [ ] Project status not user-editable (pre-existing, unrelated to PowerSync): create form hardcodes status: 'planning'; edit form omits status. Card badge shows date-derived displayStatus, not stored value. Fix = add a status picker to app/project/create.tsx and include status in the edit payload.
 
-## M3.3c — Offline detection + banner ✅ CODE-COMPLETE (live offline-state verification pending)
+## M3.3c ✅ RESOLVED — — Offline detection + banner ✅ CODE-COMPLETE (live offline-state verification pending)
 - Added @react-native-community/netinfo, lib/useNetworkStatus.ts hook, components/OfflineBanner.tsx (global red banner), mounted in app/_layout.tsx inside SafeAreaProvider.
 - VERIFIED on iOS Simulator: banner renders correctly with proper safe-area insets; absent when online.
 - NOT fully verified: a true offline transition. The iOS Simulator does NOT emit isConnected:false on host Wi-Fi toggle (NetInfo always reports isConnected:true, type:wifi) — a known simulator limitation, not a code issue. Confirmed via debug logging.
