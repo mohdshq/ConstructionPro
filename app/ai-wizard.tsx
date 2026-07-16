@@ -1,17 +1,34 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, Alert, SafeAreaView, Platform } from 'react-native';
-import { Stack, useRouter } from 'expo-router';
-import { useRouter as useExpoRouter } from 'expo-router';
-import { Audio, InterruptionModeIOS, InterruptionModeAndroid } from 'expo-av';
-import * as ImagePicker from 'expo-image-picker';
-import { Mic, Square, Camera, Image as ImageIcon, ChevronRight, X, Loader2, Sparkles, CheckCircle } from 'lucide-react-native';
-import { useProjectsStore, Project, ReportType } from '../store/projectsStore';
-import { supabase } from '../lib/supabase';
+import { Audio, InterruptionModeAndroid, InterruptionModeIOS } from 'expo-av';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as ImageManipulator from 'expo-image-manipulator';
-import { useThemeColors } from '../store/useThemeColors';
+import * as ImagePicker from 'expo-image-picker';
+import { useRouter as useExpoRouter } from 'expo-router';
+import { Camera, CheckCircle, ChevronRight, Image as ImageIcon, Mic, Sparkles, Square, X } from 'lucide-react-native';
+import React, { useEffect, useState } from 'react';
+import { ActivityIndicator, Alert, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import Animated, { FadeIn, SlideInRight } from 'react-native-reanimated';
+import { supabase } from '../lib/supabase';
+import { Project, ReportType, useProjectsStore } from '../store/projectsStore';
 import { useStore } from '../store/useStore';
-import Animated, { FadeIn, SlideInRight, SlideOutLeft } from 'react-native-reanimated';
+import { useThemeColors } from '../store/useThemeColors';
+
+async function invokeAIWithTimeout(payload: any, ms = 45000): Promise<{ data: any, error: any }> {
+    let timeoutId: ReturnType<typeof setTimeout>;
+    const timeoutPromise = new Promise<{ data: any, error: any }>((_, reject) => {
+        timeoutId = setTimeout(() => {
+            reject(new Error('AI is taking too long to respond. Please try again.'));
+        }, ms);
+    });
+
+    try {
+        return await Promise.race([
+            supabase.functions.invoke('ai-report-wizard', { body: payload }),
+            timeoutPromise
+        ]);
+    } finally {
+        clearTimeout(timeoutId!);
+    }
+}
 
 export default function AIWizardScreen() {
     const { colors } = useThemeColors();
@@ -22,7 +39,7 @@ export default function AIWizardScreen() {
     const [step, setStep] = useState<'project' | 'type' | 'snag-context' | 'snag-capture' | 'daily-capture' | 'processing'>('project');
     const [selectedProject, setSelectedProject] = useState<Project | null>(null);
     const [selectedType, setSelectedType] = useState<ReportType | null>(null);
-    
+
     // Snagging specific state
     const [snagContext, setSnagContext] = useState<any>({});
     const [capturedSnags, setCapturedSnags] = useState<any[]>([]);
@@ -39,7 +56,7 @@ export default function AIWizardScreen() {
     useEffect(() => {
         return () => {
             if (recording) {
-                recording.stopAndUnloadAsync().catch(() => {});
+                recording.stopAndUnloadAsync().catch(() => { });
             }
         };
     }, [recording]);
@@ -115,7 +132,7 @@ export default function AIWizardScreen() {
             } else {
                 base64Audio = await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
             }
-            
+
             const payload = {
                 audioBase64: `data:${mimeType};base64,${base64Audio}`,
                 audioMimeType: mimeType,
@@ -124,9 +141,7 @@ export default function AIWizardScreen() {
                 contextData: snagContext
             };
 
-            const { data, error } = await supabase.functions.invoke('ai-report-wizard', {
-                body: payload
-            });
+            const { data, error } = await invokeAIWithTimeout(payload);
 
             if (error) throw error;
             if (data?.error) throw new Error(data.error);
@@ -164,10 +179,10 @@ export default function AIWizardScreen() {
             }
 
             if (result.canceled || !result.assets || result.assets.length === 0) return;
-            
+
             setStep('processing');
             setProcessingText('Analyzing photo...');
-            
+
             let base64String = result.assets[0].base64;
             let finalUri = result.assets[0].uri;
 
@@ -190,12 +205,12 @@ export default function AIWizardScreen() {
                         const MAX_WIDTH = 800;
                         let width = img.width;
                         let height = img.height;
-                        
+
                         if (width > MAX_WIDTH) {
                             height = Math.round(height * (MAX_WIDTH / width));
                             width = MAX_WIDTH;
                         }
-                        
+
                         canvas.width = width;
                         canvas.height = height;
                         const ctx = canvas.getContext('2d');
@@ -213,7 +228,7 @@ export default function AIWizardScreen() {
             }
 
             const base64Image = `data:image/jpeg;base64,${base64String}`;
-            
+
             const payload = {
                 imageBase64: base64Image,
                 currentStep: 'snag',
@@ -221,16 +236,14 @@ export default function AIWizardScreen() {
                 contextData: snagContext
             };
 
-            const { data, error } = await supabase.functions.invoke('ai-report-wizard', {
-                body: payload
-            });
+            const { data, error } = await invokeAIWithTimeout(payload);
 
             if (error) throw error;
             if (data?.error) throw new Error(data.error);
 
             const newSnag = { ...data.result, photoUri: base64Image, id: Date.now().toString() };
             setCapturedSnags(prev => [...prev, newSnag]);
-            
+
             Alert.alert(
                 "Snag Captured",
                 `Identified: ${newSnag.issue}\n\nTake another snag in this area?`,
@@ -275,14 +288,14 @@ export default function AIWizardScreen() {
             });
         } else {
             const dataToReview = finalData || dailyData;
-            
+
             // Ensure all array items have an ID
             const arrayKeys = [
-                'mainContractorStaff', 'subcontractorStaff', 'equipment', 
-                'mainContractorLabor', 'subcontractorLabor', 'nightShift', 
+                'mainContractorStaff', 'subcontractorStaff', 'equipment',
+                'mainContractorLabor', 'subcontractorLabor', 'nightShift',
                 'activitiesProgress', 'areasOfConcern'
             ];
-            
+
             arrayKeys.forEach((key) => {
                 if (Array.isArray(dataToReview[key])) {
                     dataToReview[key] = dataToReview[key].map((item: any, idx: number) => ({
@@ -331,8 +344,8 @@ export default function AIWizardScreen() {
             <Text style={styles.title}>Select Project</Text>
             <ScrollView style={{ flex: 1 }}>
                 {projects.map(p => (
-                    <TouchableOpacity 
-                        key={p.id} 
+                    <TouchableOpacity
+                        key={p.id}
                         style={styles.projectCard}
                         onPress={() => { setSelectedProject(p); setStep('type'); }}
                     >
@@ -340,7 +353,7 @@ export default function AIWizardScreen() {
                         <ChevronRight size={20} color="#64748B" />
                     </TouchableOpacity>
                 ))}
-                <TouchableOpacity 
+                <TouchableOpacity
                     style={[styles.projectCard, { borderStyle: 'dashed', backgroundColor: 'transparent' }]}
                     onPress={handleCreateProject}
                 >
@@ -354,7 +367,7 @@ export default function AIWizardScreen() {
         <Animated.View entering={SlideInRight} style={styles.stepContainer}>
             <Text style={styles.title}>What would you like to report?</Text>
             <View style={{ gap: 16 }}>
-                <TouchableOpacity 
+                <TouchableOpacity
                     style={[styles.typeCard, { backgroundColor: '#EFF6FF', borderColor: '#BFDBFE' }]}
                     onPress={() => { setSelectedType('snagging'); setStep('snag-context'); }}
                 >
@@ -364,7 +377,7 @@ export default function AIWizardScreen() {
                         <Text style={styles.typeDesc}>Walk the site and log defects automatically.</Text>
                     </View>
                 </TouchableOpacity>
-                <TouchableOpacity 
+                <TouchableOpacity
                     style={[styles.typeCard, { backgroundColor: '#F0FDF4', borderColor: '#BBF7D0' }]}
                     onPress={() => { setSelectedType('daily'); setStep('daily-capture'); }}
                 >
@@ -382,7 +395,7 @@ export default function AIWizardScreen() {
         <Animated.View entering={SlideInRight} style={styles.stepContainer}>
             <Text style={styles.title}>{title}</Text>
             <Text style={styles.subtitle}>{subtitle}</Text>
-            
+
             <View style={styles.micContainer}>
                 {!isRecording ? (
                     <TouchableOpacity style={styles.micBtn} onPress={startRecording}>
@@ -406,7 +419,7 @@ export default function AIWizardScreen() {
             <Text style={styles.subtitle}>
                 Location: {snagContext.building} {snagContext.floor ? `(Fl ${snagContext.floor})` : ''}
             </Text>
-            
+
             <View style={{ flexDirection: 'row', gap: 16, marginTop: 40, justifyContent: 'center' }}>
                 <TouchableOpacity style={styles.captureBtn} onPress={() => handlePhotoSubmit(true)}>
                     <Camera color="#fff" size={32} />
