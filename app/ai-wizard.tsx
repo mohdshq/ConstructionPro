@@ -5,12 +5,13 @@ import * as ImagePicker from 'expo-image-picker';
 import { useRouter as useExpoRouter } from 'expo-router';
 import { Camera, CheckCircle, ChevronRight, Image as ImageIcon, Mic, Sparkles, Square, X } from 'lucide-react-native';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View, TextInput } from 'react-native';
 import Animated, { FadeIn, SlideInRight } from 'react-native-reanimated';
 import { supabase } from '../lib/supabase';
-import { Project, ReportType, useProjectsStore } from '../store/projectsStore';
+import { Project, ReportType, useProjectsStore, ProjectSnag } from '../store/projectsStore';
 import { useStore } from '../store/useStore';
 import { useThemeColors } from '../store/useThemeColors';
+import { persistCapturedSnags, normalizeFloorToInt } from '../lib/ai/persistSnags';
 
 async function invokeAIWithTimeout(payload: any, ms = 45000): Promise<{ data: any, error: any }> {
     let timeoutId: ReturnType<typeof setTimeout>;
@@ -168,6 +169,11 @@ export default function AIWizardScreen() {
     };
 
     const handlePhotoSubmit = async (useCamera: boolean) => {
+        if (selectedProject?.buildings?.length && !snagContext.buildingId) {
+            Alert.alert("Error", "Select a building/tower before capturing snags");
+            return;
+        }
+
         try {
             let result;
             if (useCamera) {
@@ -241,7 +247,14 @@ export default function AIWizardScreen() {
             if (error) throw error;
             if (data?.error) throw new Error(data.error);
 
-            const newSnag = { ...data.result, photoUri: base64Image, id: Date.now().toString() };
+            const _ctx = {
+                buildingId: snagContext.buildingId || undefined,
+                floor: normalizeFloorToInt(snagContext.floor),
+                flat: snagContext.flat ? parseInt(String(snagContext.flat), 10) : undefined,
+                areaType: snagContext.areaType || 'unit',
+                room: snagContext.area || undefined
+            };
+            const newSnag = { ...data.result, photoUri: base64Image, id: Date.now().toString(), _ctx };
             setCapturedSnags(prev => [...prev, newSnag]);
 
             Alert.alert(
@@ -270,22 +283,32 @@ export default function AIWizardScreen() {
         }
     };
 
-    const navigateToReview = (finalData?: any) => {
+    const navigateToReview = async (finalData?: any) => {
         if (selectedType === 'snagging') {
-            const formData = {
-                snags: capturedSnags.map(s => ({
-                    ...s,
-                    location: snagContext.building || '',
-                    level: snagContext.floor || '',
-                    room: snagContext.area || '',
-                    status: 'Pending',
-                    severity: s.severity || 'Moderate'
-                }))
-            };
-            router.replace({
-                pathname: `/project/[id]/report/create`,
-                params: { id: selectedProject!.id, type: 'snagging', initialData: JSON.stringify(formData) }
-            });
+            if (step === 'processing' || capturedSnags.length === 0) return;
+            try {
+                setStep('processing');
+                setProcessingText('Saving snags...');
+                const { addSnag } = useProjectsStore.getState();
+                
+                const savedCount = await persistCapturedSnags(capturedSnags, selectedProject!.id, addSnag);
+                
+                if (savedCount === 0) {
+                    Alert.alert("Error", "Could not save — are you signed in?");
+                    setStep('snag-capture');
+                    return;
+                }
+                
+                setCapturedSnags([]);
+                router.replace({
+                    pathname: `/project/[id]/snags`,
+                    params: { id: selectedProject!.id, origin: 'ai' }
+                });
+            } catch (error: any) {
+                console.error(error);
+                Alert.alert("Error", "Failed to save snags. Please try again.");
+                setStep('snag-capture');
+            }
         } else {
             const dataToReview = finalData || dailyData;
 
@@ -416,9 +439,76 @@ export default function AIWizardScreen() {
     const renderSnagCapture = () => (
         <Animated.View entering={SlideInRight} style={styles.stepContainer}>
             <Text style={styles.title}>Capture Snag</Text>
-            <Text style={styles.subtitle}>
-                Location: {snagContext.building} {snagContext.floor ? `(Fl ${snagContext.floor})` : ''}
-            </Text>
+            
+            <View style={{ gap: 12, marginBottom: 20 }}>
+                {selectedProject?.buildings && selectedProject.buildings.length > 0 && (
+                    <View>
+                        <Text style={[styles.label, { color: colors.text, marginBottom: 8 }]}>Building / Tower</Text>
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: 'row' }}>
+                            <TouchableOpacity 
+                                style={[styles.chip, !snagContext.buildingId && { backgroundColor: colors.primary }]}
+                                onPress={() => setSnagContext({ ...snagContext, buildingId: '' })}
+                            >
+                                <Text style={[styles.chipText, !snagContext.buildingId && { color: '#fff' }]}>None</Text>
+                            </TouchableOpacity>
+                            {selectedProject.buildings.map(b => (
+                                <TouchableOpacity 
+                                    key={b.id} 
+                                    style={[styles.chip, snagContext.buildingId === b.id && { backgroundColor: colors.primary }]}
+                                    onPress={() => setSnagContext({ ...snagContext, buildingId: b.id })}
+                                >
+                                    <Text style={[styles.chipText, snagContext.buildingId === b.id && { color: '#fff' }]}>{b.code} {b.name ? `- ${b.name}` : ''}</Text>
+                                </TouchableOpacity>
+                            ))}
+                        </ScrollView>
+                    </View>
+                )}
+
+                <View style={{ flexDirection: 'row', gap: 16 }}>
+                    <View style={{ flex: 1 }}>
+                        <Text style={[styles.label, { color: colors.text, marginBottom: 8 }]}>Floor</Text>
+                        <TextInput
+                            style={[styles.input, { color: colors.text, backgroundColor: colors.card, borderColor: colors.border }]}
+                            placeholder="e.g. 5"
+                            placeholderTextColor={colors.textMuted}
+                            value={String(snagContext.floor || '')}
+                            onChangeText={(t) => setSnagContext({ ...snagContext, floor: t })}
+                            keyboardType="numeric"
+                        />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                        <Text style={[styles.label, { color: colors.text, marginBottom: 8 }]}>Flat / Unit</Text>
+                        <TextInput
+                            style={[
+                                styles.input, 
+                                { color: colors.text, backgroundColor: colors.card, borderColor: colors.border },
+                                snagContext.areaType && snagContext.areaType !== 'unit' && { opacity: 0.5, backgroundColor: '#f1f5f9' }
+                            ]}
+                            placeholder={(!snagContext.areaType || snagContext.areaType === 'unit') ? "e.g. 1" : "—"}
+                            placeholderTextColor={colors.textMuted}
+                            value={(!snagContext.areaType || snagContext.areaType === 'unit') ? String(snagContext.flat || '') : ''}
+                            onChangeText={(t) => setSnagContext({ ...snagContext, flat: t })}
+                            keyboardType="numeric"
+                            editable={!snagContext.areaType || snagContext.areaType === 'unit'}
+                        />
+                    </View>
+                </View>
+
+                <View>
+                    <Text style={[styles.label, { color: colors.text, marginBottom: 8 }]}>Area Type</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: 'row' }}>
+                        {['unit', 'elevation', 'parking', 'landscape', 'roof', 'mep', 'common'].map(type => (
+                            <TouchableOpacity 
+                                key={type} 
+                                style={[styles.chip, (snagContext.areaType || 'unit') === type && { backgroundColor: colors.primary }]}
+                                onPress={() => setSnagContext({ ...snagContext, areaType: type })}
+                            >
+                                <Text style={[styles.chipText, (snagContext.areaType || 'unit') === type && { color: '#fff' }]}>{type}</Text>
+                            </TouchableOpacity>
+                        ))}
+                    </ScrollView>
+                </View>
+            </View>
 
             <View style={{ flexDirection: 'row', gap: 16, marginTop: 40, justifyContent: 'center' }}>
                 <TouchableOpacity style={styles.captureBtn} onPress={() => handlePhotoSubmit(true)}>
@@ -534,5 +624,22 @@ const styles = StyleSheet.create({
     finishBtn: {
         marginTop: 20, backgroundColor: '#10B981', padding: 16, borderRadius: 12, alignItems: 'center'
     },
-    finishBtnText: { color: '#fff', fontSize: 16, fontWeight: 'bold' }
+    finishBtnText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
+    label: { fontSize: 14, fontWeight: '500', marginBottom: 8 },
+    input: {
+        borderWidth: 1,
+        borderRadius: 8,
+        paddingHorizontal: 12,
+        height: 44,
+        fontSize: 16,
+    },
+    chip: {
+        paddingHorizontal: 16,
+        paddingVertical: 8,
+        borderRadius: 20,
+        borderWidth: 1,
+        borderColor: 'rgba(150,150,150,0.3)',
+        marginRight: 8,
+    },
+    chipText: { fontSize: 14, color: '#777' }
 });
