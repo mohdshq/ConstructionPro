@@ -13,7 +13,7 @@ import { useStore } from '../store/useStore';
 import { useThemeColors } from '../store/useThemeColors';
 import { persistCapturedSnags, normalizeFloorToInt } from '../lib/ai/persistSnags';
 
-async function invokeAIWithTimeout(payload: any, ms = 45000): Promise<{ data: any, error: any }> {
+async function invokeAIWithTimeout(functionName: string, payload: any, ms = 45000): Promise<{ data: any, error: any }> {
     let timeoutId: ReturnType<typeof setTimeout>;
     const timeoutPromise = new Promise<{ data: any, error: any }>((_, reject) => {
         timeoutId = setTimeout(() => {
@@ -23,7 +23,7 @@ async function invokeAIWithTimeout(payload: any, ms = 45000): Promise<{ data: an
 
     try {
         return await Promise.race([
-            supabase.functions.invoke('ai-report-wizard', { body: payload }),
+            supabase.functions.invoke(functionName, { body: payload }),
             timeoutPromise
         ]);
     } finally {
@@ -142,7 +142,7 @@ export default function AIWizardScreen() {
                 contextData: snagContext
             };
 
-            const { data, error } = await invokeAIWithTimeout(payload);
+            const { data, error } = await invokeAIWithTimeout('ai-report-wizard', payload);
 
             if (error) throw error;
             if (data?.error) throw new Error(data.error);
@@ -236,13 +236,11 @@ export default function AIWizardScreen() {
             const base64Image = `data:image/jpeg;base64,${base64String}`;
 
             const payload = {
-                imageBase64: base64Image,
-                currentStep: 'snag',
-                reportType: 'snagging',
-                contextData: snagContext
+                base64Image,
+                context: snagContext.area || selectedProject?.name
             };
 
-            const { data, error } = await invokeAIWithTimeout(payload);
+            const { data, error } = await invokeAIWithTimeout('ai-snag-from-photo', payload);
 
             if (error) throw error;
             if (data?.error) throw new Error(data.error);
@@ -254,7 +252,18 @@ export default function AIWizardScreen() {
                 areaType: snagContext.areaType || 'unit',
                 room: snagContext.area || undefined
             };
-            const newSnag = { ...data.result, photoUri: base64Image, id: Date.now().toString(), _ctx };
+            
+            const snagData = data.snag || {};
+            const newSnag = { 
+                issue: snagData.issue,
+                system: snagData.system,
+                assetName: snagData.assetName,
+                recommendation: snagData.recommendation,
+                severity: snagData.severity || 'Moderate',
+                photoUri: base64Image, 
+                id: Date.now().toString(), 
+                _ctx 
+            };
             setCapturedSnags(prev => [...prev, newSnag]);
 
             Alert.alert(
