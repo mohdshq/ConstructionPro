@@ -27,7 +27,6 @@ export function generateDailyReportHTML(
     const hasProjectLogos = empLogo || consLogo || contLogos.length > 0;
 
     const rawLogos = data.logos || [];
-    console.log('[pdf] incoming logos:', (rawLogos||[]).map((l:any)=>({head:(l||'').slice(0,30), len:(l||'').length, passes: validateLogo(l)})));
     const reportLogos = rawLogos.filter(validateLogo);
 
     let headerHTML = '';

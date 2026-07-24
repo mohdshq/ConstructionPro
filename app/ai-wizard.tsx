@@ -174,7 +174,7 @@ export default function AIWizardScreen() {
         const buildings = selectedProject?.buildings ?? [];
         const resolvedBuildingId = snagContext.buildingId || (buildings.length === 1 ? buildings[0].id : '');
         if (buildings.length >= 2 && !resolvedBuildingId) {
-            Alert.alert("Error", "Select a building/tower before capturing snags");
+            Alert.alert("Select a building", "Choose a building/tower before capturing snags.");
             return;
         }
 
@@ -579,7 +579,7 @@ export default function AIWizardScreen() {
     return (
         <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
             <View style={styles.header}>
-                <TouchableOpacity onPress={() => router.back()} style={{ padding: 8 }}>
+                <TouchableOpacity onPress={() => { setPendingContextPhoto(null); router.back(); }} style={{ padding: 8 }}>
                     <X size={24} color={colors.text} />
                 </TouchableOpacity>
                 <Text style={{ fontSize: 18, fontWeight: 'bold', color: colors.text }}>AI Assistant</Text>
