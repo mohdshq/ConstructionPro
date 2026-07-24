@@ -60,7 +60,7 @@ export async function persistCapturedSnags(
             trade: s.trade?.trim() || undefined,
             room: (ctx.room || s.room)?.trim() || undefined,
             description: (s.issue || s.description || '').trim(),
-            photos: s.photoUri ? [s.photoUri] : [],
+            photos: s.photos || (s.photoUri ? [s.photoUri] : []),
             status: 'open',
         });
         if (result !== undefined) {

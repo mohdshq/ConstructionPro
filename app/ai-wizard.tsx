@@ -45,6 +45,7 @@ export default function AIWizardScreen() {
     // Snagging specific state
     const [snagContext, setSnagContext] = useState<any>({});
     const [capturedSnags, setCapturedSnags] = useState<any[]>([]);
+    const [pendingContextPhoto, setPendingContextPhoto] = useState<string | null>(null);
 
     // Daily specific state
     const [dailyData, setDailyData] = useState<any>({});
@@ -170,7 +171,9 @@ export default function AIWizardScreen() {
     };
 
     const handlePhotoSubmit = async (useCamera: boolean) => {
-        if (selectedProject?.buildings?.length && !snagContext.buildingId) {
+        const buildings = selectedProject?.buildings ?? [];
+        const resolvedBuildingId = snagContext.buildingId || (buildings.length === 1 ? buildings[0].id : '');
+        if (buildings.length >= 2 && !resolvedBuildingId) {
             Alert.alert("Error", "Select a building/tower before capturing snags");
             return;
         }
@@ -236,8 +239,17 @@ export default function AIWizardScreen() {
 
             const base64Image = `data:image/jpeg;base64,${base64String}`;
 
+            if (!pendingContextPhoto) {
+                setPendingContextPhoto(base64Image);
+                setStep('snag-capture');
+                Alert.alert("Overview Saved", "Now take a close-up detail photo of the defect.");
+                return;
+            }
+
+            const detailBase64 = base64Image;
+
             const payload = {
-                base64Image,
+                base64Image: detailBase64,
                 context: snagContext.area || selectedProject?.name
             };
 
@@ -247,11 +259,11 @@ export default function AIWizardScreen() {
             if (data?.error) throw new Error(data.error);
 
             const _ctx = {
-                buildingId: snagContext.buildingId || undefined,
+                buildingId: resolvedBuildingId || undefined,
                 floor: normalizeFloorToInt(snagContext.floor),
                 flat: snagContext.flat ? parseInt(String(snagContext.flat), 10) : undefined,
                 areaType: snagContext.areaType || 'unit',
-                room: snagContext.area || undefined
+                room: undefined
             };
             
             const snagData = data.snag || {};
@@ -261,11 +273,12 @@ export default function AIWizardScreen() {
                 assetName: snagData.assetName,
                 recommendation: snagData.recommendation,
                 severity: snagData.severity || 'Moderate',
-                photoUri: base64Image, 
+                photos: [pendingContextPhoto, detailBase64].filter(Boolean),
                 id: Date.now().toString(), 
                 _ctx 
             };
             setCapturedSnags(prev => [...prev, newSnag]);
+            setPendingContextPhoto(null);
             setStep('snag-capture');
 
             Alert.alert(
@@ -456,7 +469,7 @@ export default function AIWizardScreen() {
 
     const renderSnagCapture = () => (
         <Animated.View entering={SlideInRight} style={styles.stepContainer}>
-            <Text style={styles.title}>Capture Snag</Text>
+            <Text style={styles.title}>{pendingContextPhoto ? "Capture Detail Photo" : "Capture Overview Photo"}</Text>
             
             <View style={{ gap: 12, marginBottom: 20 }}>
                 {selectedProject?.buildings && selectedProject.buildings.length > 0 && (
