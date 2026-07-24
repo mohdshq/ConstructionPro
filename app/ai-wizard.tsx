@@ -4,7 +4,7 @@ import * as ImageManipulator from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter as useExpoRouter } from 'expo-router';
 import { Camera, CheckCircle, ChevronRight, Image as ImageIcon, Mic, Sparkles, Square, X } from 'lucide-react-native';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { ActivityIndicator, Alert, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View, TextInput } from 'react-native';
 import Animated, { FadeIn, SlideInRight } from 'react-native-reanimated';
 import { supabase } from '../lib/supabase';
@@ -36,6 +36,7 @@ export default function AIWizardScreen() {
     const router = useExpoRouter();
     const { projects } = useProjectsStore();
     const { isPremium } = useStore();
+    const savingRef = useRef(false);
 
     const [step, setStep] = useState<'project' | 'type' | 'snag-context' | 'snag-capture' | 'daily-capture' | 'processing'>('project');
     const [selectedProject, setSelectedProject] = useState<Project | null>(null);
@@ -255,7 +256,7 @@ export default function AIWizardScreen() {
             
             const snagData = data.snag || {};
             const newSnag = { 
-                issue: snagData.issue,
+                issue: snagData.issue || 'Snag',
                 system: snagData.system,
                 assetName: snagData.assetName,
                 recommendation: snagData.recommendation,
@@ -265,6 +266,7 @@ export default function AIWizardScreen() {
                 _ctx 
             };
             setCapturedSnags(prev => [...prev, newSnag]);
+            setStep('snag-capture');
 
             Alert.alert(
                 "Snag Captured",
@@ -294,7 +296,12 @@ export default function AIWizardScreen() {
 
     const navigateToReview = async (finalData?: any) => {
         if (selectedType === 'snagging') {
-            if (step === 'processing' || capturedSnags.length === 0) return;
+            if (savingRef.current) return;
+            if (capturedSnags.length === 0) {
+                Alert.alert('No snags', 'Capture at least one snag first.');
+                return;
+            }
+            savingRef.current = true;
             try {
                 setStep('processing');
                 setProcessingText('Saving snags...');
@@ -317,6 +324,8 @@ export default function AIWizardScreen() {
                 console.error(error);
                 Alert.alert("Error", "Failed to save snags. Please try again.");
                 setStep('snag-capture');
+            } finally {
+                savingRef.current = false;
             }
         } else {
             const dataToReview = finalData || dailyData;
