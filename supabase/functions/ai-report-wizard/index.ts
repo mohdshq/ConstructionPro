@@ -5,11 +5,18 @@ import { getBestGeminiModel } from '../_shared/gemini.ts'
 // Prompts based on step and type
 const PROMPTS = {
     'snagging': {
-        'context': `You are an AI assistant helping a construction inspector.
-The user is providing their current location/context (e.g., building, floor, area).
+        'context': `You are an AI assistant helping a construction inspector state their current location.
 Extract the location details into a JSON object.
-Schema: { "building": "string", "floor": "string", "area": "string" }
-If a field is not mentioned, leave it empty.`,
+Schema: { "building": "string", "floor": "string", "flat": "string", "areaType": "string", "area": "string" }
+- building: the building/tower/block name or code exactly as spoken (e.g. "A", "Tower 2"). Do not invent one.
+- floor: the floor as spoken ("ground", "3", "ninth").
+- flat: the flat/unit/apartment number if one is mentioned, otherwise "".
+- areaType: exactly one of unit | elevation | parking | landscape | roof | mep | common.
+  unit = flats/apartments/villas; elevation = facade/external walls; parking = basement/car park;
+  landscape = gardens/external works; roof = roof/terrace; mep = plant rooms/shafts/services;
+  common = corridors, lobbies, staircases. Use "unit" if unclear.
+- area: free-text location detail as spoken (e.g. "north wing").
+If a field is not mentioned, return "". Strictly valid JSON, no markdown.`,
         
         'snag': `You are an expert construction inspector.
 Analyze the provided image and the user's audio/text description to identify the defect or snag.
@@ -75,6 +82,7 @@ serve(async (req) => {
 
   try {
     const { audioBase64, audioMimeType, text, imageBase64, currentStep, reportType, contextData } = await req.json()
+    console.log(`[ai-report-wizard] step=${currentStep} type=${reportType} audio=${audioBase64 ? Math.round(audioBase64.length / 1024) + 'KB' : 'none'} image=${imageBase64 ? 'yes' : 'no'}`);
     const apiKey = Deno.env.get('GEMINI_API_KEY')
     
     if (!apiKey) {
@@ -148,18 +156,35 @@ serve(async (req) => {
         parts.push({ text: "Please generate empty structure." });
     }
 
+    const startedAt = Date.now();
+    const DEADLINE_MS = 38000; // stay inside the client's 45s race
+    const remaining = () => DEADLINE_MS - (Date.now() - startedAt);
+
     const callGemini = async (model: string) => {
-        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                systemInstruction: { parts: [{ text: systemPrompt }] },
-                contents: [{ role: 'user', parts: parts }],
-                generationConfig: { temperature: 0.1, responseMimeType: "application/json" }
-            })
-        });
-        const responseText = await response.text();
-        return { response, responseText };
+        const budget = Math.min(22000, Math.max(4000, remaining()));
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), budget);
+        try {
+            const generationConfig: any = { temperature: 0.1, responseMimeType: "application/json" };
+            if (/^gemini-2\.5-/.test(model)) {
+                generationConfig.thinkingConfig = { thinkingBudget: 0 };
+            }
+            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                signal: controller.signal,
+                body: JSON.stringify({
+                    systemInstruction: { parts: [{ text: systemPrompt }] },
+                    contents: [{ role: 'user', parts: parts }],
+                    generationConfig
+                })
+            });
+            const responseText = await response.text();
+            console.log(`[ai-report-wizard] ${model} status=${response.status} elapsed=${Date.now() - startedAt}ms`);
+            return { response, responseText };
+        } finally {
+            clearTimeout(timer);
+        }
     };
 
     const isTransientError = (status: number, text: string) => {
@@ -175,7 +200,8 @@ serve(async (req) => {
     let success = false;
 
     // Try primary model
-    for (let attempt = 0; attempt <= 2; attempt++) {
+    for (let attempt = 0; attempt <= 1; attempt++) {
+        if (remaining() < 6000) break;
         if (attempt > 0) {
             await new Promise(r => setTimeout(r, delays[attempt - 1]));
         }
@@ -196,7 +222,7 @@ serve(async (req) => {
         }
     }
 
-    if (!success) {
+    if (!success && remaining() >= 6000) {
         // Fallback model
         modelName = await getBestGeminiModel(apiKey, requireVision, [modelName]);
         console.log('[ai-report-wizard] using fallback model:', modelName);

@@ -11,6 +11,7 @@ import { useProjectsStore, Project } from '../store/projectsStore';
 import { usePowerSyncProjects } from '@/lib/powersync/useProjects';
 import { useThemeColors } from '../store/useThemeColors';
 import { useStore } from '../store/useStore';
+import { SPEECH_RECORDING_OPTIONS } from '../lib/audio/recordingOptions';
 
 export default function QuickLogScreen() {
     const router = useRouter();
@@ -102,7 +103,7 @@ export default function QuickLogScreen() {
                 });
 
                 const { recording } = await Audio.Recording.createAsync(
-                    Audio.RecordingOptionsPresets.HIGH_QUALITY
+                    SPEECH_RECORDING_OPTIONS
                 );
                 setRecording(recording);
                 setIsRecording(true);

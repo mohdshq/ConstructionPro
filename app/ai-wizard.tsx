@@ -7,7 +7,7 @@ import { Camera, CheckCircle, ChevronRight, Image as ImageIcon, Mic, Sparkles, S
 import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { ActivityIndicator, Alert, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View, TextInput } from 'react-native';
 import Animated, { FadeIn, SlideInRight } from 'react-native-reanimated';
-import { supabase } from '../lib/supabase';
+import { supabase, supabaseUrl, supabaseAnonKey } from '../lib/supabase';
 import { Project, ReportType, useProjectsStore, ProjectSnag } from '../store/projectsStore';
 import { usePowerSyncProjects } from '@/lib/powersync/useProjects';
 import { useStore } from '../store/useStore';
@@ -15,22 +15,52 @@ import { useThemeColors } from '../store/useThemeColors';
 import { persistCapturedSnags, normalizeFloorToInt, patchSnagSuccess, patchSnagFailure } from '../lib/ai/persistSnags';
 import { formatBuildingLabel } from '../lib/projects/buildings';
 import SnagAiStatusBadge from '../components/SnagAiStatusBadge';
+import { SPEECH_RECORDING_OPTIONS } from '../lib/audio/recordingOptions';
+
+const FUNCTIONS_URL = `${supabaseUrl}/functions/v1`;
+const ANON_KEY = supabaseAnonKey as string;
 
 async function invokeAIWithTimeout(functionName: string, payload: any, ms = 45000): Promise<{ data: any, error: any }> {
-    let timeoutId: ReturnType<typeof setTimeout>;
-    const timeoutPromise = new Promise<{ data: any, error: any }>((_, reject) => {
-        timeoutId = setTimeout(() => {
-            reject(new Error('AI is taking too long to respond. Please try again.'));
-        }, ms);
-    });
-
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), ms);
+    const t0 = Date.now();
     try {
-        return await Promise.race([
-            supabase.functions.invoke(functionName, { body: payload }),
-            timeoutPromise
-        ]);
+        const { data: { session } } = await supabase.auth.getSession();
+        const tAuth = Date.now();
+        console.log(`[invoke] ${functionName} session=${session ? 'yes' : 'no'} authMs=${tAuth - t0} url=${FUNCTIONS_URL}`);
+
+        const body = JSON.stringify(payload);
+        console.log(`[invoke] ${functionName} body=${Math.round(body.length / 1024)}KB serializeMs=${Date.now() - tAuth}`);
+
+        const res = await fetch(`${FUNCTIONS_URL}/${functionName}`, {
+            method: 'POST',
+            signal: controller.signal,
+            headers: {
+                'Content-Type': 'application/json',
+                'apikey': ANON_KEY,
+                'Authorization': `Bearer ${session?.access_token ?? ANON_KEY}`,
+            },
+            body,
+        });
+        console.log(`[invoke] ${functionName} status=${res.status} ttfbMs=${Date.now() - t0}`);
+
+        const text = await res.text();
+        console.log(`[invoke] ${functionName} readMs=${Date.now() - t0} len=${text.length}`);
+
+        let json: any = {};
+        try { json = JSON.parse(text); } catch { /* non-JSON body */ }
+
+        if (!res.ok) {
+            return { data: null, error: new Error(json?.error || `HTTP ${res.status}: ${text.slice(0, 300)}`) };
+        }
+        return { data: json, error: null };
+    } catch (e: any) {
+        if (e?.name === 'AbortError') {
+            return { data: null, error: new Error(`AI request aborted after ${Math.round((Date.now() - t0) / 1000)}s — no response from server.`) };
+        }
+        return { data: null, error: e };
     } finally {
-        clearTimeout(timeoutId!);
+        clearTimeout(timer);
     }
 }
 
@@ -42,6 +72,7 @@ export default function AIWizardScreen() {
     const projects = powerSyncProjects.length > 0 ? powerSyncProjects : storeProjects;
     const { isPremium } = useStore();
     const savingRef = useRef(false);
+    const capturedSnagsRef = useRef<any[]>([]);
 
     const [step, setStep] = useState<'project' | 'type' | 'snag-capture' | 'daily-capture' | 'processing'>('project');
     const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
@@ -52,7 +83,6 @@ export default function AIWizardScreen() {
     // Snagging specific state
     const [snagContext, setSnagContext] = useState<any>({});
     const [capturedSnags, setCapturedSnags] = useState<any[]>([]);
-    const capturedSnagsRef = useRef<any[]>([]);
     const [pendingContextPhoto, setPendingContextPhoto] = useState<string | null>(null);
 
     const addCapturedSnag = (snag: any) => {
@@ -63,6 +93,11 @@ export default function AIWizardScreen() {
     const patchSnagById = (id: string, patchFn: (list: any[]) => any[]) => {
         capturedSnagsRef.current = patchFn(capturedSnagsRef.current);
         setCapturedSnags(capturedSnagsRef.current);
+    };
+
+    const clearCapturedSnags = () => {
+        capturedSnagsRef.current = [];
+        setCapturedSnags([]);
     };
 
     const [newBuildingName, setNewBuildingName] = useState('');
@@ -135,7 +170,7 @@ export default function AIWizardScreen() {
             });
             await new Promise(r => setTimeout(r, 250));
             const { recording } = await Audio.Recording.createAsync(
-                Audio.RecordingOptionsPresets.HIGH_QUALITY
+                SPEECH_RECORDING_OPTIONS
             );
             setRecording(recording);
             setIsRecording(true);
@@ -161,6 +196,7 @@ export default function AIWizardScreen() {
     };
 
     const handleVoiceSubmit = async (processStep: 'generate' = 'generate') => {
+        const t0 = Date.now();
         const uri = await stopRecording();
         if (!uri) return;
 
@@ -168,25 +204,29 @@ export default function AIWizardScreen() {
         setProcessingText('Analyzing voice...');
 
         try {
-            let base64Audio;
+            let base64Audio: string;
             let mimeType = 'audio/mp4';
 
             if (Platform.OS === 'web') {
                 const response = await fetch(uri);
                 const blob = await response.blob();
                 mimeType = blob.type || 'audio/mp4';
-                base64Audio = await new Promise((resolve, reject) => {
+                base64Audio = await new Promise<string>((resolve, reject) => {
                     const reader = new FileReader();
-                    reader.onload = () => {
-                        const dataUrl = reader.result as string;
-                        const base64 = dataUrl.split(',')[1];
-                        resolve(base64);
-                    };
+                    reader.onload = () => resolve((reader.result as string).split(',')[1]);
                     reader.onerror = reject;
                     reader.readAsDataURL(blob);
                 });
             } else {
                 base64Audio = await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
+            }
+
+            const kb = Math.round((base64Audio.length * 3 / 4) / 1024);
+            const tEncoded = Date.now();
+            console.log(`[voice] step=${processStep} mime=${mimeType} audio=${kb}KB encode=${tEncoded - t0}ms`);
+
+            if (kb > 4096) {
+                throw new Error(`Recording too long (${kb}KB). Please keep it under about 60 seconds.`);
             }
 
             const payload = {
@@ -198,12 +238,18 @@ export default function AIWizardScreen() {
             };
 
             const { data, error } = await invokeAIWithTimeout('ai-report-wizard', payload);
+            console.log(`[voice] step=${processStep} invoke=${Date.now() - tEncoded}ms total=${Date.now() - t0}ms`);
 
-            if (error) throw error;
+            if (error) {
+                let detail = '';
+                try { detail = await (error as any)?.context?.text?.(); } catch { /* ignore */ }
+                console.error('[voice] invoke error:', error.message, detail);
+                throw new Error(detail || error.message || 'AI request failed');
+            }
             if (data?.error) throw new Error(data.error);
 
-            if (processStep === 'generate') {
-                if (!data.result.transcript || data.result.transcript.trim() === '') {
+            if (selectedType === 'daily' && processStep === 'generate') {
+                if (!data?.result?.transcript || data.result.transcript.trim() === '') {
                     Alert.alert('Error', "Couldn't hear that clearly — please try again in a quieter spot");
                     setStep('daily-capture');
                     return;
@@ -212,8 +258,9 @@ export default function AIWizardScreen() {
 
             handleAIResult(processStep, data.result);
         } catch (error: any) {
-            console.error(error);
-            Alert.alert("Error", error.message || "Failed to process voice.");
+            console.error('[voice] failed', error);
+            const msg = error?.message || 'Failed to process voice.';
+            Alert.alert('Error', msg);
             setStep('daily-capture');
         }
     };
@@ -223,6 +270,18 @@ export default function AIWizardScreen() {
         if (buildings.length >= 1 && !resolvedBuildingId) {
             Alert.alert("Select a building", "Choose a building/tower before capturing snags.");
             return;
+        }
+
+        const aType = snagContext.areaType || 'unit';
+        if (aType === 'unit') {
+            if (!snagContext.floor && snagContext.floor !== 0) {
+                Alert.alert("Missing Floor", "Please enter the floor number.");
+                return;
+            }
+            if (!snagContext.flat && snagContext.flat !== 0) {
+                Alert.alert("Missing Flat", "Please enter the flat/unit number.");
+                return;
+            }
         }
 
         try {
@@ -298,7 +357,7 @@ export default function AIWizardScreen() {
             const _ctx = {
                 buildingId: resolvedBuildingId || undefined,
                 floor: normalizeFloorToInt(snagContext.floor),
-                flat: snagContext.flat ? parseInt(String(snagContext.flat), 10) : undefined,
+                flat: normalizeFloorToInt(snagContext.flat),
                 areaType: snagContext.areaType || 'unit',
                 room: undefined
             };
@@ -314,7 +373,6 @@ export default function AIWizardScreen() {
                 _ctx 
             };
 
-            // Add snag immediately and synchronously
             addCapturedSnag(newSnag);
             setPendingContextPhoto(null);
             setStep('snag-capture');
@@ -365,7 +423,7 @@ export default function AIWizardScreen() {
     const navigateToReview = async (finalData?: any) => {
         if (selectedType === 'snagging') {
             if (savingRef.current) return;
-            const snapshot = capturedSnagsRef.current.length > 0 ? capturedSnagsRef.current : capturedSnags;
+            const snapshot = capturedSnagsRef.current;
             if (snapshot.length === 0) {
                 Alert.alert('No snags', 'Capture at least one snag first.');
                 return;
@@ -384,8 +442,7 @@ export default function AIWizardScreen() {
                     return;
                 }
                 
-                capturedSnagsRef.current = [];
-                setCapturedSnags([]);
+                clearCapturedSnags();
                 router.replace({
                     pathname: `/project/[id]/snags`,
                     params: { id: selectedProject!.id, origin: 'ai' }
@@ -524,7 +581,18 @@ export default function AIWizardScreen() {
         </Animated.View>
     );
 
-    const renderSnagCapture = () => (
+    const renderSnagCapture = () => {
+        const b = selectedProject?.buildings?.find(x => x.id === snagContext.buildingId);
+        const bName = b ? (b.code + (b.name ? ` - ${b.name}` : '')) : '';
+        const parts = [
+            bName,
+            (snagContext.floor || snagContext.floor === 0) ? `Floor ${snagContext.floor}` : '',
+            (snagContext.flat || snagContext.flat === 0) ? `Flat ${snagContext.flat}` : '',
+            snagContext.areaType && snagContext.areaType !== 'unit' ? snagContext.areaType : ''
+        ].filter(Boolean);
+        const locationSummary = parts.length > 0 ? `Capturing in: ${parts.join(' · ')}` : 'Capturing in: Unassigned';
+
+        return (
         <Animated.View entering={SlideInRight} style={styles.stepContainer}>
             <Text style={styles.title}>{pendingContextPhoto ? "Capture Detail Photo" : "Capture Overview Photo"}</Text>
             
@@ -624,7 +692,10 @@ export default function AIWizardScreen() {
                 </View>
             </View>
 
-            <View style={{ flexDirection: 'row', gap: 16, marginTop: 40, justifyContent: 'center' }}>
+            <Text style={{ textAlign: 'center', color: colors.textMuted, marginTop: 28, marginBottom: 8, fontSize: 14 }}>
+                {locationSummary}
+            </Text>
+            <View style={{ flexDirection: 'row', gap: 16, justifyContent: 'center' }}>
                 <TouchableOpacity style={styles.captureBtn} onPress={() => handlePhotoSubmit(true)}>
                     <Camera color="#fff" size={32} />
                     <Text style={styles.captureText}>Camera</Text>
@@ -658,7 +729,8 @@ export default function AIWizardScreen() {
                 </View>
             )}
         </Animated.View>
-    );
+        );
+    };
 
     const renderProcessing = () => (
         <Animated.View entering={FadeIn} style={[styles.stepContainer, { justifyContent: 'center', alignItems: 'center' }]}>

@@ -4,8 +4,8 @@ import { createClient, processLock } from '@supabase/supabase-js';
 import { Platform } from 'react-native';
 import { Database } from '../types/supabase';
 
-const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co';
-const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || 'placeholder_anon_key';
+export const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co';
+export const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || 'placeholder_anon_key';
 
 const ExpoStorage = {
     getItem: (key: string) => {
