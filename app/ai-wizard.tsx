@@ -435,6 +435,7 @@ export default function AIWizardScreen() {
                 const { addSnag } = useProjectsStore.getState();
                 
                 const savedCount = await persistCapturedSnags(snapshot, selectedProject!.id, addSnag);
+                if (__DEV__) console.log('[save] savedCount=', savedCount, 'of', snapshot.length);
                 
                 if (savedCount === 0) {
                     Alert.alert("Error", "Could not save — are you signed in?");
@@ -559,7 +560,7 @@ export default function AIWizardScreen() {
         </Animated.View>
     );
 
-    const renderVoicePrompt = (title: string, subtitle: string, processStep: 'generate' = 'generate') => (
+    const renderVoicePrompt = (title: string, subtitle: string, processStep: 'generate') => (
         <Animated.View entering={SlideInRight} style={styles.stepContainer}>
             <Text style={styles.title}>{title}</Text>
             <Text style={styles.subtitle}>{subtitle}</Text>

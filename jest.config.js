@@ -20,7 +20,7 @@ module.exports = {
     '^expo-image-manipulator$': '<rootDir>/lib/attachments/__mocks__/empty.ts',
     '^expo-image-picker$': '<rootDir>/lib/attachments/__mocks__/empty.ts',
     '^expo-image$': '<rootDir>/lib/attachments/__mocks__/empty.ts',
-    '^expo-av$': '<rootDir>/lib/attachments/__mocks__/empty.ts',
+    '^expo-av$': '<rootDir>/__mocks__/expo-av.ts',
     '^@powersync/op-sqlite$': '<rootDir>/lib/attachments/__mocks__/powersync-op-sqlite.ts',
     '^@op-engineering/op-sqlite(.*)$': '<rootDir>/lib/attachments/__mocks__/empty.ts',
     '^expo-file-system/legacy$': '<rootDir>/lib/attachments/__mocks__/expo-file-system-legacy.ts',
