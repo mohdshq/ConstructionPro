@@ -47,6 +47,10 @@ export default function AIWizardScreen() {
     const [capturedSnags, setCapturedSnags] = useState<any[]>([]);
     const [pendingContextPhoto, setPendingContextPhoto] = useState<string | null>(null);
 
+    const [newBuildingName, setNewBuildingName] = useState('');
+    const [showAddBuilding, setShowAddBuilding] = useState(false);
+    const [buildingError, setBuildingError] = useState('');
+
     // Daily specific state
     const [dailyData, setDailyData] = useState<any>({});
 
@@ -54,6 +58,31 @@ export default function AIWizardScreen() {
     const [recording, setRecording] = useState<Audio.Recording | null>(null);
     const [isRecording, setIsRecording] = useState(false);
     const [processingText, setProcessingText] = useState('Processing...');
+
+    const handleAddBuilding = async () => {
+        setBuildingError('');
+        const trimmed = newBuildingName.trim();
+        if (!trimmed) {
+            setBuildingError('Name cannot be empty');
+            return;
+        }
+        if (!selectedProject) return;
+        const { addBuilding } = useProjectsStore.getState();
+        const res = await addBuilding(selectedProject.id, trimmed);
+        if (res.status === 'duplicate') {
+            setBuildingError('Building already exists in this project');
+            return;
+        } else if (res.status === 'error') {
+            setBuildingError('Failed to add building');
+            return;
+        }
+        
+        if (res.building) {
+            setSnagContext((prev: any) => ({ ...prev, buildingId: res.building!.id }));
+        }
+        setNewBuildingName('');
+        setShowAddBuilding(false);
+    };
 
     // Cleanup recording
     useEffect(() => {
@@ -472,10 +501,11 @@ export default function AIWizardScreen() {
             <Text style={styles.title}>{pendingContextPhoto ? "Capture Detail Photo" : "Capture Overview Photo"}</Text>
             
             <View style={{ gap: 12, marginBottom: 20 }}>
-                {selectedProject?.buildings && selectedProject.buildings.length > 0 && (
-                    <View>
-                        <Text style={[styles.label, { color: colors.text, marginBottom: 8 }]}>Building / Tower</Text>
-                        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: 'row' }}>
+                <View>
+                    <Text style={[styles.label, { color: colors.text, marginBottom: 8 }]}>Building / Tower</Text>
+                    
+                    {selectedProject?.buildings && selectedProject.buildings.length > 0 && (
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: 'row', marginBottom: 8 }}>
                             <TouchableOpacity 
                                 style={[styles.chip, !snagContext.buildingId && { backgroundColor: colors.primary }]}
                                 onPress={() => setSnagContext({ ...snagContext, buildingId: '' })}
@@ -488,12 +518,40 @@ export default function AIWizardScreen() {
                                     style={[styles.chip, snagContext.buildingId === b.id && { backgroundColor: colors.primary }]}
                                     onPress={() => setSnagContext({ ...snagContext, buildingId: b.id })}
                                 >
-                                    <Text style={[styles.chipText, snagContext.buildingId === b.id && { color: '#fff' }]}>{b.code} {b.name ? `- ${b.name}` : ''}</Text>
+                                    <Text style={[styles.chipText, snagContext.buildingId === b.id && { color: '#fff' }]}>{b.code} {b.name && b.name !== b.code ? `- ${b.name}` : ''}</Text>
                                 </TouchableOpacity>
                             ))}
+                            {!showAddBuilding && (
+                                <TouchableOpacity style={styles.chip} onPress={() => setShowAddBuilding(true)}>
+                                    <Text style={styles.chipText}>+ Add</Text>
+                                </TouchableOpacity>
+                            )}
                         </ScrollView>
-                    </View>
-                )}
+                    )}
+
+                    {((!selectedProject?.buildings || selectedProject.buildings.length === 0) || showAddBuilding) && (
+                        <View>
+                            <View style={{ flexDirection: 'row', gap: 8 }}>
+                                <TextInput
+                                    style={[styles.input, { flex: 1, color: colors.text, backgroundColor: colors.card, borderColor: colors.border }]}
+                                    placeholder="Enter building name"
+                                    placeholderTextColor={colors.textMuted}
+                                    value={newBuildingName}
+                                    onChangeText={(t) => { setNewBuildingName(t); setBuildingError(''); }}
+                                />
+                                <TouchableOpacity style={{ backgroundColor: colors.primary, justifyContent: 'center', paddingHorizontal: 16, borderRadius: 8 }} onPress={handleAddBuilding}>
+                                    <Text style={{ color: '#fff', fontWeight: 'bold' }}>Add</Text>
+                                </TouchableOpacity>
+                                {selectedProject?.buildings && selectedProject.buildings.length > 0 && (
+                                    <TouchableOpacity style={{ justifyContent: 'center', paddingHorizontal: 8 }} onPress={() => { setShowAddBuilding(false); setNewBuildingName(''); setBuildingError(''); }}>
+                                        <Text style={{ color: colors.textMuted }}>Cancel</Text>
+                                    </TouchableOpacity>
+                                )}
+                            </View>
+                            {!!buildingError && <Text style={{ color: '#EF4444', fontSize: 12, marginTop: 4 }}>{buildingError}</Text>}
+                        </View>
+                    )}
+                </View>
 
                 <View style={{ flexDirection: 'row', gap: 16 }}>
                     <View style={{ flex: 1 }}>

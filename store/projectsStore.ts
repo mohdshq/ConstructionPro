@@ -388,6 +388,7 @@ interface ProjectsState {
     getProject: (id: string) => Project | undefined;
     addKnownRoom: (projectId: string, room: string) => Promise<'added' | 'exists' | 'error'>;
     addKnownCompany: (projectId: string, company: string) => Promise<'added' | 'exists' | 'error'>;
+    addBuilding: (projectId: string, name: string) => Promise<{ status: 'added' | 'duplicate' | 'error'; building?: Building }>;
 
     // Report Actions
     addReport: (report: Omit<Report, 'id' | 'createdAt' | 'updatedAt'>) => Promise<void>;
@@ -743,6 +744,33 @@ export const useProjectsStore = create<ProjectsState>()(
                 const newKnownCompanies = [...existingKnownCompanies, normalizedCompany];
                 await updateProject(projectId, { knownCompanies: newKnownCompanies });
                 return 'added';
+            },
+
+            addBuilding: async (projectId: string, name: string) => {
+                const { projects, updateProject } = get();
+                const project = projects.find(p => p.id === projectId);
+                if (!project) return { status: 'error' };
+
+                const trimmedName = name.trim();
+                if (!trimmedName) return { status: 'error' };
+
+                const existingBuildings = project.buildings || [];
+                const isDuplicate = existingBuildings.some(b => 
+                    (b.code || '').toLowerCase() === trimmedName.toLowerCase() ||
+                    (b.name || '').toLowerCase() === trimmedName.toLowerCase()
+                );
+
+                if (isDuplicate) return { status: 'duplicate' };
+
+                const newBuilding: Building = {
+                    id: uuidv4(),
+                    code: trimmedName,
+                    name: trimmedName,
+                };
+
+                const newBuildings = [...existingBuildings, newBuilding];
+                await updateProject(projectId, { buildings: newBuildings });
+                return { status: 'added', building: newBuilding };
             },
 
             deleteProject: async (id) => {
