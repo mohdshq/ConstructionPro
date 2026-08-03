@@ -11,7 +11,7 @@ import { supabase } from '../lib/supabase';
 import { Project, ReportType, useProjectsStore, ProjectSnag } from '../store/projectsStore';
 import { useStore } from '../store/useStore';
 import { useThemeColors } from '../store/useThemeColors';
-import { persistCapturedSnags, normalizeFloorToInt } from '../lib/ai/persistSnags';
+import { persistCapturedSnags, normalizeFloorToInt, patchSnagSuccess, patchSnagFailure } from '../lib/ai/persistSnags';
 
 async function invokeAIWithTimeout(functionName: string, payload: any, ms = 45000): Promise<{ data: any, error: any }> {
     let timeoutId: ReturnType<typeof setTimeout>;
@@ -45,7 +45,18 @@ export default function AIWizardScreen() {
     // Snagging specific state
     const [snagContext, setSnagContext] = useState<any>({});
     const [capturedSnags, setCapturedSnags] = useState<any[]>([]);
+    const capturedSnagsRef = useRef<any[]>([]);
     const [pendingContextPhoto, setPendingContextPhoto] = useState<string | null>(null);
+
+    const addCapturedSnag = (snag: any) => {
+        capturedSnagsRef.current = [...capturedSnagsRef.current, snag];
+        setCapturedSnags(capturedSnagsRef.current);
+    };
+
+    const patchSnagById = (id: string, patchFn: (list: any[]) => any[]) => {
+        capturedSnagsRef.current = patchFn(capturedSnagsRef.current);
+        setCapturedSnags(capturedSnagsRef.current);
+    };
 
     const [newBuildingName, setNewBuildingName] = useState('');
     const [showAddBuilding, setShowAddBuilding] = useState(false);
@@ -277,16 +288,6 @@ export default function AIWizardScreen() {
 
             const detailBase64 = base64Image;
 
-            const payload = {
-                base64Image: detailBase64,
-                context: snagContext.area || selectedProject?.name
-            };
-
-            const { data, error } = await invokeAIWithTimeout('ai-snag-from-photo', payload);
-
-            if (error) throw error;
-            if (data?.error) throw new Error(data.error);
-
             const _ctx = {
                 buildingId: resolvedBuildingId || undefined,
                 floor: normalizeFloorToInt(snagContext.floor),
@@ -294,25 +295,46 @@ export default function AIWizardScreen() {
                 areaType: snagContext.areaType || 'unit',
                 room: undefined
             };
-            
-            const snagData = data.snag || {};
+
+            const snagId = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
             const newSnag = { 
-                issue: snagData.issue || 'Snag',
-                system: snagData.system,
-                assetName: snagData.assetName,
-                recommendation: snagData.recommendation,
-                severity: snagData.severity || 'Moderate',
+                id: snagId,
+                issue: 'Pending analysis',
+                description: 'Pending analysis',
+                severity: 'Moderate',
                 photos: [pendingContextPhoto, detailBase64].filter(Boolean),
-                id: Date.now().toString(), 
+                aiStatus: 'pending' as const,
                 _ctx 
             };
-            setCapturedSnags(prev => [...prev, newSnag]);
+
+            // Add snag immediately and synchronously
+            addCapturedSnag(newSnag);
             setPendingContextPhoto(null);
             setStep('snag-capture');
 
+            // Fire-and-forget AI analysis
+            const payload = {
+                base64Image: detailBase64,
+                context: snagContext.area || selectedProject?.name
+            };
+
+            invokeAIWithTimeout('ai-snag-from-photo', payload)
+                .then(({ data, error }) => {
+                    if (error || data?.error) {
+                        const errMsg = error?.message || data?.error || 'AI analysis failed';
+                        patchSnagById(snagId, list => patchSnagFailure(list, snagId, errMsg));
+                        return;
+                    }
+                    const snagData = data?.snag || {};
+                    patchSnagById(snagId, list => patchSnagSuccess(list, snagId, snagData));
+                })
+                .catch((err: any) => {
+                    patchSnagById(snagId, list => patchSnagFailure(list, snagId, err?.message || 'Network error'));
+                });
+
             Alert.alert(
                 "Snag Captured",
-                `Identified: ${newSnag.issue}\n\nTake another snag in this area?`,
+                "Snag recorded. Take another snag in this area?",
                 [
                     { text: "Finish & Review", onPress: () => navigateToReview() },
                     { text: "Take Another", onPress: () => setStep('snag-capture') }
@@ -339,7 +361,8 @@ export default function AIWizardScreen() {
     const navigateToReview = async (finalData?: any) => {
         if (selectedType === 'snagging') {
             if (savingRef.current) return;
-            if (capturedSnags.length === 0) {
+            const snapshot = capturedSnagsRef.current.length > 0 ? capturedSnagsRef.current : capturedSnags;
+            if (snapshot.length === 0) {
                 Alert.alert('No snags', 'Capture at least one snag first.');
                 return;
             }
@@ -349,7 +372,7 @@ export default function AIWizardScreen() {
                 setProcessingText('Saving snags...');
                 const { addSnag } = useProjectsStore.getState();
                 
-                const savedCount = await persistCapturedSnags(capturedSnags, selectedProject!.id, addSnag);
+                const savedCount = await persistCapturedSnags(snapshot, selectedProject!.id, addSnag);
                 
                 if (savedCount === 0) {
                     Alert.alert("Error", "Could not save — are you signed in?");
@@ -357,6 +380,7 @@ export default function AIWizardScreen() {
                     return;
                 }
                 
+                capturedSnagsRef.current = [];
                 setCapturedSnags([]);
                 router.replace({
                     pathname: `/project/[id]/snags`,

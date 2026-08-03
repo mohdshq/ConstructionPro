@@ -1,4 +1,4 @@
-import { ProjectSnag } from '../../store/projectsStore';
+import type { ProjectSnag } from '../../store/projectsStore';
 
 export function normalizeSeverity(raw?: string): ProjectSnag['severity'] {
     const v = (raw || '').toLowerCase().trim();
@@ -41,6 +41,67 @@ export function normalizeFloorToInt(raw?: string | number | null): number | unde
     return undefined;
 }
 
+export type CapturedSnag = {
+  id: string;
+  description?: string;
+  issue?: string;
+  severity?: string;
+  trade?: string;
+  room?: string;
+  photos?: string[];
+  aiStatus?: 'pending' | 'running' | 'done' | 'failed';
+  aiError?: string;
+  aiAttempts?: number;
+  _ctx?: Record<string, any>;
+};
+
+export type SnagPatchData = {
+    issue?: string;
+    description?: string;
+    system?: string;
+    trade?: string;
+    room?: string;
+    assetName?: string;
+    recommendation?: string;
+    severity?: string;
+};
+
+export function patchSnagSuccess(
+    snags: CapturedSnag[],
+    id: string,
+    result: SnagPatchData
+): CapturedSnag[] {
+    return snags.map(s => {
+        if (s.id !== id) return s;
+        const newDescription = (result.issue || result.description || s.description || 'Snag').trim();
+        return {
+            ...s,
+            issue: newDescription,
+            description: newDescription,
+            trade: (result.trade || result.system || s.trade)?.trim() || undefined,
+            room: (result.room ?? s.room)?.trim() || undefined,
+            severity: result.severity || s.severity || 'Moderate',
+            aiStatus: 'done',
+            aiError: undefined,
+        };
+    });
+}
+
+export function patchSnagFailure(
+    snags: CapturedSnag[],
+    id: string,
+    errorMessage: string
+): CapturedSnag[] {
+    return snags.map(s => {
+        if (s.id !== id) return s;
+        return {
+            ...s,
+            aiStatus: 'failed',
+            aiError: errorMessage,
+        };
+    });
+}
+
 export async function persistCapturedSnags(
     capturedSnags: any[], 
     projectId: string, 
@@ -59,9 +120,12 @@ export async function persistCapturedSnags(
             severity: normalizeSeverity(s.severity),
             trade: s.trade?.trim() || undefined,
             room: (ctx.room || s.room)?.trim() || undefined,
-            description: (s.issue || s.description || '').trim(),
+            description: (s.issue || s.description || 'Pending analysis').trim(),
             photos: s.photos || (s.photoUri ? [s.photoUri] : []),
             status: 'open',
+            aiStatus: s.aiStatus,
+            aiError: s.aiError,
+            aiAttempts: s.aiAttempts,
         });
         if (result !== undefined) {
             savedCount++;
