@@ -5,11 +5,13 @@ export type AddBuildingResult =
   | { status: 'duplicate' }
   | { status: 'error' };
 
-export function formatBuildingLabel(b: Partial<Building>): string {
-  if (b.code && b.name && b.code !== b.name) {
-    return `${b.code} - ${b.name}`;
+export function formatBuildingLabel(b: { id?: string; code?: string; name?: string }): string {
+  const code = (b.code ?? '').trim();
+  const name = (b.name ?? '').trim();
+  if (code && name && code !== name) {
+    return `${code} - ${name}`;
   }
-  return b.code || b.name || 'Unnamed';
+  return code || name || 'Unnamed';
 }
 
 export function addBuildingToList(

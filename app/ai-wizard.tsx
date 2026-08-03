@@ -4,7 +4,7 @@ import * as ImageManipulator from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter as useExpoRouter } from 'expo-router';
 import { Camera, CheckCircle, ChevronRight, Image as ImageIcon, Mic, Sparkles, Square, X } from 'lucide-react-native';
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { ActivityIndicator, Alert, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View, TextInput } from 'react-native';
 import Animated, { FadeIn, SlideInRight } from 'react-native-reanimated';
 import { supabase } from '../lib/supabase';
@@ -40,7 +40,9 @@ export default function AIWizardScreen() {
     const savingRef = useRef(false);
 
     const [step, setStep] = useState<'project' | 'type' | 'snag-capture' | 'daily-capture' | 'processing'>('project');
-    const [selectedProject, setSelectedProject] = useState<Project | null>(null);
+    const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+    const selectedProject = useMemo(() => projects.find(p => p.id === selectedProjectId) ?? null, [projects, selectedProjectId]);
+    const buildings = selectedProject?.buildings ?? [];
     const [selectedType, setSelectedType] = useState<ReportType | null>(null);
 
     // Snagging specific state
@@ -62,6 +64,12 @@ export default function AIWizardScreen() {
     const [newBuildingName, setNewBuildingName] = useState('');
     const [showAddBuilding, setShowAddBuilding] = useState(false);
     const [buildingError, setBuildingError] = useState('');
+
+    useEffect(() => {
+        if (buildings.length === 1 && !snagContext.buildingId) {
+            setSnagContext((prev: any) => ({ ...prev, buildingId: buildings[0].id }));
+        }
+    }, [buildings, snagContext.buildingId]);
 
     // Daily specific state
     const [dailyData, setDailyData] = useState<any>({});
@@ -207,9 +215,8 @@ export default function AIWizardScreen() {
     };
 
     const handlePhotoSubmit = async (useCamera: boolean) => {
-        const buildings = selectedProject?.buildings ?? [];
         const resolvedBuildingId = snagContext.buildingId || (buildings.length === 1 ? buildings[0].id : '');
-        if (buildings.length >= 2 && !resolvedBuildingId) {
+        if (buildings.length >= 1 && !resolvedBuildingId) {
             Alert.alert("Select a building", "Choose a building/tower before capturing snags.");
             return;
         }
@@ -447,7 +454,7 @@ export default function AIWizardScreen() {
                     <TouchableOpacity
                         key={p.id}
                         style={styles.projectCard}
-                        onPress={() => { setSelectedProject(p); setStep('type'); }}
+                        onPress={() => { setSelectedProjectId(p.id); setStep('type'); }}
                     >
                         <Text style={styles.projectName}>{p.name}</Text>
                         <ChevronRight size={20} color="#64748B" />
@@ -521,23 +528,20 @@ export default function AIWizardScreen() {
                 <View>
                     <Text style={[styles.label, { color: colors.text, marginBottom: 8 }]}>Building / Tower</Text>
                     
-                    {selectedProject?.buildings && selectedProject.buildings.length > 0 && (
+                    {buildings.length > 0 && (
                         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: 'row', marginBottom: 8 }}>
-                            <TouchableOpacity 
-                                style={[styles.chip, !snagContext.buildingId && { backgroundColor: colors.primary }]}
-                                onPress={() => setSnagContext({ ...snagContext, buildingId: '' })}
-                            >
-                                <Text style={[styles.chipText, !snagContext.buildingId && { color: '#fff' }]}>None</Text>
-                            </TouchableOpacity>
-                            {selectedProject.buildings.map(b => (
-                                <TouchableOpacity 
-                                    key={b.id} 
-                                    style={[styles.chip, snagContext.buildingId === b.id && { backgroundColor: colors.primary }]}
-                                    onPress={() => setSnagContext({ ...snagContext, buildingId: b.id })}
-                                >
-                                    <Text style={[styles.chipText, snagContext.buildingId === b.id && { color: '#fff' }]}>{formatBuildingLabel(b)}</Text>
-                                </TouchableOpacity>
-                            ))}
+                            {buildings.map(b => {
+                                const isSelected = snagContext.buildingId === b.id || (buildings.length === 1 && !snagContext.buildingId);
+                                return (
+                                    <TouchableOpacity 
+                                        key={b.id} 
+                                        style={[styles.chip, isSelected && { backgroundColor: colors.primary }]}
+                                        onPress={() => setSnagContext({ ...snagContext, buildingId: b.id })}
+                                    >
+                                        <Text style={[styles.chipText, isSelected && { color: '#fff' }]}>{formatBuildingLabel(b)}</Text>
+                                    </TouchableOpacity>
+                                );
+                            })}
                             {!showAddBuilding && (
                                 <TouchableOpacity style={styles.chip} onPress={() => setShowAddBuilding(true)}>
                                     <Text style={styles.chipText}>+ Add</Text>
@@ -546,7 +550,7 @@ export default function AIWizardScreen() {
                         </ScrollView>
                     )}
 
-                    {((!selectedProject?.buildings || selectedProject.buildings.length === 0) || showAddBuilding) && (
+                    {(buildings.length === 0 || showAddBuilding) && (
                         <View>
                             <View style={{ flexDirection: 'row', gap: 8 }}>
                                 <TextInput
@@ -559,7 +563,7 @@ export default function AIWizardScreen() {
                                 <TouchableOpacity style={{ backgroundColor: colors.primary, justifyContent: 'center', paddingHorizontal: 16, borderRadius: 8 }} onPress={handleAddBuilding}>
                                     <Text style={{ color: '#fff', fontWeight: 'bold' }}>Add</Text>
                                 </TouchableOpacity>
-                                {selectedProject?.buildings && selectedProject.buildings.length > 0 && (
+                                {buildings.length > 0 && (
                                     <TouchableOpacity style={{ justifyContent: 'center', paddingHorizontal: 8 }} onPress={() => { setShowAddBuilding(false); setNewBuildingName(''); setBuildingError(''); }}>
                                         <Text style={{ color: colors.textMuted }}>Cancel</Text>
                                     </TouchableOpacity>

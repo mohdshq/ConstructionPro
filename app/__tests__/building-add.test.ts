@@ -127,8 +127,9 @@ describe('formatBuildingLabel', () => {
         expect(formatBuildingLabel({ id: '4', code: 'Tower 4', name: 'Tower 4' })).toBe('Tower 4');
     });
 
-    it('should fallback to "Unnamed" when neither code nor name is present', () => {
+    it('should fallback to "Unnamed" when neither code nor name is present or both are empty/whitespace', () => {
         expect(formatBuildingLabel({ id: '5' })).toBe('Unnamed');
         expect(formatBuildingLabel({ id: '6', code: '', name: '' })).toBe('Unnamed');
+        expect(formatBuildingLabel({ id: '7', code: '   ', name: '  ' })).toBe('Unnamed');
     });
 });
