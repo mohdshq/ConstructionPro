@@ -13,6 +13,7 @@ import { useStore } from '@/store/useStore';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useProjectsStore } from '@/store/projectsStore';
 import { usePushNotifications } from '@/lib/usePushNotifications';
+import { useEnrichmentWorker } from '@/lib/ai/useEnrichmentWorker';
 import * as Sentry from '@sentry/react-native';
 import { PostHogProvider } from 'posthog-react-native';
 import { OfflineBanner } from '@/components/OfflineBanner';
@@ -42,6 +43,9 @@ function RootLayout() {
 
   // Register for push notifications
   usePushNotifications();
+
+  // Background AI enrichment worker for pending snags
+  useEnrichmentWorker();
 
   useEffect(() => {
     initialize();
