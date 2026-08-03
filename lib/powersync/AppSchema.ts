@@ -44,6 +44,7 @@ const snags = new Table({
   floor: column.integer, flat: column.integer, area_type: column.text, severity: column.text,
   trade: column.text, room: column.text, description: column.text, photos: column.text, status: column.text,
   legacy_code: column.text, created_at: column.text,
+  ai_status: column.text, ai_error: column.text, ai_attempts: column.integer, ai_updated_at: column.text,
 }, { indexes: { by_project: ['project_id'] } });
 
 export const AppSchema = new Schema({

@@ -156,3 +156,23 @@ release — planned improvements.
 ## Notes
 - Existing projects created before the base64-logo change store logos as storage paths and will
   not render logos until re-picked (no migration by design).
+
+## S7 — Offline snag capture is gated on AI (DATA LOSS)
+- Repro: go offline, capture detail photo → AI call fails → error shown, and
+  NO snag row is written. User must retake the photo after reconnecting.
+- Root cause: capture flow awaits the ai-snag-from-photo response before
+  persisting. Persistence should be unconditional; enrichment should be deferred.
+- Fix: optimistic capture + `ai_status` queue + background worker. See S7 plan.
+
+## S5 follow-ups (observed, not yet fixed)
+- Intermittent edge-function stall: ~61KB POST from device hangs with no TTFB
+  while the same curl from the Mac succeeds. Root cause unknown; watch
+  `[invoke] ttfbMs`. Suspect managed Wi-Fi (Azizi_Phase4) client isolation.
+- `Error getting signed URL: Network request failed` in lib/supabaseSync.ts —
+  unhandled; should degrade to placeholder rather than log-spam.
+- Snag photos are stored base64 in `ProjectSnag.photos: string[]`. Will not
+  scale; migrate to PowerSync attachments / local file URIs.
+- `__DEV__` is undefined under Jest — any `if (__DEV__)` in lib/ breaks tests.
+  Add a global to jest setup or avoid `__DEV__` outside app/.
+- Area Type chip row has no horizontal-scroll affordance; options off-screen
+  right are undiscoverable.

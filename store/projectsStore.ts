@@ -12,6 +12,7 @@ import {
     fetchUserProjects,
     fetchUserReports
 } from '../lib/supabaseSync';
+import { addBuildingToList } from '../lib/projects/buildings';
 import { useAuthStore } from './useAuthStore';
 
 export type ProjectStatus = 'planning' | 'active' | 'completed' | 'on-hold';
@@ -367,6 +368,10 @@ export interface ProjectSnag {
     status: 'open' | 'in_progress' | 'closed';
     legacyCode?: string;
     createdAt: string;
+    aiStatus?: 'pending' | 'running' | 'done' | 'failed';
+    aiError?: string;
+    aiAttempts?: number;
+    aiUpdatedAt?: string;
 }
 
 interface ProjectsState {
@@ -751,26 +756,12 @@ export const useProjectsStore = create<ProjectsState>()(
                 const project = projects.find(p => p.id === projectId);
                 if (!project) return { status: 'error' };
 
-                const trimmedName = name.trim();
-                if (!trimmedName) return { status: 'error' };
-
-                const existingBuildings = project.buildings || [];
-                const isDuplicate = existingBuildings.some(b => 
-                    (b.code || '').toLowerCase() === trimmedName.toLowerCase() ||
-                    (b.name || '').toLowerCase() === trimmedName.toLowerCase()
-                );
-
-                if (isDuplicate) return { status: 'duplicate' };
-
-                const newBuilding: Building = {
-                    id: uuidv4(),
-                    code: trimmedName,
-                    name: trimmedName,
-                };
-
-                const newBuildings = [...existingBuildings, newBuilding];
-                await updateProject(projectId, { buildings: newBuildings });
-                return { status: 'added', building: newBuilding };
+                const result = addBuildingToList(project.buildings ?? [], name, uuidv4);
+                if (result.status === 'added') {
+                    await updateProject(projectId, { buildings: result.buildings });
+                    return { status: 'added', building: result.building };
+                }
+                return { status: result.status };
             },
 
             deleteProject: async (id) => {
@@ -1141,13 +1132,15 @@ export const useProjectsStore = create<ProjectsState>()(
                                 `INSERT INTO snags (
                                     id, project_id, user_id, seq, building_id, floor, flat,
                                     area_type, severity, trade, room, description, photos, status,
-                                    legacy_code, created_at
-                                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                                    legacy_code, created_at, ai_status, ai_error, ai_attempts, ai_updated_at
+                                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                                 [
                                     localId, snag.projectId, userId, newSeq, snag.buildingId || null,
                                     snag.floor ?? null, snag.flat ?? null, snag.areaType, snag.severity,
                                     snag.trade || null, snag.room || null, snag.description, photosStr, snag.status,
-                                    snag.legacyCode || null, now
+                                    snag.legacyCode || null, now,
+                                    snag.aiStatus || 'done', snag.aiError || null,
+                                    snag.aiAttempts ?? 0, snag.aiUpdatedAt || null
                                 ]
                             );
                             await tx.execute(
@@ -1190,6 +1183,10 @@ export const useProjectsStore = create<ProjectsState>()(
                     if (snag.photos !== undefined) { updates.push('photos = ?'); vals.push(JSON.stringify(snag.photos)); }
                     if (snag.status !== undefined) { updates.push('status = ?'); vals.push(snag.status); }
                     if (snag.legacyCode !== undefined) { updates.push('legacy_code = ?'); vals.push(snag.legacyCode); }
+                    if (snag.aiStatus !== undefined) { updates.push('ai_status = ?'); vals.push(snag.aiStatus); }
+                    if (snag.aiError !== undefined) { updates.push('ai_error = ?'); vals.push(snag.aiError); }
+                    if (snag.aiAttempts !== undefined) { updates.push('ai_attempts = ?'); vals.push(snag.aiAttempts); }
+                    if (snag.aiUpdatedAt !== undefined) { updates.push('ai_updated_at = ?'); vals.push(snag.aiUpdatedAt); }
 
                     if (updates.length > 0) {
                         vals.push(id);

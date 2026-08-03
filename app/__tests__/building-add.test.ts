@@ -1,100 +1,90 @@
-import { useProjectsStore } from '../../store/projectsStore';
-import { Project } from '../../store/projectsStore';
+import { addBuildingToList } from '../../lib/projects/buildings';
+import type { Building } from '../../store/projectsStore';
 
-// Mock dependencies
-jest.mock('../../store/useAuthStore', () => ({
-    useAuthStore: {
-        getState: () => ({ user: { id: 'test-user-id' } })
-    }
-}));
+describe('addBuildingToList', () => {
+    const mockIdGenerator = (id: string = 'mock-id-123') => () => id;
 
-const mockExecute = jest.fn();
-const mockWriteTransaction = jest.fn(async (cb) => {
-    return cb({ execute: mockExecute });
-});
-
-jest.mock('../../lib/powersync/Connector', () => ({
-    powersync: {
-        execute: (...args: any[]) => mockExecute(...args),
-        writeTransaction: (...args: any[]) => mockWriteTransaction(...args),
-    }
-}));
-
-describe('Building Add Action', () => {
-    beforeEach(() => {
-        jest.clearAllMocks();
+    it('should reject empty and whitespace-only building names', () => {
+        const existing: Building[] = [];
         
-        // Reset store state
-        useProjectsStore.setState({
-            projects: [],
-            reports: [],
-            folders: [],
-            drawings: [],
-            calculations: [],
-            isSyncing: false,
-            syncError: null,
-            lastSyncAt: null,
-        });
+        const emptyResult = addBuildingToList(existing, '', mockIdGenerator());
+        expect(emptyResult.status).toBe('error');
+
+        const whitespaceResult = addBuildingToList(existing, '   \t\n  ', mockIdGenerator());
+        expect(whitespaceResult.status).toBe('error');
     });
 
-    const createInitialProject = (buildings: any[] = []): Project => ({
-        id: 'proj-1',
-        name: 'Test Project',
-        location: 'Test',
-        client: 'Client',
-        status: 'active',
-        buildings,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+    it('should trim whitespace from building name', () => {
+        const existing: Building[] = [];
+        const result = addBuildingToList(existing, '   Tower A   ', mockIdGenerator('gen-1'));
+
+        expect(result.status).toBe('added');
+        if (result.status === 'added') {
+            expect(result.building).toEqual({
+                id: 'gen-1',
+                code: 'Tower A',
+                name: 'Tower A',
+            });
+            expect(result.buildings).toEqual([
+                {
+                    id: 'gen-1',
+                    code: 'Tower A',
+                    name: 'Tower A',
+                },
+            ]);
+        }
     });
 
-    it('should reject empty building names', async () => {
-        const { addBuilding, addProject } = useProjectsStore.getState();
-        await addProject(createInitialProject());
-        
-        const res1 = await addBuilding('proj-1', '');
-        expect(res1.status).toBe('error');
-        
-        const res2 = await addBuilding('proj-1', '   ');
-        expect(res2.status).toBe('error');
+    it('should use injected generateId for the new building id', () => {
+        const existing: Building[] = [];
+        const customId = 'deterministic-uuid-999';
+        const result = addBuildingToList(existing, 'Building B', mockIdGenerator(customId));
+
+        expect(result.status).toBe('added');
+        if (result.status === 'added') {
+            expect(result.building.id).toBe(customId);
+            expect(result.buildings[0].id).toBe(customId);
+        }
     });
 
-    it('should append, not replace, existing buildings', async () => {
-        const { addProject, addBuilding } = useProjectsStore.getState();
-        
-        await addProject(createInitialProject([{ id: 'b-1', code: 'A', name: 'A' }]));
-        
-        const res = await addBuilding('proj-1', 'B');
-        expect(res.status).toBe('added');
-        expect(res.building).toBeDefined();
-        expect(res.building?.code).toBe('B');
-        
-        const project = useProjectsStore.getState().projects.find(p => p.id === 'proj-1');
-        expect(project?.buildings).toHaveLength(2);
-        expect(project?.buildings![0].code).toBe('A');
-        expect(project?.buildings![1].code).toBe('B');
+    it('should append, not replace, existing buildings while preserving order', () => {
+        const existing: Building[] = [
+            { id: '1', code: 'Tower 1', name: 'Tower 1' },
+            { id: '2', code: 'Tower 2', name: 'Tower 2' },
+        ];
+
+        const result = addBuildingToList(existing, 'Tower 3', mockIdGenerator('3'));
+
+        expect(result.status).toBe('added');
+        if (result.status === 'added') {
+            expect(result.buildings).toHaveLength(3);
+            expect(result.buildings[0]).toEqual(existing[0]);
+            expect(result.buildings[1]).toEqual(existing[1]);
+            expect(result.buildings[2]).toEqual({ id: '3', code: 'Tower 3', name: 'Tower 3' });
+        }
     });
 
-    it('should trim whitespace', async () => {
-        const { addProject, addBuilding } = useProjectsStore.getState();
-        await addProject(createInitialProject());
-        
-        const res = await addBuilding('proj-1', '  Tower 1  ');
-        expect(res.status).toBe('added');
-        expect(res.building?.code).toBe('Tower 1');
-        expect(res.building?.name).toBe('Tower 1');
+    it('should reject duplicates matching existing code case-insensitively', () => {
+        const existing: Building[] = [
+            { id: '1', code: 'Block A', name: 'Residential' },
+        ];
+
+        const result = addBuildingToList(existing, 'block a', mockIdGenerator());
+        expect(result.status).toBe('duplicate');
+
+        const resultUppercase = addBuildingToList(existing, 'BLOCK A', mockIdGenerator());
+        expect(resultUppercase.status).toBe('duplicate');
     });
 
-    it('should reject case-insensitive duplicates', async () => {
-        const { addProject, addBuilding } = useProjectsStore.getState();
-        await addProject(createInitialProject([
-            { id: 'b-1', code: 'TOWER 1', name: 'TOWER 1' }
-        ]));
-        
-        const res = await addBuilding('proj-1', 'tower 1');
-        expect(res.status).toBe('duplicate');
-        
-        const project = useProjectsStore.getState().projects.find(p => p.id === 'proj-1');
-        expect(project?.buildings).toHaveLength(1);
+    it('should reject duplicates matching existing name case-insensitively', () => {
+        const existing: Building[] = [
+            { id: '1', code: 'BA', name: 'Block Alpha' },
+        ];
+
+        const result = addBuildingToList(existing, 'block alpha', mockIdGenerator());
+        expect(result.status).toBe('duplicate');
+
+        const resultMixedCase = addBuildingToList(existing, 'bLoCk AlPhA', mockIdGenerator());
+        expect(resultMixedCase.status).toBe('duplicate');
     });
 });
