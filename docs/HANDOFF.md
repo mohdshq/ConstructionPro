@@ -73,3 +73,20 @@ AI via Supabase Edge Functions calling Gemini (`supabase/functions/_shared/gemin
 - Any SQL run in the Supabase web editor MUST be mirrored into a file in
   `supabase/migrations/` or the repo and database drift apart.
 - Branch per unit of work; conventional commits prefixed with the story id.
+
+## Update (Aug 2026) — S7b complete
+- Photo capture is now non-blocking. Snags are written locally with
+  `aiStatus: 'pending'` and `description: 'Pending analysis'` BEFORE any network
+  call. AI enrichment is fire-and-forget, patched by stable id.
+  Verified on device in airplane mode: snags survive, nothing is lost.
+- Voice is fully removed from the snagging flow (the 'snag-context' step is gone).
+  Snagging now opens directly on the manual location screen. Voice remains only
+  for daily-report dictation.
+- `selectedProject` in `app/ai-wizard.tsx` is derived live via `useMemo` over the
+  store, NOT held in state. Holding a Project object in `useState` caused the
+  building chip row to render a stale snapshot. Do not reintroduce that pattern.
+- Buildings may be `{ id, code }` (from `app/project/create.tsx`) or
+  `{ id, code, name }` (from `addBuilding`). Always label via
+  `formatBuildingLabel` in `lib/projects/buildings.ts`.
+- STILL OUTSTANDING: nothing retries a 'pending' snag. Reconnecting does not
+  clear it. That is S7c, the next task.
