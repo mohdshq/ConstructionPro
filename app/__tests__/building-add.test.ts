@@ -1,4 +1,4 @@
-import { addBuildingToList } from '../../lib/projects/buildings';
+import { addBuildingToList, formatBuildingLabel } from '../../lib/projects/buildings';
 import type { Building } from '../../store/projectsStore';
 
 describe('addBuildingToList', () => {
@@ -76,6 +76,18 @@ describe('addBuildingToList', () => {
         expect(resultUppercase.status).toBe('duplicate');
     });
 
+    it('should reject duplicates matching existing code-only buildings (from project create)', () => {
+        const existing: Building[] = [
+            { id: '1', code: 'Tower 1' },
+        ];
+
+        const result = addBuildingToList(existing, 'tower 1', mockIdGenerator());
+        expect(result.status).toBe('duplicate');
+
+        const resultUppercase = addBuildingToList(existing, 'TOWER 1', mockIdGenerator());
+        expect(resultUppercase.status).toBe('duplicate');
+    });
+
     it('should reject duplicates matching existing name case-insensitively', () => {
         const existing: Building[] = [
             { id: '1', code: 'BA', name: 'Block Alpha' },
@@ -86,5 +98,37 @@ describe('addBuildingToList', () => {
 
         const resultMixedCase = addBuildingToList(existing, 'bLoCk AlPhA', mockIdGenerator());
         expect(resultMixedCase.status).toBe('duplicate');
+    });
+
+    it('should reject duplicates matching existing name-only buildings', () => {
+        const existing: Building[] = [
+            { id: '1', name: 'South Wing' } as Building,
+        ];
+
+        const result = addBuildingToList(existing, 'south wing', mockIdGenerator());
+        expect(result.status).toBe('duplicate');
+    });
+});
+
+describe('formatBuildingLabel', () => {
+    it('should format code-only building correctly', () => {
+        expect(formatBuildingLabel({ id: '1', code: 'T1' })).toBe('T1');
+    });
+
+    it('should format name-only building correctly', () => {
+        expect(formatBuildingLabel({ id: '2', name: 'Tower 2' })).toBe('Tower 2');
+    });
+
+    it('should format building with distinct code and name as "code - name"', () => {
+        expect(formatBuildingLabel({ id: '3', code: 'T3', name: 'Tower 3' })).toBe('T3 - Tower 3');
+    });
+
+    it('should format building with matching code and name without duplicating', () => {
+        expect(formatBuildingLabel({ id: '4', code: 'Tower 4', name: 'Tower 4' })).toBe('Tower 4');
+    });
+
+    it('should fallback to "Unnamed" when neither code nor name is present', () => {
+        expect(formatBuildingLabel({ id: '5' })).toBe('Unnamed');
+        expect(formatBuildingLabel({ id: '6', code: '', name: '' })).toBe('Unnamed');
     });
 });

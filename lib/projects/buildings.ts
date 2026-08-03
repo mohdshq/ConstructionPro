@@ -5,6 +5,13 @@ export type AddBuildingResult =
   | { status: 'duplicate' }
   | { status: 'error' };
 
+export function formatBuildingLabel(b: Partial<Building>): string {
+  if (b.code && b.name && b.code !== b.name) {
+    return `${b.code} - ${b.name}`;
+  }
+  return b.code || b.name || 'Unnamed';
+}
+
 export function addBuildingToList(
   existing: Building[],
   rawName: string,
@@ -15,11 +22,13 @@ export function addBuildingToList(
     return { status: 'error' };
   }
 
-  const isDuplicate = existing.some(
-    b =>
-      (b.code || '').toLowerCase() === trimmedName.toLowerCase() ||
-      (b.name || '').toLowerCase() === trimmedName.toLowerCase()
-  );
+  const isDuplicate = existing.some(b => {
+    const code = (b.code || '').trim().toLowerCase();
+    const name = (b.name || '').trim().toLowerCase();
+    const fallback = (b.code || b.name || 'Unnamed').trim().toLowerCase();
+    const target = trimmedName.toLowerCase();
+    return (code && code === target) || (name && name === target) || fallback === target;
+  });
 
   if (isDuplicate) {
     return { status: 'duplicate' };

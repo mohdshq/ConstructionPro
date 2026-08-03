@@ -12,6 +12,7 @@ import { Project, ReportType, useProjectsStore, ProjectSnag } from '../store/pro
 import { useStore } from '../store/useStore';
 import { useThemeColors } from '../store/useThemeColors';
 import { persistCapturedSnags, normalizeFloorToInt, patchSnagSuccess, patchSnagFailure } from '../lib/ai/persistSnags';
+import { formatBuildingLabel } from '../lib/projects/buildings';
 
 async function invokeAIWithTimeout(functionName: string, payload: any, ms = 45000): Promise<{ data: any, error: any }> {
     let timeoutId: ReturnType<typeof setTimeout>;
@@ -38,7 +39,7 @@ export default function AIWizardScreen() {
     const { isPremium } = useStore();
     const savingRef = useRef(false);
 
-    const [step, setStep] = useState<'project' | 'type' | 'snag-context' | 'snag-capture' | 'daily-capture' | 'processing'>('project');
+    const [step, setStep] = useState<'project' | 'type' | 'snag-capture' | 'daily-capture' | 'processing'>('project');
     const [selectedProject, setSelectedProject] = useState<Project | null>(null);
     const [selectedType, setSelectedType] = useState<ReportType | null>(null);
 
@@ -147,7 +148,7 @@ export default function AIWizardScreen() {
         }
     };
 
-    const handleVoiceSubmit = async (processStep: 'context' | 'snag' | 'generate') => {
+    const handleVoiceSubmit = async (processStep: 'generate' = 'generate') => {
         const uri = await stopRecording();
         if (!uri) return;
 
@@ -180,7 +181,7 @@ export default function AIWizardScreen() {
                 audioBase64: `data:${mimeType};base64,${base64Audio}`,
                 audioMimeType: mimeType,
                 currentStep: processStep,
-                reportType: selectedType,
+                reportType: selectedType || 'daily',
                 contextData: snagContext
             };
 
@@ -189,7 +190,7 @@ export default function AIWizardScreen() {
             if (error) throw error;
             if (data?.error) throw new Error(data.error);
 
-            if (selectedType === 'daily' && processStep === 'generate') {
+            if (processStep === 'generate') {
                 if (!data.result.transcript || data.result.transcript.trim() === '') {
                     Alert.alert('Error', "Couldn't hear that clearly — please try again in a quieter spot");
                     setStep('daily-capture');
@@ -201,12 +202,7 @@ export default function AIWizardScreen() {
         } catch (error: any) {
             console.error(error);
             Alert.alert("Error", error.message || "Failed to process voice.");
-            // Revert step based on type
-            if (selectedType === 'snagging') {
-                setStep(processStep === 'context' ? 'snag-context' : 'snag-capture');
-            } else {
-                setStep('daily-capture');
-            }
+            setStep('daily-capture');
         }
     };
 
@@ -349,10 +345,7 @@ export default function AIWizardScreen() {
     };
 
     const handleAIResult = (processStep: string, result: any) => {
-        if (processStep === 'context') {
-            setSnagContext(result);
-            setStep('snag-capture');
-        } else if (processStep === 'generate') {
+        if (processStep === 'generate') {
             setDailyData(result);
             navigateToReview(result);
         }
@@ -476,7 +469,7 @@ export default function AIWizardScreen() {
             <View style={{ gap: 16 }}>
                 <TouchableOpacity
                     style={[styles.typeCard, { backgroundColor: '#EFF6FF', borderColor: '#BFDBFE' }]}
-                    onPress={() => { setSelectedType('snagging'); setStep('snag-context'); }}
+                    onPress={() => { setSelectedType('snagging'); setStep('snag-capture'); }}
                 >
                     <View style={styles.typeIconContainer}><Sparkles color="#2563EB" size={24} /></View>
                     <View style={{ flex: 1 }}>
@@ -498,7 +491,7 @@ export default function AIWizardScreen() {
         </Animated.View>
     );
 
-    const renderVoicePrompt = (title: string, subtitle: string, processStep: 'context' | 'generate') => (
+    const renderVoicePrompt = (title: string, subtitle: string, processStep: 'generate' = 'generate') => (
         <Animated.View entering={SlideInRight} style={styles.stepContainer}>
             <Text style={styles.title}>{title}</Text>
             <Text style={styles.subtitle}>{subtitle}</Text>
@@ -542,7 +535,7 @@ export default function AIWizardScreen() {
                                     style={[styles.chip, snagContext.buildingId === b.id && { backgroundColor: colors.primary }]}
                                     onPress={() => setSnagContext({ ...snagContext, buildingId: b.id })}
                                 >
-                                    <Text style={[styles.chipText, snagContext.buildingId === b.id && { color: '#fff' }]}>{b.code} {b.name && b.name !== b.code ? `- ${b.name}` : ''}</Text>
+                                    <Text style={[styles.chipText, snagContext.buildingId === b.id && { color: '#fff' }]}>{formatBuildingLabel(b)}</Text>
                                 </TouchableOpacity>
                             ))}
                             {!showAddBuilding && (
@@ -670,7 +663,6 @@ export default function AIWizardScreen() {
             <View style={{ flex: 1, padding: 20 }}>
                 {step === 'project' && renderProjectSelection()}
                 {step === 'type' && renderTypeSelection()}
-                {step === 'snag-context' && renderVoicePrompt('Where are you?', 'e.g. "I am in Building A, Floor 3, North Wing"', 'context')}
                 {step === 'snag-capture' && renderSnagCapture()}
                 {step === 'daily-capture' && renderVoicePrompt('Daily Summary', 'Speak freely about activities, manpower, and issues.', 'generate')}
                 {step === 'processing' && renderProcessing()}
