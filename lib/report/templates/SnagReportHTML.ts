@@ -32,7 +32,7 @@ function formatSnagLocation(snag: ProjectSnag, project: Project, building?: any)
 export interface SnagReportOptions {
     format: 'detailed' | 'summary';
     filterSummary?: string;
-    snagsPerPage?: 2 | 3 | 4;
+    snagsPerPage?: 1 | 2 | 3 | 4;
 }
 
 export function generateSnagReportHTML(
@@ -40,7 +40,7 @@ export function generateSnagReportHTML(
     project: Project,
     options: SnagReportOptions
 ): string {
-    const perPage = options.snagsPerPage ?? 2;
+    const perPage = options.snagsPerPage ?? 1;
     const densityClass = perPage >= 3 ? `snags-compact snags-per-${perPage}` : '';
     const dateStr = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 
@@ -368,7 +368,7 @@ export function generateSnagReportHTML(
                     .snag-page:last-of-type, .snag-page.last-page { page-break-after: auto; }
                     .snag-page.snag-page-single { page-break-inside: avoid; }
 
-                    .snag-block { margin-bottom: 12px; padding: 10px; border: 1px solid #E2E8F0; border-radius: 6px; background-color: #FAFAF9; }
+                    .snag-block { margin-bottom: 12px; padding: 16px; border: 1px solid #E2E8F0; border-radius: 6px; background-color: #FAFAF9; max-height: 900px; overflow: hidden; box-sizing: border-box; }
                     .snag-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; border-bottom: 1px solid #E2E8F0; padding-bottom: 8px; page-break-inside: avoid; }
                     .snag-ref { font-size: 16px; font-weight: bold; color: #0F172A; }
                     .snag-badges { display: flex; gap: 8px; }
@@ -388,11 +388,16 @@ export function generateSnagReportHTML(
                     
                     .snag-photos { display: flex; gap: 15px; }
                     .snag-photo { flex: 1; border: 1px solid #CBD5E1; background-color: #F8FAFC; border-radius: 4px; overflow: hidden; page-break-inside: avoid; }
-                    .snag-photo img { width: 100%; height: 130px; object-fit: contain; background-color: #FFF; display: block; }
+                    ${perPage < 3 ? `
+                    .snag-photo img { width: 100%; height: ${perPage === 1 ? '320px' : '130px'}; object-fit: contain; background-color: #FFF; display: block; }
+                    .no-photo { display: flex; align-items: center; justify-content: center; height: ${perPage === 1 ? '320px' : '130px'}; color: #94A3B8; font-style: italic; font-size: 12px; page-break-inside: avoid; }
+                    ` : `
+                    .snag-photo img { object-fit: cover; background-color: #FFF; display: block; }
+                    .no-photo { display: flex; align-items: center; justify-content: center; color: #94A3B8; font-style: italic; font-size: 12px; page-break-inside: avoid; }
+                    `}
                     .photo-caption { font-size: 10px; text-align: center; padding: 6px; background-color: #F1F5F9; color: #475569; border-top: 1px solid #CBD5E1; font-weight: bold; }
-                    .no-photo { display: flex; align-items: center; justify-content: center; height: 130px; color: #94A3B8; font-style: italic; font-size: 12px; page-break-inside: avoid; }
 
-                    .snag-block.snags-compact { display: flex; gap: 12px; align-items: flex-start; box-sizing: border-box; }
+                    .snag-block.snags-compact { display: flex; gap: 12px; align-items: flex-start; box-sizing: border-box; padding: 10px; max-height: none; overflow: visible; }
                     .snag-block.snags-compact .snag-details { flex: 1; min-width: 0; }
                     .snag-block.snags-compact .snag-photos { flex-direction: column; gap: 6px; flex: 0 0 auto; }
                     .snag-block.snags-per-3 .snag-photo, .snag-block.snags-per-3 .no-photo { width: 130px; }

@@ -239,9 +239,9 @@ describe('generateSnagReportHTML', () => {
         expect(pageClasses).toHaveLength(3);
     });
 
-    it.each([2, 4])('renders every snag reference exactly once in detailed report (snagsPerPage: %d)', (perPage) => {
+    it.each([1, 2, 3, 4])('renders every snag reference exactly once in detailed report (snagsPerPage: %d)', (perPage) => {
         const snags = generateFiveSnags();
-        const html = generateSnagReportHTML(snags, mockProject, { format: 'detailed', snagsPerPage: perPage as 2 | 4 });
+        const html = generateSnagReportHTML(snags, mockProject, { format: 'detailed', snagsPerPage: perPage as 1 | 2 | 3 | 4 });
 
         // Expected refs for the 5 snags: 101-001, 102-002, 103-003, 104-004, 105-005
         const expectedRefs = ['101-001', '102-002', '103-003', '104-004', '105-005'];
@@ -250,6 +250,35 @@ describe('generateSnagReportHTML', () => {
             expect(matches).not.toBeNull();
             expect(matches!.length).toBe(1);
         });
+    });
+
+    it('produces 3 snag-page divs each holding exactly one snag-block for 3 snags in detailed format (snagsPerPage: 1)', () => {
+        const snags = generateFiveSnags().slice(0, 3);
+        const html = generateSnagReportHTML(snags, mockProject, { format: 'detailed', snagsPerPage: 1 });
+        
+        const pageClasses = [...html.matchAll(/class="([^"]*\bsnag-page\b[^"]*)"/g)].map(m => m[1]);
+        expect(pageClasses).toHaveLength(3);
+        pageClasses.forEach(c => expect(c).toContain('snag-page-single'));
+
+        // Split HTML across snag-page markers to inspect individual page content
+        const pageSections = html.split(/<div class="[^"]*\bsnag-page\b[^"]*">/).slice(1);
+        expect(pageSections).toHaveLength(3);
+        pageSections.forEach(section => {
+            const blockMatches = [...section.matchAll(/class="([^"]*\bsnag-block\b[^"]*)"/g)];
+            expect(blockMatches).toHaveLength(1);
+        });
+    });
+
+    it('contains 320px photo height in detailed CSS and does not contain it in compact CSS', () => {
+        const detailedHtml = generateSnagReportHTML(mockSnags, mockProject, { format: 'detailed', snagsPerPage: 1 });
+        expect(detailedHtml).toContain('height: 320px;');
+        expect(detailedHtml).toContain('padding: 16px;');
+        expect(detailedHtml).toContain('max-height: 900px;');
+        expect(detailedHtml).toContain('overflow: hidden;');
+
+        const compactHtml = generateSnagReportHTML(mockSnags, mockProject, { format: 'detailed', snagsPerPage: 4 });
+        expect(compactHtml).not.toContain('320px');
+        expect(compactHtml).toContain('height: 100px;');
     });
 
     it('suppresses page-break-after on the last snag-page', () => {
@@ -278,8 +307,8 @@ describe('generateSnagReportHTML', () => {
 
     it('preserves total count of snag-block occurrences across all perPage settings', () => {
         const snags = generateFiveSnags();
-        [2, 3, 4].forEach(perPage => {
-            const html = generateSnagReportHTML(snags, mockProject, { format: 'detailed', snagsPerPage: perPage as 2 | 3 | 4 });
+        [1, 2, 3, 4].forEach(perPage => {
+            const html = generateSnagReportHTML(snags, mockProject, { format: 'detailed', snagsPerPage: perPage as 1 | 2 | 3 | 4 });
             const blockMatches = [...html.matchAll(/class="([^"]*\bsnag-block\b[^"]*)"/g)];
             expect(blockMatches).toHaveLength(snags.length);
         });

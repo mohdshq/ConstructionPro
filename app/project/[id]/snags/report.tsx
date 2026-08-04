@@ -84,7 +84,7 @@ export default function SnagReportScreen() {
     const html = useMemo(() => {
         if (!project) return '';
         const format = reportStyle === 'summary' ? 'summary' : 'detailed';
-        const snagsPerPage = reportStyle === 'compact' ? 4 : 2;
+        const snagsPerPage = reportStyle === 'compact' ? 4 : 1;
         return generateSnagReportHTML(filteredSnags, project, { 
             format, 
             filterSummary: filterSummaryString,
