@@ -45,3 +45,54 @@ export async function getBestGeminiModel(
         return fallbackModel;
     }
 }
+
+export function parseGeminiJson<T = any>(raw: string): T {
+    if (!raw || typeof raw !== 'string') {
+        throw new Error('Empty or non-string response');
+    }
+
+    const trimmed = raw.trim();
+
+    // Strategy 1: Direct parse
+    try {
+        return JSON.parse(trimmed);
+    } catch {}
+
+    // Strategy 2: Strip markdown code fences
+    let cleaned = trimmed;
+    if (cleaned.startsWith('```json')) {
+        cleaned = cleaned.slice(7);
+    } else if (cleaned.startsWith('```')) {
+        cleaned = cleaned.slice(3);
+    }
+    if (cleaned.endsWith('```')) {
+        cleaned = cleaned.slice(0, -3);
+    }
+    cleaned = cleaned.trim();
+
+    try {
+        return JSON.parse(cleaned);
+    } catch {}
+
+    // Strategy 3: Extract substring between first '{' and last '}'
+    const firstBrace = raw.indexOf('{');
+    const lastBrace = raw.lastIndexOf('}');
+    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+        const braced = raw.substring(firstBrace, lastBrace + 1);
+        try {
+            return JSON.parse(braced);
+        } catch {}
+    }
+
+    // Strategy 4: Extract substring between first '[' and last ']'
+    const firstBracket = raw.indexOf('[');
+    const lastBracket = raw.lastIndexOf(']');
+    if (firstBracket !== -1 && lastBracket !== -1 && lastBracket > firstBracket) {
+        const bracketed = raw.substring(firstBracket, lastBracket + 1);
+        try {
+            return JSON.parse(bracketed);
+        } catch {}
+    }
+
+    throw new Error('AI returned invalid format');
+}
