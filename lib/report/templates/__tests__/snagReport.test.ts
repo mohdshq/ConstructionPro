@@ -235,9 +235,8 @@ describe('generateSnagReportHTML', () => {
     it('chunks detailed report into exactly 3 snag-page divs for 5 snags with snagsPerPage: 2', () => {
         const snags = generateFiveSnags();
         const html = generateSnagReportHTML(snags, mockProject, { format: 'detailed', snagsPerPage: 2 });
-        const pageMatches = html.match(/<div class="snag-page[^"]*">/g);
-        expect(pageMatches).not.toBeNull();
-        expect(pageMatches!.length).toBe(3);
+        const pageClasses = [...html.matchAll(/class="([^"]*\bsnag-page\b[^"]*)"/g)].map(m => m[1]);
+        expect(pageClasses).toHaveLength(3);
     });
 
     it.each([2, 4])('renders every snag reference exactly once in detailed report (snagsPerPage: %d)', (perPage) => {
@@ -257,8 +256,11 @@ describe('generateSnagReportHTML', () => {
         const snags = generateFiveSnags();
         const html = generateSnagReportHTML(snags, mockProject, { format: 'detailed', snagsPerPage: 2 });
         
-        // The last snag page carries the last-page class
-        expect(html).toContain('class="snag-page last-page"');
+        const pageClasses = [...html.matchAll(/class="([^"]*\bsnag-page\b[^"]*)"/g)].map(m => m[1]);
+        expect(pageClasses).toHaveLength(3);
+        expect(pageClasses[pageClasses.length - 1]).toContain('last-page');
+        pageClasses.slice(0, -1).forEach(c => expect(c).not.toContain('last-page'));
+
         // CSS rule ensures last-of-type / last-page has page-break-after: auto
         expect(html).toContain('.snag-page:last-of-type, .snag-page.last-page { page-break-after: auto; }');
     });
@@ -267,9 +269,8 @@ describe('generateSnagReportHTML', () => {
         const singleSnag = [mockSnags[0]]; // 1 snag on floor 1
         const html = generateSnagReportHTML(singleSnag, mockProject, { format: 'detailed', snagsPerPage: 2 });
         
-        const pageMatches = html.match(/<div class="snag-page[^"]*">/g);
-        expect(pageMatches).not.toBeNull();
-        expect(pageMatches!.length).toBe(1);
+        const pageClasses = [...html.matchAll(/class="([^"]*\bsnag-page\b[^"]*)"/g)].map(m => m[1]);
+        expect(pageClasses).toHaveLength(1);
         expect(html).toContain('Floor 1');
         expect(html).not.toContain('Floor 1 (cont.)');
         expect(html).not.toContain('(cont.)');
@@ -279,9 +280,8 @@ describe('generateSnagReportHTML', () => {
         const snags = generateFiveSnags();
         [2, 3, 4].forEach(perPage => {
             const html = generateSnagReportHTML(snags, mockProject, { format: 'detailed', snagsPerPage: perPage as 2 | 3 | 4 });
-            const blockMatches = html.match(/class="snag-block/g);
-            expect(blockMatches).not.toBeNull();
-            expect(blockMatches!.length).toBe(snags.length);
+            const blockMatches = [...html.matchAll(/class="([^"]*\bsnag-block\b[^"]*)"/g)];
+            expect(blockMatches).toHaveLength(snags.length);
         });
     });
 
@@ -291,5 +291,71 @@ describe('generateSnagReportHTML', () => {
 
         const summaryHtml = generateSnagReportHTML(mockSnags, mockProject, { format: 'summary' });
         expect(summaryHtml).not.toContain('.summary { page-break-after: always; }');
+    });
+
+    it('does not apply page-break-inside: avoid on .snag-block in detailed mode CSS (regression guard)', () => {
+        const detailedHtml = generateSnagReportHTML(mockSnags, mockProject, { format: 'detailed' });
+        // .snag-block must NOT carry page-break-inside: avoid
+        expect(detailedHtml).not.toMatch(/\.snag-block\s*\{[^}]*page-break-inside:\s*avoid/);
+        expect(detailedHtml).not.toMatch(/\.snag-block\.snags-compact\s*\{[^}]*page-break-inside:\s*avoid/);
+
+        // .snag-header and .snag-photo MUST retain page-break-inside: avoid
+        expect(detailedHtml).toMatch(/\.snag-header\s*\{[^}]*page-break-inside:\s*avoid/);
+        expect(detailedHtml).toMatch(/\.snag-photo\s*\{[^}]*page-break-inside:\s*avoid/);
+        expect(detailedHtml).toMatch(/\.no-photo\s*\{[^}]*page-break-inside:\s*avoid/);
+
+        // .snag-page.snag-page-single MUST retain page-break-inside: avoid
+        expect(detailedHtml).toMatch(/\.snag-page\.snag-page-single\s*\{[^}]*page-break-inside:\s*avoid/);
+    });
+
+    it('applies snag-page-single class only when a chunk holds a single snag', () => {
+        // 5 snags with snagsPerPage: 2 => chunks of 2, 2, 1
+        const snags = generateFiveSnags();
+        const html = generateSnagReportHTML(snags, mockProject, { format: 'detailed', snagsPerPage: 2 });
+        
+        const pageClasses = [...html.matchAll(/class="([^"]*\bsnag-page\b[^"]*)"/g)].map(m => m[1]);
+        expect(pageClasses).toHaveLength(3);
+        expect(pageClasses[0]).not.toContain('snag-page-single');
+        expect(pageClasses[1]).not.toContain('snag-page-single');
+        expect(pageClasses[2]).toContain('snag-page-single');
+    });
+
+    it('renders photo-bearing snags with img tags and guards against page-break-inside avoid on snag-block', () => {
+        // Guard against reintroducing page-break-inside: avoid on .snag-block, which silently dropped
+        // photo-bearing snags from client PDFs in print engines. Note: unit tests cannot catch print-layout
+        // bugs, which require opening a real generated PDF.
+        const validBase64Photo1 = 'data:image/jpeg;base64,' + 'A'.repeat(120);
+        const validBase64Photo2 = 'data:image/jpeg;base64,' + 'B'.repeat(120);
+
+        const snagWithPhotos: ProjectSnag = {
+            id: 'snag-photo-test',
+            projectId: 'proj-1',
+            buildingId: 'bldg-1',
+            floor: 1,
+            flat: 101,
+            seq: 1,
+            description: 'Severe water damage under sink with context and detail photos',
+            status: 'open',
+            severity: 'critical',
+            areaType: 'unit',
+            room: 'Kitchen',
+            trade: 'Plumbing',
+            photos: [validBase64Photo1, validBase64Photo2],
+            createdAt: '2026-07-08T10:00:00.000Z',
+        };
+
+        const html = generateSnagReportHTML([snagWithPhotos], mockProject, { format: 'detailed' });
+
+        // Assert 2 photo containers with <img> tags are rendered
+        const photoImgMatches = html.match(/<div class="snag-photo"><img src="data:image\/jpeg;base64,[^"]+" \/><div class="photo-caption">(Context|Detail)<\/div><\/div>/g);
+        expect(photoImgMatches).not.toBeNull();
+        expect(photoImgMatches!.length).toBe(2);
+
+        // Assert placeholders are NOT rendered
+        expect(html).not.toContain('No Context Photo');
+        expect(html).not.toContain('No Detail Photo');
+
+        // Regression guard: .snag-block must not carry page-break-inside: avoid
+        expect(html).not.toMatch(/\.snag-block\s*\{[^}]*page-break-inside:\s*avoid/);
     });
 });

@@ -201,3 +201,17 @@ release — planned improvements.
   - Covered by 10 new assertions in `lib/ai/__tests__/geminiParser.test.ts`. Deployed to Supabase project `nalbazjndjozdksulbwx`.
 - **Post-deploy verification**: All recently drained snags at `ai_status = 'done'`, four at `ai_attempts = 0` and one at `ai_attempts = 1`.
 - **Caveat**: The post-fix sample was only 5 snags, so a larger drain should be re-checked before treating the failure rate as zero.
+
+## ✅ RESOLVED — S8a / S8b — PDF report pagination and print rendering data loss (dropped snags)
+- **Historical observation / Repro**: Snags disappeared from exported PDF snag reports despite being counted in the summary header. The WebView in-app preview rendered all snags as a continuous scrolling document, so the issue was invisible until the generated PDF was opened in a native viewer.
+- **Root causes**:
+  1. No deterministic pagination chunking: `snagsPerPage` only set CSS density classes, relying entirely on WebKit print pagination.
+  2. `page-break-inside: avoid` on tall `.snag-block` elements: when a block was too tall to fit the remaining space on a page (e.g. following summary cards or other blocks), WebKit's print engine pushed it across boundaries and dropped it entirely.
+- **Fix (Tasks S8a & S8b)**:
+  - Added deterministic chunking in `lib/report/templates/SnagReportHTML.ts`: snags per floor are chunked into pages of `snagsPerPage`, wrapped in `<div class="snag-page">` with `page-break-after: always` and repeated `(cont.)` floor headers.
+  - Added `page-break-after: always` on `.summary` for detailed mode so snag pages start on fresh A4 pages.
+  - Removed `page-break-inside: avoid` from base `.snag-block` (kept on `.snag-header` and `.snag-photo` so individual items are not broken).
+  - Scaled photo height to `130px` (contain) and reduced block padding (`10px`) and margins (`12px`) so 2 detailed blocks comfortably fit on a standard A4 page (`margin: 10mm`).
+  - Added `page-break-inside: avoid` to `.snag-page.snag-page-single` for single-snag continuation pages.
+- **Key Takeaway / Verification rule**: The WebView preview cannot detect print-engine pagination and clipping bugs. All future report template changes MUST be verified by opening the generated PDF, not just inspecting the WebView preview.
+

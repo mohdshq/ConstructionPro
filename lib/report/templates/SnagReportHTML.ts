@@ -304,7 +304,11 @@ export function generateSnagReportHTML(
 
         pageChunks.forEach((chunk, index) => {
             const isLastPage = index === pageChunks.length - 1;
-            const pageClass = isLastPage ? 'snag-page last-page' : 'snag-page';
+            const isSingleSnag = chunk.snags.length === 1;
+            const pageClasses = ['snag-page'];
+            if (isSingleSnag) pageClasses.push('snag-page-single');
+            if (isLastPage) pageClasses.push('last-page');
+            const pageClass = pageClasses.join(' ');
 
             let pageContent = '';
 
@@ -362,9 +366,10 @@ export function generateSnagReportHTML(
 
                     .snag-page { page-break-after: always; }
                     .snag-page:last-of-type, .snag-page.last-page { page-break-after: auto; }
+                    .snag-page.snag-page-single { page-break-inside: avoid; }
 
-                    .snag-block { margin-bottom: 20px; padding: 15px; border: 1px solid #E2E8F0; border-radius: 6px; page-break-inside: avoid; background-color: #FAFAF9; }
-                    .snag-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; border-bottom: 1px solid #E2E8F0; padding-bottom: 8px; }
+                    .snag-block { margin-bottom: 12px; padding: 10px; border: 1px solid #E2E8F0; border-radius: 6px; background-color: #FAFAF9; }
+                    .snag-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; border-bottom: 1px solid #E2E8F0; padding-bottom: 8px; page-break-inside: avoid; }
                     .snag-ref { font-size: 16px; font-weight: bold; color: #0F172A; }
                     .snag-badges { display: flex; gap: 8px; }
                     .badge { padding: 4px 8px; border-radius: 4px; font-size: 10px; font-weight: bold; display: inline-block; text-align: center; }
@@ -382,12 +387,12 @@ export function generateSnagReportHTML(
                     .snag-sev-cosmetic { border-left: 4px solid #64748B; }
                     
                     .snag-photos { display: flex; gap: 15px; }
-                    .snag-photo { flex: 1; border: 1px solid #CBD5E1; background-color: #F8FAFC; border-radius: 4px; overflow: hidden; }
-                    .snag-photo img { width: 100%; height: 160px; object-fit: contain; background-color: #FFF; display: block; }
+                    .snag-photo { flex: 1; border: 1px solid #CBD5E1; background-color: #F8FAFC; border-radius: 4px; overflow: hidden; page-break-inside: avoid; }
+                    .snag-photo img { width: 100%; height: 130px; object-fit: contain; background-color: #FFF; display: block; }
                     .photo-caption { font-size: 10px; text-align: center; padding: 6px; background-color: #F1F5F9; color: #475569; border-top: 1px solid #CBD5E1; font-weight: bold; }
-                    .no-photo { display: flex; align-items: center; justify-content: center; height: 160px; color: #94A3B8; font-style: italic; font-size: 12px; }
+                    .no-photo { display: flex; align-items: center; justify-content: center; height: 130px; color: #94A3B8; font-style: italic; font-size: 12px; page-break-inside: avoid; }
 
-                    .snag-block.snags-compact { display: flex; gap: 12px; align-items: flex-start; page-break-inside: avoid; box-sizing: border-box; }
+                    .snag-block.snags-compact { display: flex; gap: 12px; align-items: flex-start; box-sizing: border-box; }
                     .snag-block.snags-compact .snag-details { flex: 1; min-width: 0; }
                     .snag-block.snags-compact .snag-photos { flex-direction: column; gap: 6px; flex: 0 0 auto; }
                     .snag-block.snags-per-3 .snag-photo, .snag-block.snags-per-3 .no-photo { width: 130px; }
@@ -408,6 +413,7 @@ export function generateSnagReportHTML(
                         ${options.format !== 'summary' ? '.summary { page-break-after: always; }' : ''}
                         .snag-page { page-break-after: always; }
                         .snag-page:last-of-type, .snag-page.last-page { page-break-after: auto; }
+                        .snag-page.snag-page-single { page-break-inside: avoid; }
                     }
                 </style>
             </head>
