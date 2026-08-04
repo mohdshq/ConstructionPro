@@ -13,11 +13,17 @@ we proceed to Milestone 2 (Sentry/PostHog observability).
       at compile level (commit a282f9c). See runtime issue below.**
 - [ ] `app/project/[id]/report/create.tsx:434` — Undefined variable `project`
       in snag photo upload payload. Crashes the AI snag-from-photo feature.
-- [ ] `app/ai-wizard.tsx` — RUNTIME ISSUE: screen hangs while loading and
-      silently navigates back to dashboard when user records a snag.
-      Two prior fix attempts (commits 8da69c3, 1361d82) addressed web image
-      manipulation but the core flow is still broken. DEFERRED to post-M2
-      when Sentry stack traces will provide reproduction context.
+      *(Needs re-verification: predates the entire S5–S7 rework and may already
+      be fixed incidentally. Verify against current main before spending time on it).*
+- [ ] `app/project/[id]/report/create.tsx:434` — Undefined variable `project`
+      in snag photo upload payload. Crashes the AI snag-from-photo feature.
+      NEEDS RE-VERIFICATION against current main — predates the S5–S7 rework
+      and may already be fixed incidentally.
+- [x] ~~`app/ai-wizard.tsx` — RUNTIME ISSUE: screen hangs while loading and
+      silently navigates back to dashboard when user records a snag.~~
+      **RESOLVED / SUPERSEDED in S5 & S7b.** The entire flow was rebuilt across
+      S5 (stale-closure fix, voice step removed) and S7b (non-blocking capture,
+      live `useMemo` derivation of `selectedProject`). Symptom no longer occurs.
 
 
 ## High (incorrect behavior or type unsafety)
@@ -73,12 +79,10 @@ we proceed to Milestone 2 (Sentry/PostHog observability).
 - [ ] Web platform: RevenueCat singleton errors in browser console when
       paywall actions are triggered. Should gracefully no-op on web.
 
-- [ ] `app/ai-wizard.tsx` — RUNTIME ISSUE (compiles fine post-M1.6b but the
-      screen hangs while loading and silently navigates back to dashboard
-      when user attempts to record a snag photo. Two prior fix attempts
-      addressed web-platform image manipulation but the core flow is
-      still broken. DEFERRED to post-M2 when Sentry will provide stack
-      traces and reproduction context.
+- [x] ~~`app/ai-wizard.tsx` — RUNTIME ISSUE (screen hangs while loading and silently
+      navigates back to dashboard when user attempts to record a snag photo).~~
+      **RESOLVED / SUPERSEDED in S5 & S7b.** (Duplicate of Critical entry above;
+      flow rebuilt with non-blocking capture and live store selector).
 - [ ] Project status not user-editable (pre-existing, unrelated to PowerSync): create form hardcodes status: 'planning'; edit form omits status. Card badge shows date-derived displayStatus, not stored value. Fix = add a status picker to app/project/create.tsx and include status in the edit payload.
 
 ## M3.3c ✅ RESOLVED — — Offline detection + banner ✅ CODE-COMPLETE (live offline-state verification pending)
@@ -157,19 +161,25 @@ release — planned improvements.
 - Existing projects created before the base64-logo change store logos as storage paths and will
   not render logos until re-picked (no migration by design).
 
-## S7 — Offline snag capture is gated on AI (DATA LOSS)
-- Repro: go offline, capture detail photo → AI call fails → error shown, and
+## ✅ RESOLVED — S7 — Offline snag capture is gated on AI (DATA LOSS)
+- **Historical repro**: go offline, capture detail photo → AI call fails → error shown, and
   NO snag row is written. User must retake the photo after reconnecting.
-- Root cause: capture flow awaits the ai-snag-from-photo response before
+- **Root cause**: capture flow awaited the ai-snag-from-photo response before
   persisting. Persistence should be unconditional; enrichment should be deferred.
-- Fix: optimistic capture + `ai_status` queue + background worker. See S7 plan.
+- **Resolution**: Closed in two parts:
+  - **S7b**: Made capture non-blocking in `app/ai-wizard.tsx` — snags are written locally immediately with `aiStatus: 'pending'` and `description: 'Pending analysis'` before any network call. AI analysis is fire-and-forget and patches the snag by stable local ID.
+  - **S7c**: Added background AI enrichment worker (`lib/ai/useEnrichmentWorker.ts` + `lib/ai/enrichmentQueue.ts`) that drains pending/failed snags oldest-first with exponential backoff (5s/15s/45s/135s capped at 300s, max 5 attempts).
+- **Verification**: Verified on device in airplane mode — zero snag loss, snags persist locally and enrich automatically when connectivity returns.
+
+## [HIGHEST PRIORITY OPEN BUG] Report photo signed URLs fail (`lib/supabaseSync.ts`)
+- **Symptom**: `Error getting signed URL: Network request failed` logged in `lib/supabaseSync.ts`.
+- **Impact**: Highest-priority open bug. Reports are the primary client-facing deliverable, and a report with broken or missing images is worse than no report.
+- **Intended fix direction**: Generate signed URLs at render time (e.g. when opening/exporting a report) with a sensible expiry rather than persisting signed URLs into the database, and gracefully degrade to a local placeholder if network request fails. (Do not persist short-lived signed URLs).
 
 ## S5 follow-ups (observed, not yet fixed)
 - Intermittent edge-function stall: ~61KB POST from device hangs with no TTFB
   while the same curl from the Mac succeeds. Root cause unknown; watch
   `[invoke] ttfbMs`. Suspect managed Wi-Fi (Azizi_Phase4) client isolation.
-- `Error getting signed URL: Network request failed` in lib/supabaseSync.ts —
-  unhandled; should degrade to placeholder rather than log-spam.
 - Snag photos are stored base64 in `ProjectSnag.photos: string[]`. Will not
   scale; migrate to PowerSync attachments / local file URIs.
 - `__DEV__` is undefined under Jest — any `if (__DEV__)` in lib/ breaks tests.
@@ -177,11 +187,17 @@ release — planned improvements.
 - Area Type chip row has no horizontal-scroll affordance; options off-screen
   right are undiscoverable.
 
-## ai-snag-from-photo returns non-2xx ~25% of the time
-- Observed 3 failures in 11 calls; every one succeeded on retry with the SAME
-  photo, so the fault is server-side, not payload-related.
-- Most likely Gemini wrapping JSON in a ```json fence, which the function
-  rejects as "AI returned invalid format".
-- Masked by the S7c retry worker, so low urgency — but it wastes latency and
-  API spend. Fix: strip markdown fences before JSON.parse in
-  `supabase/functions/ai-snag-from-photo/index.ts` and log the raw response.
+## ✅ RESOLVED — ai-snag-from-photo returns non-2xx ~25% of the time (commit 4979c86)
+- **Historical observation**: Observed 3 failures in 11 calls; every one succeeded on retry with the SAME photo, so the fault was server-side and nondeterministic, not payload-related.
+- **Root cause**: Two independent faults:
+  1. Gemini sometimes wrapped its JSON reply in a ```json markdown fence, which direct `JSON.parse` rejected with `"AI returned invalid format"`.
+  2. The API request had no `generationConfig`, so long replies hit `MAX_TOKENS` and returned truncated, unparseable JSON, or failed with empty/blocked responses without explicit handling.
+- **Fix (commit 4979c86)**:
+  - Added `parseGeminiJson` helper in `supabase/functions/_shared/gemini.ts` that strips code fences and falls back to first-brace/last-brace substring extraction before failing.
+  - Set explicit `generationConfig`: `responseMimeType: 'application/json'`, bounded `maxOutputTokens` (1000), low `temperature: 0.2`, and `thinkingConfig: { thinkingBudget: 0 }`.
+  - Logged raw response body, resolved model name, and `finishReason` on parse failure.
+  - Added explicit handling for blocked/empty candidates and non-`STOP` finish reasons.
+  - Added one bounded server-side retry before giving up and validated that the `issue` field is present before returning.
+  - Covered by 10 new assertions in `lib/ai/__tests__/geminiParser.test.ts`. Deployed to Supabase project `nalbazjndjozdksulbwx`.
+- **Post-deploy verification**: All recently drained snags at `ai_status = 'done'`, four at `ai_attempts = 0` and one at `ai_attempts = 1`.
+- **Caveat**: The post-fix sample was only 5 snags, so a larger drain should be re-checked before treating the failure rate as zero.

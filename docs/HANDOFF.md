@@ -63,7 +63,7 @@ AI via Supabase Edge Functions calling Gemini (`supabase/functions/_shared/gemin
 ## Conventions
 - Run as ONE chain so a failure blocks the commit:
   `npx tsc --noEmit && npx jest && git add -A && git commit -m "..."`
-- Baseline: 8 suites / 47 tests green.
+- Baseline: 10 suites / 84 tests green.
 - Test pure functions, not the store. Importing `store/projectsStore.ts` in a
   test pulls in `@/lib/powersync/system`, AsyncStorage and uuid, and the suite
   fails to resolve. Extract logic into pure `lib/**` modules and inject
@@ -106,5 +106,16 @@ AI via Supabase Edge Functions calling Gemini (`supabase/functions/_shared/gemin
 - The polling interval is created ONCE with a `[]` dependency array; `isOffline`
   is read from a ref. Depending on `isOffline` caused duplicate bursts on
   network flap.
-- Remaining: S7d (pending/failed badges in the UI), S8 (write at capture time),
-  S9 (photos off base64).
+- Remaining: S7d (pending/failed badges in the UI), report photo signed URLs (`lib/supabaseSync.ts`), S8 (write at capture time), S9 (photos off base64).
+
+## Update (Aug 2026) — S7e complete
+- Fixed intermittent non-2xx failures (~25% failure rate) from `ai-snag-from-photo`.
+- Root causes:
+  1. Gemini wrapping JSON in ` ```json ` markdown code fences, which `JSON.parse` threw on as invalid format.
+  2. Request missing `generationConfig`, causing replies to hit `MAX_TOKENS` truncation or empty output on thinking models.
+- Fix (commit 4979c86):
+  - `parseGeminiJson` helper placed in `supabase/functions/_shared/gemini.ts` (strips code fences, falls back to first-brace/last-brace substring extraction).
+  - Explicit `generationConfig` added (`responseMimeType: 'application/json'`, `maxOutputTokens: 1000`, `temperature: 0.2`, `thinkingConfig: { thinkingBudget: 0 }`).
+  - Added bounded server-side retry, non-`STOP` finishReason / empty candidate checks, and raw response error logging.
+  - Verified on Supabase `nalbazjndjozdksulbwx` with 10 unit test assertions in `lib/ai/__tests__/geminiParser.test.ts`.
+- **Rule**: Any new Gemini call MUST go through `parseGeminiJson` and MUST set an explicit `generationConfig` with `thinkingBudget: 0` — NEVER `JSON.parse` a raw Gemini reply.
