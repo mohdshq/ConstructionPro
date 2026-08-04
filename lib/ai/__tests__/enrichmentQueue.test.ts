@@ -94,6 +94,34 @@ describe('enrichmentQueue', () => {
       expect(selectNextCandidate([readySnag], now)?.id).toBe('ready');
     });
 
+    it('enforces 5000ms minimum backoff for failed snags even with aiAttempts: 0', () => {
+      const recentFailed0 = createMockSnag({
+        id: 'recent-failed-0',
+        aiStatus: 'failed',
+        aiAttempts: 0,
+        aiUpdatedAt: new Date(now - 2000).toISOString(), // 2s elapsed
+      });
+      expect(selectNextCandidate([recentFailed0], now)).toBeNull();
+
+      const readyFailed0 = createMockSnag({
+        id: 'ready-failed-0',
+        aiStatus: 'failed',
+        aiAttempts: 0,
+        aiUpdatedAt: new Date(now - 6000).toISOString(), // 6s elapsed
+      });
+      expect(selectNextCandidate([readyFailed0], now)?.id).toBe('ready-failed-0');
+    });
+
+    it('keeps pending snags with aiAttempts: 0 immediately eligible', () => {
+      const pending0 = createMockSnag({
+        id: 'pending-0',
+        aiStatus: 'pending',
+        aiAttempts: 0,
+        aiUpdatedAt: new Date(now - 1000).toISOString(),
+      });
+      expect(selectNextCandidate([pending0], now)?.id).toBe('pending-0');
+    });
+
     it('excludes photoless snags', () => {
       const noPhotos = createMockSnag({
         id: 'no-photos',

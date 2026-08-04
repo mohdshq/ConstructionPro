@@ -6,7 +6,6 @@ import { useProjectsStore } from '../../store/projectsStore';
 import type { ProjectSnag } from '../../store/projectsStore';
 import { supabase } from '../supabase';
 import {
-  isCandidateEligible,
   selectNextCandidate,
   buildSuccessPatch,
   buildFailurePatch,
@@ -57,21 +56,19 @@ export function useEnrichmentWorker() {
   const { isOffline } = useNetworkStatus();
   const isProcessingRef = useRef(false);
   const isMountedRef = useRef(true);
+  const isOfflineRef = useRef(isOffline);
+
+  useEffect(() => {
+    isOfflineRef.current = isOffline;
+  }, [isOffline]);
 
   useEffect(() => {
     isMountedRef.current = true;
 
-    if (__DEV__) {
-      console.log('[enrich] worker mounted.');
-      console.log(`[enrich] sql=${CANDIDATE_SQL}`);
-    }
-
     const processNext = async () => {
-      if (__DEV__) {
-        console.log(`[enrich] tick isOffline=${isOffline} inFlight=${isProcessingRef.current}`);
-      }
+      const offline = isOfflineRef.current;
 
-      if (!isMountedRef.current || isOffline || isProcessingRef.current) {
+      if (!isMountedRef.current || offline || isProcessingRef.current) {
         return;
       }
 
@@ -83,22 +80,13 @@ export function useEnrichmentWorker() {
 
         const now = Date.now();
         const snags = rows.map((r: any) => mapSnagRow(r));
-        const eligibleCount = snags.filter((s: any) => isCandidateEligible(s, now)).length;
         const candidate = selectNextCandidate(snags, now);
-
-        if (__DEV__) {
-          console.log(`[enrich] rows=${rows.length} candidates=${eligibleCount}`);
-          if (candidate) {
-            console.log(
-              `[enrich] selected id=${candidate.id} attempts=${candidate.aiAttempts ?? 0} aiStatus=${candidate.aiStatus ?? 'undefined'} photos=${candidate.photos?.length ?? 0}`
-            );
-          }
-        }
 
         if (!candidate || !isMountedRef.current) {
           return;
         }
 
+        const attemptsBefore = candidate.aiAttempts ?? 0;
         const { updateSnag } = useProjectsStore.getState();
 
         // Mark candidate as running
@@ -120,13 +108,8 @@ export function useEnrichmentWorker() {
           context,
         };
 
-        if (__DEV__) {
-          console.log(`[enrich] invoking id=${candidate.id}`);
-        }
-
         let responseData: any = null;
         let responseError: any = null;
-        const startTime = Date.now();
 
         try {
           const res = await invokeAIWithTimeout('ai-snag-from-photo', payload);
@@ -136,30 +119,24 @@ export function useEnrichmentWorker() {
           responseError = err;
         }
 
-        const elapsedMs = Date.now() - startTime;
-
         if (!isMountedRef.current) return;
 
         const isOk = !responseError && !responseData?.error && !!responseData?.snag;
         const errMsg = responseError?.message || responseData?.error || (isOk ? '' : 'AI analysis failed');
 
-        if (__DEV__) {
-          if (isOk) {
-            console.log(`[enrich] result id=${candidate.id} ok=true ms=${elapsedMs}`);
-          } else {
-            console.log(`[enrich] result id=${candidate.id} ok=false ms=${elapsedMs} error=${errMsg}`);
-          }
-        }
-
         if (!isOk) {
-          const failurePatch = buildFailurePatch(candidate.aiAttempts ?? 0, errMsg);
+          const storedRows = await powersync.getAll<any>(
+            `SELECT ai_attempts FROM snags WHERE id = ?`,
+            [candidate.id]
+          );
+          const storedAttempts = storedRows[0]?.ai_attempts ?? 0;
+          const effectiveAttempts = Math.max(attemptsBefore, storedAttempts);
+
+          const failurePatch = buildFailurePatch(effectiveAttempts, errMsg);
           await updateSnag(candidate.id, {
             ...failurePatch,
             aiUpdatedAt: new Date().toISOString(),
           });
-          if (__DEV__) {
-            console.log(`[enrich] patched id=${candidate.id} aiStatus=failed`);
-          }
         } else {
           const successPatch = buildSuccessPatch(responseData.snag);
 
@@ -181,9 +158,6 @@ export function useEnrichmentWorker() {
           }
 
           await updateSnag(candidate.id, finalPatch);
-          if (__DEV__) {
-            console.log(`[enrich] patched id=${candidate.id} aiStatus=done`);
-          }
         }
       } catch (error) {
         console.error('[useEnrichmentWorker] Error processing snag:', error);
@@ -192,7 +166,7 @@ export function useEnrichmentWorker() {
       }
     };
 
-    // Run on startup / network status change
+    // Run on startup
     processNext().catch(() => {});
 
     // Poll every 15 seconds
@@ -204,5 +178,5 @@ export function useEnrichmentWorker() {
       isMountedRef.current = false;
       clearInterval(interval);
     };
-  }, [isOffline]);
+  }, []);
 }

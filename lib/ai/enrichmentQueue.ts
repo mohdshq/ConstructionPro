@@ -35,7 +35,13 @@ export function isCandidateEligible(snag: QueueSnag, now: number): boolean {
     return now - updatedAtMs >= 120000;
   }
 
-  if (status === 'pending' || status === 'failed' || !status) {
+  if (status === 'failed') {
+    if (isNaN(updatedAtMs)) return true;
+    const requiredBackoff = attempts === 0 ? 5000 : backoffMs(attempts);
+    return now - updatedAtMs >= requiredBackoff;
+  }
+
+  if (status === 'pending' || !status) {
     if (attempts === 0) return true;
     if (isNaN(updatedAtMs)) return true;
     const requiredBackoff = backoffMs(attempts);
