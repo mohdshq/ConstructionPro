@@ -107,42 +107,44 @@ export function generateSnagReportHTML(
     const cosmeticCount = snags.filter(s => s.severity === 'cosmetic').length;
 
     let summaryHTML = `
-        <div class="section-heading">SUMMARY</div>
-        <div style="margin-bottom: 20px; page-break-inside: avoid;">
-            <div class="stat-row">
-                <div class="stat-card" style="border-top: 3px solid #1E3A5F;">
-                    <div class="stat-num" style="color: #1E3A5F;">${totalCount}</div>
-                    <div class="stat-label">Total Snags</div>
+        <div class="summary">
+            <div class="section-heading">SUMMARY</div>
+            <div style="margin-bottom: 20px; page-break-inside: avoid;">
+                <div class="stat-row">
+                    <div class="stat-card" style="border-top: 3px solid #1E3A5F;">
+                        <div class="stat-num" style="color: #1E3A5F;">${totalCount}</div>
+                        <div class="stat-label">Total Snags</div>
+                    </div>
+                    <div class="stat-card" style="border-top: 3px solid #D97706;">
+                        <div class="stat-num" style="color: #D97706;">${openCount}</div>
+                        <div class="stat-label">Open</div>
+                    </div>
+                    <div class="stat-card" style="border-top: 3px solid #2563EB;">
+                        <div class="stat-num" style="color: #2563EB;">${inProgressCount}</div>
+                        <div class="stat-label">In Progress</div>
+                    </div>
+                    <div class="stat-card" style="border-top: 3px solid #059669;">
+                        <div class="stat-num" style="color: #059669;">${closedCount}</div>
+                        <div class="stat-label">Closed</div>
+                    </div>
                 </div>
-                <div class="stat-card" style="border-top: 3px solid #D97706;">
-                    <div class="stat-num" style="color: #D97706;">${openCount}</div>
-                    <div class="stat-label">Open</div>
-                </div>
-                <div class="stat-card" style="border-top: 3px solid #2563EB;">
-                    <div class="stat-num" style="color: #2563EB;">${inProgressCount}</div>
-                    <div class="stat-label">In Progress</div>
-                </div>
-                <div class="stat-card" style="border-top: 3px solid #059669;">
-                    <div class="stat-num" style="color: #059669;">${closedCount}</div>
-                    <div class="stat-label">Closed</div>
-                </div>
-            </div>
-            <div class="stat-row">
-                <div class="stat-card" style="border-top: 3px solid #EF4444;">
-                    <div class="stat-num" style="color: #EF4444;">${criticalCount}</div>
-                    <div class="stat-label">Critical</div>
-                </div>
-                <div class="stat-card" style="border-top: 3px solid #F97316;">
-                    <div class="stat-num" style="color: #F97316;">${majorCount}</div>
-                    <div class="stat-label">Major</div>
-                </div>
-                <div class="stat-card" style="border-top: 3px solid #EAB308;">
-                    <div class="stat-num" style="color: #EAB308;">${minorCount}</div>
-                    <div class="stat-label">Minor</div>
-                </div>
-                <div class="stat-card" style="border-top: 3px solid #64748B;">
-                    <div class="stat-num" style="color: #64748B;">${cosmeticCount}</div>
-                    <div class="stat-label">Cosmetic</div>
+                <div class="stat-row">
+                    <div class="stat-card" style="border-top: 3px solid #EF4444;">
+                        <div class="stat-num" style="color: #EF4444;">${criticalCount}</div>
+                        <div class="stat-label">Critical</div>
+                    </div>
+                    <div class="stat-card" style="border-top: 3px solid #F97316;">
+                        <div class="stat-num" style="color: #F97316;">${majorCount}</div>
+                        <div class="stat-label">Major</div>
+                    </div>
+                    <div class="stat-card" style="border-top: 3px solid #EAB308;">
+                        <div class="stat-num" style="color: #EAB308;">${minorCount}</div>
+                        <div class="stat-label">Minor</div>
+                    </div>
+                    <div class="stat-card" style="border-top: 3px solid #64748B;">
+                        <div class="stat-num" style="color: #64748B;">${cosmeticCount}</div>
+                        <div class="stat-label">Cosmetic</div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -199,7 +201,8 @@ export function generateSnagReportHTML(
         `;
     };
 
-    sortedBuildings.forEach(bId => {
+    if (options.format === 'summary') {
+        sortedBuildings.forEach(bId => {
             const floorMap = grouped.get(bId)!;
             const building = project.buildings?.find(b => b.id === bId);
             const bName = building ? `${building.code}${building.name ? ` - ${building.name}` : ''}` : (bId === 'unassigned' ? 'Unassigned Building' : bId);
@@ -209,68 +212,116 @@ export function generateSnagReportHTML(
             // Sort floors properly
             const floors = Array.from(floorMap.keys()).sort((a, b) => a - b);
             
-            if (options.format === 'summary') {
-                bodyHTML += `<table style="width: 100%; border: none; margin-bottom: 20px;">`;
-                bodyHTML += `<thead><tr>
-                    <th class="blue-hdr text-left" style="width:12%">Ref</th>
-                    <th class="blue-hdr text-left" style="width:15%">Location</th>
-                    <th class="blue-hdr text-left" style="width:33%">Description</th>
-                    <th class="blue-hdr text-center" style="width:10%">Severity</th>
-                    <th class="blue-hdr text-left" style="width:10%">Trade</th>
-                    <th class="blue-hdr text-center" style="width:10%">Status</th>
-                    <th class="blue-hdr text-center" style="width:10%">Date</th>
-                </tr></thead><tbody>`;
+            bodyHTML += `<table style="width: 100%; border: none; margin-bottom: 20px;">`;
+            bodyHTML += `<thead><tr>
+                <th class="blue-hdr text-left" style="width:12%">Ref</th>
+                <th class="blue-hdr text-left" style="width:15%">Location</th>
+                <th class="blue-hdr text-left" style="width:33%">Description</th>
+                <th class="blue-hdr text-center" style="width:10%">Severity</th>
+                <th class="blue-hdr text-left" style="width:10%">Trade</th>
+                <th class="blue-hdr text-center" style="width:10%">Status</th>
+                <th class="blue-hdr text-center" style="width:10%">Date</th>
+            </tr></thead><tbody>`;
+            
+            floors.forEach(fl => {
+                const flName = fl === -999 ? 'Unassigned Floor' : `Floor ${fl}`;
+                bodyHTML += `<tr style="background-color: #E2E8F0;"><td colspan="7" class="text-left font-bold" style="padding: 6px 8px; color: #1E3A5F; font-size: 12px;">${flName}</td></tr>`;
                 
-                floors.forEach(fl => {
-                    const flName = fl === -999 ? 'Unassigned Floor' : `Floor ${fl}`;
-                    bodyHTML += `<tr style="background-color: #E2E8F0;"><td colspan="7" class="text-left font-bold" style="padding: 6px 8px; color: #1E3A5F; font-size: 12px;">${flName}</td></tr>`;
-                    
-                    const floorSnags = floorMap.get(fl)!;
-                    floorSnags.sort((a, b) => {
-                        const flatA = a.flat || 0;
-                        const flatB = b.flat || 0;
-                        if (flatA !== flatB) return flatA - flatB;
-                        return a.seq - b.seq;
-                    });
-                    
-                    floorSnags.forEach(snag => {
-                        const ref = makeSnagRef(snag.legacyCode || makeUnitCode(snag.floor, snag.flat, project, building, snag.areaType), snag.seq);
-                        const loc = formatSnagLocation(snag, project, building);
-                        const desc = snag.description || '-';
-                        const trade = snag.trade || '-';
-                        const snagDateStr = snag.createdAt ? new Date(snag.createdAt).toLocaleDateString('en-GB') : '-';
-                        
-                        bodyHTML += `<tr>
-                            <td class="text-left font-bold" style="white-space: nowrap;">${ref}</td>
-                            <td class="text-left">${loc}</td>
-                            <td class="text-left" style="white-space: pre-wrap;">${desc}</td>
-                            <td class="text-center"><span class="badge badge-sev-${snag.severity}" style="font-size: 9px;">${snag.severity.toUpperCase()}</span></td>
-                            <td class="text-left">${trade}</td>
-                            <td class="text-center"><span class="badge" style="background-color: ${getSnagStatusColor(snag.status)}20; color: ${getSnagStatusColor(snag.status)}; border: 1px solid ${getSnagStatusColor(snag.status)}; font-size: 9px;">${getSnagStatusLabel(snag.status)}</span></td>
-                            <td class="text-center" style="white-space: nowrap;">${snagDateStr}</td>
-                        </tr>`;
-                    });
+                const floorSnags = floorMap.get(fl)!;
+                floorSnags.sort((a, b) => {
+                    const flatA = a.flat || 0;
+                    const flatB = b.flat || 0;
+                    if (flatA !== flatB) return flatA - flatB;
+                    return a.seq - b.seq;
                 });
-                bodyHTML += `</tbody></table>`;
-            } else {
-                floors.forEach(fl => {
-                    const flName = fl === -999 ? 'Unassigned Floor' : `Floor ${fl}`;
-                    bodyHTML += `<div style="font-weight: bold; font-size: 14px; margin-top: 15px; margin-bottom: 10px; color: #334155; border-bottom: 1px solid #CBD5E1; padding-bottom: 5px;">${flName}</div>`;
+                
+                floorSnags.forEach(snag => {
+                    const ref = makeSnagRef(snag.legacyCode || makeUnitCode(snag.floor, snag.flat, project, building, snag.areaType), snag.seq);
+                    const loc = formatSnagLocation(snag, project, building);
+                    const desc = snag.description || '-';
+                    const trade = snag.trade || '-';
+                    const snagDateStr = snag.createdAt ? new Date(snag.createdAt).toLocaleDateString('en-GB') : '-';
                     
-                    const floorSnags = floorMap.get(fl)!;
-                    floorSnags.sort((a, b) => {
-                        const flatA = a.flat || 0;
-                        const flatB = b.flat || 0;
-                        if (flatA !== flatB) return flatA - flatB;
-                        return a.seq - b.seq;
-                    });
-                    
-                    floorSnags.forEach(snag => {
-                        bodyHTML += renderSnagCard(snag, building);
-                    });
+                    bodyHTML += `<tr>
+                        <td class="text-left font-bold" style="white-space: nowrap;">${ref}</td>
+                        <td class="text-left">${loc}</td>
+                        <td class="text-left" style="white-space: pre-wrap;">${desc}</td>
+                        <td class="text-center"><span class="badge badge-sev-${snag.severity}" style="font-size: 9px;">${snag.severity.toUpperCase()}</span></td>
+                        <td class="text-left">${trade}</td>
+                        <td class="text-center"><span class="badge" style="background-color: ${getSnagStatusColor(snag.status)}20; color: ${getSnagStatusColor(snag.status)}; border: 1px solid ${getSnagStatusColor(snag.status)}; font-size: 9px;">${getSnagStatusLabel(snag.status)}</span></td>
+                        <td class="text-center" style="white-space: nowrap;">${snagDateStr}</td>
+                    </tr>`;
                 });
-            }
+            });
+            bodyHTML += `</tbody></table>`;
         });
+    } else {
+        // Detailed format: Deterministic pagination chunking
+        interface PageChunk {
+            buildingName: string;
+            building: any;
+            floorName: string;
+            isFirstChunkOfBuilding: boolean;
+            isContinuation: boolean;
+            snags: ProjectSnag[];
+        }
+
+        const pageChunks: PageChunk[] = [];
+
+        sortedBuildings.forEach(bId => {
+            const floorMap = grouped.get(bId)!;
+            const building = project.buildings?.find(b => b.id === bId);
+            const bName = building ? `${building.code}${building.name ? ` - ${building.name}` : ''}` : (bId === 'unassigned' ? 'Unassigned Building' : bId);
+            const floors = Array.from(floorMap.keys()).sort((a, b) => a - b);
+
+            let isFirstChunkOfThisBuilding = true;
+
+            floors.forEach(fl => {
+                const flName = fl === -999 ? 'Unassigned Floor' : `Floor ${fl}`;
+                const floorSnags = floorMap.get(fl)!;
+                floorSnags.sort((a, b) => {
+                    const flatA = a.flat || 0;
+                    const flatB = b.flat || 0;
+                    if (flatA !== flatB) return flatA - flatB;
+                    return a.seq - b.seq;
+                });
+
+                for (let i = 0; i < floorSnags.length; i += perPage) {
+                    const chunkSnags = floorSnags.slice(i, i + perPage);
+                    const isContinuation = i > 0;
+                    pageChunks.push({
+                        buildingName: bName,
+                        building,
+                        floorName: flName,
+                        isFirstChunkOfBuilding: isFirstChunkOfThisBuilding,
+                        isContinuation,
+                        snags: chunkSnags
+                    });
+                    isFirstChunkOfThisBuilding = false;
+                }
+            });
+        });
+
+        pageChunks.forEach((chunk, index) => {
+            const isLastPage = index === pageChunks.length - 1;
+            const pageClass = isLastPage ? 'snag-page last-page' : 'snag-page';
+
+            let pageContent = '';
+
+            if (chunk.isFirstChunkOfBuilding) {
+                pageContent += `<div class="section-heading" style="margin-top: 10px; font-size: 16px; page-break-after: avoid;">BUILDING: ${chunk.buildingName}</div>`;
+            }
+
+            const headingText = chunk.isContinuation ? `${chunk.floorName} (cont.)` : chunk.floorName;
+            pageContent += `<div class="floor-heading" style="font-weight: bold; font-size: 14px; margin-top: 10px; margin-bottom: 10px; color: #334155; border-bottom: 1px solid #CBD5E1; padding-bottom: 5px; page-break-after: avoid;">${headingText}</div>`;
+
+            chunk.snags.forEach(snag => {
+                pageContent += renderSnagCard(snag, chunk.building);
+            });
+
+            bodyHTML += `<div class="${pageClass}">${pageContent}</div>`;
+        });
+    }
 
     return `
         <!DOCTYPE html>
@@ -303,8 +354,15 @@ export function generateSnagReportHTML(
                     .header-meta-strip { font-size: 11px; color: #64748B; font-weight: 500; }
                     .header-logo { height: 50px; width: 100px; background-size: contain; background-repeat: no-repeat; background-position: center; }
 
+                    .summary { page-break-inside: avoid; }
+                    ${options.format !== 'summary' ? '.summary { page-break-after: always; }' : ''}
+
                     .section-heading { font-size: 14px; font-weight: bold; color: #1E3A5F; margin: 25px 0 10px 0; padding-left: 8px; border-left: 4px solid #2563EB; text-transform: uppercase; page-break-after: avoid; }
-                    
+                    .floor-heading { page-break-after: avoid; }
+
+                    .snag-page { page-break-after: always; }
+                    .snag-page:last-of-type, .snag-page.last-page { page-break-after: auto; }
+
                     .snag-block { margin-bottom: 20px; padding: 15px; border: 1px solid #E2E8F0; border-radius: 6px; page-break-inside: avoid; background-color: #FAFAF9; }
                     .snag-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; border-bottom: 1px solid #E2E8F0; padding-bottom: 8px; }
                     .snag-ref { font-size: 16px; font-weight: bold; color: #0F172A; }
@@ -325,9 +383,9 @@ export function generateSnagReportHTML(
                     
                     .snag-photos { display: flex; gap: 15px; }
                     .snag-photo { flex: 1; border: 1px solid #CBD5E1; background-color: #F8FAFC; border-radius: 4px; overflow: hidden; }
-                    .snag-photo img { width: 100%; height: 200px; object-fit: contain; background-color: #FFF; display: block; }
+                    .snag-photo img { width: 100%; height: 160px; object-fit: contain; background-color: #FFF; display: block; }
                     .photo-caption { font-size: 10px; text-align: center; padding: 6px; background-color: #F1F5F9; color: #475569; border-top: 1px solid #CBD5E1; font-weight: bold; }
-                    .no-photo { display: flex; align-items: center; justify-content: center; height: 200px; color: #94A3B8; font-style: italic; font-size: 12px; }
+                    .no-photo { display: flex; align-items: center; justify-content: center; height: 160px; color: #94A3B8; font-style: italic; font-size: 12px; }
 
                     .snag-block.snags-compact { display: flex; gap: 12px; align-items: flex-start; page-break-inside: avoid; box-sizing: border-box; }
                     .snag-block.snags-compact .snag-details { flex: 1; min-width: 0; }
@@ -347,6 +405,9 @@ export function generateSnagReportHTML(
                         tr { page-break-inside: avoid; page-break-after: auto; }
                         thead { display: table-header-group; }
                         tfoot { display: table-footer-group; }
+                        ${options.format !== 'summary' ? '.summary { page-break-after: always; }' : ''}
+                        .snag-page { page-break-after: always; }
+                        .snag-page:last-of-type, .snag-page.last-page { page-break-after: auto; }
                     }
                 </style>
             </head>

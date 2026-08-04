@@ -51,6 +51,79 @@ describe('generateSnagReportHTML', () => {
         }
     ];
 
+    const generateFiveSnags = (): ProjectSnag[] => [
+        {
+            id: 's-1',
+            projectId: 'proj-1',
+            buildingId: 'bldg-1',
+            floor: 1,
+            flat: 1,
+            seq: 1,
+            description: 'Issue 1',
+            status: 'open',
+            severity: 'major',
+            areaType: 'unit',
+            photos: [],
+            createdAt: '2026-07-08T10:00:00.000Z',
+        },
+        {
+            id: 's-2',
+            projectId: 'proj-1',
+            buildingId: 'bldg-1',
+            floor: 1,
+            flat: 2,
+            seq: 2,
+            description: 'Issue 2',
+            status: 'open',
+            severity: 'minor',
+            areaType: 'unit',
+            photos: [],
+            createdAt: '2026-07-08T10:01:00.000Z',
+        },
+        {
+            id: 's-3',
+            projectId: 'proj-1',
+            buildingId: 'bldg-1',
+            floor: 1,
+            flat: 3,
+            seq: 3,
+            description: 'Issue 3',
+            status: 'in_progress',
+            severity: 'critical',
+            areaType: 'unit',
+            photos: [],
+            createdAt: '2026-07-08T10:02:00.000Z',
+        },
+        {
+            id: 's-4',
+            projectId: 'proj-1',
+            buildingId: 'bldg-1',
+            floor: 1,
+            flat: 4,
+            seq: 4,
+            description: 'Issue 4',
+            status: 'closed',
+            severity: 'cosmetic',
+            areaType: 'unit',
+            photos: [],
+            createdAt: '2026-07-08T10:03:00.000Z',
+        },
+        {
+            id: 's-5',
+            projectId: 'proj-1',
+            buildingId: 'bldg-1',
+            floor: 1,
+            flat: 5,
+            seq: 5,
+            description: 'Issue 5',
+            status: 'open',
+            severity: 'minor',
+            areaType: 'unit',
+            photos: [],
+            createdAt: '2026-07-08T10:04:00.000Z',
+        },
+    ];
+
     it('generates the detailed report without throwing', () => {
         const html = generateSnagReportHTML(mockSnags, mockProject, { format: 'detailed', filterSummary: 'All Snags' });
         expect(html).toContain('SNAG REPORT');
@@ -155,7 +228,68 @@ describe('generateSnagReportHTML', () => {
         expect(html).not.toMatch(/class="snag-block[^"]*snags-compact/);
         expect(html).not.toMatch(/class="snag-block[^"]*snags-per-/);
         
-        // Default (2-up) should SHOULD contain Floor headers
+        // Default (2-up) should contain Floor headers
         expect(html).toContain('Floor 1');
+    });
+
+    it('chunks detailed report into exactly 3 snag-page divs for 5 snags with snagsPerPage: 2', () => {
+        const snags = generateFiveSnags();
+        const html = generateSnagReportHTML(snags, mockProject, { format: 'detailed', snagsPerPage: 2 });
+        const pageMatches = html.match(/<div class="snag-page[^"]*">/g);
+        expect(pageMatches).not.toBeNull();
+        expect(pageMatches!.length).toBe(3);
+    });
+
+    it.each([2, 4])('renders every snag reference exactly once in detailed report (snagsPerPage: %d)', (perPage) => {
+        const snags = generateFiveSnags();
+        const html = generateSnagReportHTML(snags, mockProject, { format: 'detailed', snagsPerPage: perPage as 2 | 4 });
+
+        // Expected refs for the 5 snags: 101-001, 102-002, 103-003, 104-004, 105-005
+        const expectedRefs = ['101-001', '102-002', '103-003', '104-004', '105-005'];
+        expectedRefs.forEach(ref => {
+            const matches = html.match(new RegExp(`<div class="snag-ref">${ref}</div>`, 'g'));
+            expect(matches).not.toBeNull();
+            expect(matches!.length).toBe(1);
+        });
+    });
+
+    it('suppresses page-break-after on the last snag-page', () => {
+        const snags = generateFiveSnags();
+        const html = generateSnagReportHTML(snags, mockProject, { format: 'detailed', snagsPerPage: 2 });
+        
+        // The last snag page carries the last-page class
+        expect(html).toContain('class="snag-page last-page"');
+        // CSS rule ensures last-of-type / last-page has page-break-after: auto
+        expect(html).toContain('.snag-page:last-of-type, .snag-page.last-page { page-break-after: auto; }');
+    });
+
+    it('produces one page and no (cont.) heading for a floor with a single snag', () => {
+        const singleSnag = [mockSnags[0]]; // 1 snag on floor 1
+        const html = generateSnagReportHTML(singleSnag, mockProject, { format: 'detailed', snagsPerPage: 2 });
+        
+        const pageMatches = html.match(/<div class="snag-page[^"]*">/g);
+        expect(pageMatches).not.toBeNull();
+        expect(pageMatches!.length).toBe(1);
+        expect(html).toContain('Floor 1');
+        expect(html).not.toContain('Floor 1 (cont.)');
+        expect(html).not.toContain('(cont.)');
+    });
+
+    it('preserves total count of snag-block occurrences across all perPage settings', () => {
+        const snags = generateFiveSnags();
+        [2, 3, 4].forEach(perPage => {
+            const html = generateSnagReportHTML(snags, mockProject, { format: 'detailed', snagsPerPage: perPage as 2 | 3 | 4 });
+            const blockMatches = html.match(/class="snag-block/g);
+            expect(blockMatches).not.toBeNull();
+            expect(blockMatches!.length).toBe(snags.length);
+        });
+    });
+
+    it('includes page-break-after: always on .summary in detailed mode, but not in summary mode', () => {
+        const detailedHtml = generateSnagReportHTML(mockSnags, mockProject, { format: 'detailed' });
+        expect(detailedHtml).toContain('.summary { page-break-after: always; }');
+
+        const summaryHtml = generateSnagReportHTML(mockSnags, mockProject, { format: 'summary' });
+        expect(summaryHtml).not.toContain('.summary { page-break-after: always; }');
     });
 });
