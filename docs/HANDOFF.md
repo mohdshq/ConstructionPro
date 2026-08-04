@@ -90,3 +90,21 @@ AI via Supabase Edge Functions calling Gemini (`supabase/functions/_shared/gemin
   `formatBuildingLabel` in `lib/projects/buildings.ts`.
 - STILL OUTSTANDING: nothing retries a 'pending' snag. Reconnecting does not
   clear it. That is S7c, the next task.
+
+## Update (Aug 2026) — S7c complete
+- `lib/ai/enrichmentQueue.ts` (pure) + `lib/ai/useEnrichmentWorker.ts` (mounted
+  once in `app/_layout.tsx`) drain snags stuck at 'pending'/'failed'.
+  Oldest-first, single-flight, 15s poll, exponential backoff (5s/15s/45s/135s,
+  capped 300s), hard cap at 5 attempts.
+- Verified on device: 8 snags drained; 3 transient edge-function failures
+  auto-recovered on the next attempt; queue then went quiet (no retry loop).
+- Legacy snags with NULL `ai_status` are only candidates if their description
+  is exactly 'Pending analysis'. Without this the worker re-analysed 34 already
+  complete snags. Do not widen that filter.
+- The worker never overwrites a description the user edited — it re-reads the
+  stored value and only writes when it is still 'Pending analysis'.
+- The polling interval is created ONCE with a `[]` dependency array; `isOffline`
+  is read from a ref. Depending on `isOffline` caused duplicate bursts on
+  network flap.
+- Remaining: S7d (pending/failed badges in the UI), S8 (write at capture time),
+  S9 (photos off base64).

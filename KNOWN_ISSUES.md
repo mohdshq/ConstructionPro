@@ -176,3 +176,12 @@ release — planned improvements.
   Add a global to jest setup or avoid `__DEV__` outside app/.
 - Area Type chip row has no horizontal-scroll affordance; options off-screen
   right are undiscoverable.
+
+## ai-snag-from-photo returns non-2xx ~25% of the time
+- Observed 3 failures in 11 calls; every one succeeded on retry with the SAME
+  photo, so the fault is server-side, not payload-related.
+- Most likely Gemini wrapping JSON in a ```json fence, which the function
+  rejects as "AI returned invalid format".
+- Masked by the S7c retry worker, so low urgency — but it wastes latency and
+  API spend. Fix: strip markdown fences before JSON.parse in
+  `supabase/functions/ai-snag-from-photo/index.ts` and log the raw response.
