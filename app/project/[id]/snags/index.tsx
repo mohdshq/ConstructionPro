@@ -5,6 +5,7 @@ import { useProjectsStore, ProjectSnag } from '../../../../store/projectsStore';
 import { useThemeColors } from '../../../../store/useThemeColors';
 import BackButton from '../../../../components/BackButton';
 import ProjectImage from '../../../../components/ProjectImage';
+import SnagAiStatusBadge from '../../../../components/SnagAiStatusBadge';
 import { Plus, Camera, FileText } from 'lucide-react-native';
 import { makeUnitCode } from '../../../../lib/units/unitCode';
 import { makeSnagRef } from '../../../../lib/units/snagRef';
@@ -76,7 +77,11 @@ export default function SnagsListScreen() {
     };
 
     if (!project) {
-        return <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}><Text>Project not found</Text></View>;
+        return (
+            <View style={[styles.emptyContainer, { backgroundColor: colors.background }]}>
+                <Text style={[styles.emptyText, { color: colors.text }]}>Project not found</Text>
+            </View>
+        );
     }
 
     const renderSnag = ({ item }: { item: ProjectSnag }) => {
@@ -100,6 +105,11 @@ export default function SnagsListScreen() {
                     <View style={styles.titleRow}>
                         <Text style={[styles.refText, { color: colors.text }]}>{ref}</Text>
                         <View style={styles.badges}>
+                            <SnagAiStatusBadge 
+                                aiStatus={item.aiStatus}
+                                aiAttempts={item.aiAttempts}
+                                aiError={item.aiError}
+                            />
                             <View style={[styles.badge, { backgroundColor: item.severity === 'critical' ? '#FEE2E2' : '#F3F4F6' }]}>
                                 <Text style={[styles.badgeText, { color: item.severity === 'critical' ? '#EF4444' : '#4B5563' }]}>{item.severity.toUpperCase()}</Text>
                             </View>
@@ -265,7 +275,7 @@ const styles = StyleSheet.create({
     contentContainer: { flex: 1, gap: 4 },
     titleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
     refText: { fontSize: 16, fontWeight: '700' },
-    badges: { flexDirection: 'row', gap: 6 },
+    badges: { flexDirection: 'row', gap: 6, alignItems: 'center' },
     badge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
     badgeText: { fontSize: 10, fontWeight: '700' },
     descText: { fontSize: 14 },

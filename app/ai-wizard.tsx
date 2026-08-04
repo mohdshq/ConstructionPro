@@ -13,6 +13,7 @@ import { useStore } from '../store/useStore';
 import { useThemeColors } from '../store/useThemeColors';
 import { persistCapturedSnags, normalizeFloorToInt, patchSnagSuccess, patchSnagFailure } from '../lib/ai/persistSnags';
 import { formatBuildingLabel } from '../lib/projects/buildings';
+import SnagAiStatusBadge from '../components/SnagAiStatusBadge';
 
 async function invokeAIWithTimeout(functionName: string, payload: any, ms = 45000): Promise<{ data: any, error: any }> {
     let timeoutId: ReturnType<typeof setTimeout>;
@@ -633,11 +634,19 @@ export default function AIWizardScreen() {
 
             {capturedSnags.length > 0 && (
                 <View style={{ marginTop: 40 }}>
-                    <Text style={{ fontWeight: 'bold', marginBottom: 12 }}>Captured ({capturedSnags.length}):</Text>
+                    <Text style={{ fontWeight: 'bold', marginBottom: 12, color: colors.text }}>Captured ({capturedSnags.length}):</Text>
                     {capturedSnags.map(s => (
-                        <View key={s.id} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
-                            <CheckCircle size={16} color="#22C55E" style={{ marginRight: 8 }} />
-                            <Text>{s.issue?.slice(0, 40)}...</Text>
+                        <View key={s.id} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8, gap: 8 }}>
+                            <CheckCircle size={16} color="#22C55E" />
+                            <Text style={{ color: colors.text, flex: 1 }} numberOfLines={1}>
+                                {s.issue || s.description || 'Snag'}
+                            </Text>
+                            <SnagAiStatusBadge
+                                aiStatus={s.aiStatus}
+                                aiAttempts={s.aiAttempts}
+                                aiError={s.aiError}
+                                compact
+                            />
                         </View>
                     ))}
                     <TouchableOpacity style={styles.finishBtn} onPress={() => navigateToReview()}>

@@ -13,6 +13,7 @@ import PickerDropdown from '../report/components/PickerDropdown';
 import { usePowerSyncSnags } from '../../../../lib/powersync/useSnags';
 import { getSnagStatusLabel } from '../../../../lib/units/snagStatus';
 import { generateSnagReportHTML } from '../../../../lib/report/templates/SnagReportHTML';
+import { countUnanalysedSnags } from '../../../../lib/units/snagAiStatus';
 
 export default function SnagReportScreen() {
     const router = useRouter();
@@ -95,12 +96,7 @@ export default function SnagReportScreen() {
         return <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}><Text>Project not found</Text></View>;
     }
 
-    const handleSharePDF = async () => {
-        if (filteredSnags.length === 0) {
-            Alert.alert('Empty', 'No snags to export.');
-            return;
-        }
-
+    const executeExport = async () => {
         try {
             setIsGenerating(true);
 
@@ -136,6 +132,44 @@ export default function SnagReportScreen() {
         } finally {
             setIsGenerating(false);
         }
+    };
+
+    const handleSharePDF = () => {
+        if (filteredSnags.length === 0) {
+            Alert.alert('Empty', 'No snags to export.');
+            return;
+        }
+
+        const unanalysedCount = countUnanalysedSnags(filteredSnags);
+        if (unanalysedCount > 0) {
+            const countText = unanalysedCount === 1 ? '1 snag is' : `${unanalysedCount} snags are`;
+
+            if (Platform.OS === 'web') {
+                const proceed = window.confirm(
+                    `${countText} still being analysed by AI.\n\nPlaceholder descriptions will appear in the report if exported now.\n\nProceed anyway?`
+                );
+                if (proceed) {
+                    executeExport();
+                }
+                return;
+            }
+
+            Alert.alert(
+                'Unanalysed Snags',
+                `${countText} still being analysed. Placeholder descriptions will appear in the report if you export now.`,
+                [
+                    { text: 'Cancel', style: 'cancel' },
+                    { 
+                        text: 'Proceed Anyway', 
+                        onPress: () => { executeExport(); } 
+                    }
+                ],
+                { cancelable: true }
+            );
+            return;
+        }
+
+        executeExport();
     };
 
     return (

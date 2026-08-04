@@ -8,6 +8,7 @@ import { useThemeColors } from '../../../../store/useThemeColors';
 import PhotoMarkup from '../../../../components/PhotoMarkup';
 import BackButton from '../../../../components/BackButton';
 import ProjectImage from '../../../../components/ProjectImage';
+import SnagAiStatusBadge from '../../../../components/SnagAiStatusBadge';
 import { X, Camera, Trash2 } from 'lucide-react-native';
 import { makeUnitCode } from '../../../../lib/units/unitCode';
 import { makeSnagRef } from '../../../../lib/units/snagRef';
@@ -20,7 +21,7 @@ export default function EditSnagScreen() {
     const router = useRouter();
     const { id, snagId } = useLocalSearchParams<{ id: string, snagId: string }>();
     const { getProject, updateSnag, deleteSnag, addKnownRoom } = useProjectsStore();
-    const { colors } = useThemeColors();
+    const { colors, isDark } = useThemeColors();
     
     const project = getProject(id);
     const snag = usePowerSyncSnag(snagId);
@@ -237,7 +238,26 @@ export default function EditSnagScreen() {
                 </View>
 
                 <View style={styles.formGroup}>
-                    <Text style={[styles.label, { color: colors.text }]}>Description *</Text>
+                    <View style={styles.labelRow}>
+                        <Text style={[styles.label, { color: colors.text, marginBottom: 0 }]}>Description *</Text>
+                        <SnagAiStatusBadge 
+                            aiStatus={snag?.aiStatus}
+                            aiAttempts={snag?.aiAttempts}
+                            aiError={snag?.aiError}
+                        />
+                    </View>
+                    {snag?.aiStatus === 'failed' && (snag?.aiAttempts ?? 0) >= 5 && (
+                        <View style={[styles.aiNotice, { backgroundColor: isDark ? 'rgba(239, 68, 68, 0.15)' : '#FEF2F2', borderColor: 'rgba(239, 68, 68, 0.3)' }]}>
+                            <Text style={[styles.aiNoticeText, { color: isDark ? '#FCA5A5' : '#991B1B' }]}>
+                                Automatic analysis didn't succeed — you can edit the description manually.
+                            </Text>
+                            {Boolean(snag?.aiError && snag.aiError.length < 80 && !snag.aiError.includes('\n') && !snag.aiError.includes('at ') && !snag.aiError.includes('Error:')) && (
+                                <Text style={[styles.aiErrorText, { color: isDark ? '#F87171' : '#B91C1C' }]}>
+                                    {snag?.aiError}
+                                </Text>
+                            )}
+                        </View>
+                    )}
                     <TextInput
                         style={[styles.textArea, { color: colors.text, backgroundColor: colors.inputBackground, borderColor: colors.border }]}
                         placeholder="Describe the issue..."
@@ -449,5 +469,27 @@ const styles = StyleSheet.create({
         color: '#EF4444',
         fontSize: 16,
         fontWeight: '600',
+    },
+    labelRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 8,
+    },
+    aiNotice: {
+        padding: 10,
+        borderRadius: 8,
+        borderWidth: 1,
+        marginBottom: 8,
+        gap: 4,
+    },
+    aiNoticeText: {
+        fontSize: 13,
+        fontWeight: '500',
+        lineHeight: 18,
+    },
+    aiErrorText: {
+        fontSize: 12,
+        opacity: 0.8,
     }
 });
