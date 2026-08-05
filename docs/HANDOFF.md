@@ -45,25 +45,15 @@ AI via Supabase Edge Functions calling Gemini (`supabase/functions/_shared/gemin
   existing snags are not swept into the queue.
 
 ## Roadmap
-- S7b (next) — invert capture so it is never gated on AI. In `app/ai-wizard.tsx`
-  the `ai-snag-from-photo` call (~line 285) must not be awaited; append the snag
-  immediately with `aiStatus: 'pending'` and `description: 'Pending analysis'`,
-  patching in place if/when the response arrives. Decision taken: staged
-  approach — persistence stays at Finish via `persistCapturedSnags`.
-- S7c — single-flight background drain worker keyed off `lib/useNetworkStatus.ts`.
-  Oldest-first; patches description/severity/trade/room on success; increments
-  `ai_attempts` with backoff, caps at 5 then marks 'failed'. Failed snags remain
-  fully hand-editable.
-- S7d — pending/failed badges in the snag list, "N snags still analysing" notice
-  on review, warn (do not block) on report generation.
-- S8 — move the write to capture time so each photo becomes a DB row instantly
-  and review reads from PowerSync (survives app kill mid-session).
+- [HIGHEST PRIORITY OPEN BUG] Report photo signed URLs fail (`lib/supabaseSync.ts`) — see `KNOWN_ISSUES.md`.
 - S9 — migrate photos from base64 to PowerSync attachments / local file URIs.
+- S10 (not started) — move the write to capture time so each photo becomes a DB row instantly and review reads from PowerSync (survives app kill mid-session).
+  *(Note: The S8 story ID was allocated to PDF report pagination — S8a/S8b/S8c, all complete below — and is NOT the capture-time-write task, which is now S10).*
 
 ## Conventions
 - Run as ONE chain so a failure blocks the commit:
   `npx tsc --noEmit && npx jest && git add -A && git commit -m "..."`
-- Baseline: 10 suites / 84 tests green.
+- Baseline: 11 suites / 107 tests green.
 - Test pure functions, not the store. Importing `store/projectsStore.ts` in a
   test pulls in `@/lib/powersync/system`, AsyncStorage and uuid, and the suite
   fails to resolve. Extract logic into pure `lib/**` modules and inject
@@ -119,3 +109,18 @@ AI via Supabase Edge Functions calling Gemini (`supabase/functions/_shared/gemin
   - Added bounded server-side retry, non-`STOP` finishReason / empty candidate checks, and raw response error logging.
   - Verified on Supabase `nalbazjndjozdksulbwx` with 10 unit test assertions in `lib/ai/__tests__/geminiParser.test.ts`.
 - **Rule**: Any new Gemini call MUST go through `parseGeminiJson` and MUST set an explicit `generationConfig` with `thinkingBudget: 0` — NEVER `JSON.parse` a raw Gemini reply.
+
+## Update (Aug 2026) — S7d complete
+- `lib/units/snagAiStatus.ts` holds the pure descriptor logic (`getSnagAiStatusDescriptor` returns `null` for `done` and for `undefined`/legacy status so there is zero layout shift on existing snags).
+- `components/SnagAiStatusBadge.tsx` is the presentation layer.
+- Badges are rendered in the snag list, snag detail, and `app/ai-wizard.tsx`.
+- The report screen warns but does not block when unanalysed snags are present via `countUnanalysedSnags`.
+
+## Update (Aug 2026) — S8a/S8b/S8c complete
+- **Report Template Rules (do not break)**:
+  - Detailed reports are strictly one snag per page (`snagsPerPage: 1`) with generous photos at `320px` side-by-side (`object-fit: contain`), block padding at `16px`, and description font size at `13px`.
+  - Compact mode remains four snags per page at `100px` thumbnails.
+  - `page-break-inside: avoid` must NEVER be added back to base `.snag-block` (kept only on `.snag-header` and `.snag-photo`).
+  - The `max-height: 900px; overflow: hidden` guard on `.snag-block` in detailed mode is deliberate: a pathological block clips visibly rather than being silently dropped by print engines.
+  - Any change to photo height, block padding, or snag card fields MUST be verified by opening a generated PDF because the in-app WebView preview cannot reveal print-engine pagination bugs.
+- See `KNOWN_ISSUES.md` for the full rationale and history.
