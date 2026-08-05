@@ -1,36 +1,78 @@
-import React, { useEffect, useState } from 'react';
-import { Image, ImageProps } from 'react-native';
+import React, { useEffect, useState, useCallback } from 'react';
+import {
+    Image,
+    ImageProps,
+    View,
+    Text,
+    TouchableOpacity,
+    StyleSheet,
+    ActivityIndicator,
+} from 'react-native';
 import { getSignedUrl } from '../lib/supabaseSync';
-import { useAuthStore } from '../store/useAuthStore';
+import { Image as ImageIcon, WifiOff, RefreshCw } from 'lucide-react-native';
 
 interface ProjectImageProps extends Omit<ImageProps, 'source'> {
     photoUri?: string | null;
 }
 
+type ImageState = 'loading' | 'success' | 'missing' | 'offline';
+
 export default function ProjectImage({ photoUri, style, ...props }: ProjectImageProps) {
     const [signedUrl, setSignedUrl] = useState<string | null>(null);
+    const [state, setState] = useState<ImageState>('loading');
+    const [retryCount, setRetryCount] = useState(0);
+
+    const handleRetry = useCallback(() => {
+        setState('loading');
+        setRetryCount((c) => c + 1);
+    }, []);
 
     useEffect(() => {
         let isMounted = true;
 
         async function fetchUrl() {
-            if (!photoUri) {
-                setSignedUrl(null);
+            if (!photoUri || photoUri.trim() === '') {
+                if (isMounted) {
+                    setSignedUrl(null);
+                    setState('missing');
+                }
                 return;
             }
 
-            if (photoUri.includes('://') || photoUri.startsWith('data:') || photoUri.startsWith('blob:')) {
-                if (isMounted) setSignedUrl(photoUri);
+            if (
+                photoUri.includes('://') ||
+                photoUri.startsWith('data:') ||
+                photoUri.startsWith('blob:') ||
+                photoUri.startsWith('file:')
+            ) {
+                if (isMounted) {
+                    setSignedUrl(photoUri);
+                    setState('success');
+                }
                 return;
             }
 
-            // It's a Supabase storage path
+            // Supabase storage path
+            if (isMounted) setState('loading');
             try {
-                const url = await getSignedUrl('report-photos', photoUri);
-                if (isMounted) setSignedUrl(url);
+                const res = await getSignedUrl('report-photos', photoUri);
+                if (!isMounted) return;
+
+                if (res.ok) {
+                    setSignedUrl(res.url);
+                    setState('success');
+                } else if (res.reason === 'offline') {
+                    setSignedUrl(null);
+                    setState('offline');
+                } else {
+                    setSignedUrl(null);
+                    setState('missing');
+                }
             } catch (error) {
-                console.error('Failed to get signed URL for project photo:', error);
-                if (isMounted) setSignedUrl(null);
+                if (isMounted) {
+                    setSignedUrl(null);
+                    setState('missing');
+                }
             }
         }
 
@@ -39,9 +81,82 @@ export default function ProjectImage({ photoUri, style, ...props }: ProjectImage
         return () => {
             isMounted = false;
         };
-    }, [photoUri]);
+    }, [photoUri, retryCount]);
 
-    if (!signedUrl) return null;
+    if (state === 'offline') {
+        return (
+            <TouchableOpacity
+                onPress={handleRetry}
+                activeOpacity={0.7}
+                style={[styles.placeholder, style, styles.offlineContainer]}
+                accessibilityLabel="Image offline. Tap to retry."
+                accessibilityRole="button"
+            >
+                <WifiOff size={20} color="#94A3B8" />
+                <View style={styles.retryRow}>
+                    <RefreshCw size={12} color="#64748B" />
+                    <Text style={styles.offlineText}>Retry</Text>
+                </View>
+            </TouchableOpacity>
+        );
+    }
 
-    return <Image source={{ uri: signedUrl }} style={style} {...props} />;
+    if (state === 'missing') {
+        return (
+            <View style={[styles.placeholder, style]}>
+                <ImageIcon size={22} color="#CBD5E1" />
+            </View>
+        );
+    }
+
+    if (state === 'loading' && !signedUrl) {
+        return (
+            <View style={[styles.placeholder, style]}>
+                <ActivityIndicator size="small" color="#94A3B8" />
+            </View>
+        );
+    }
+
+    if (!signedUrl) {
+        return (
+            <View style={[styles.placeholder, style]}>
+                <ImageIcon size={22} color="#CBD5E1" />
+            </View>
+        );
+    }
+
+    return (
+        <Image
+            source={{ uri: signedUrl }}
+            style={style}
+            onError={() => setState('offline')}
+            {...props}
+        />
+    );
 }
+
+const styles = StyleSheet.create({
+    placeholder: {
+        backgroundColor: '#F1F5F9',
+        justifyContent: 'center',
+        alignItems: 'center',
+        overflow: 'hidden',
+    },
+    offlineContainer: {
+        backgroundColor: '#F8FAFC',
+        borderWidth: 1,
+        borderColor: '#E2E8F0',
+        borderStyle: 'dashed',
+    },
+    retryRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginTop: 4,
+        gap: 4,
+    },
+    offlineText: {
+        fontSize: 11,
+        color: '#64748B',
+        fontWeight: '500',
+    },
+});

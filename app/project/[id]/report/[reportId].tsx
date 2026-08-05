@@ -38,6 +38,49 @@ export default function ReportViewerScreen() {
     // ─── Data Preparation (Base64 media embedding) ────────────────────
     useEffect(() => {
         let isMounted = true;
+
+        const fetchWithTimeout = async (
+            url: string,
+            timeoutMs: number = 8000
+        ): Promise<{ ok: true; dataUrl: string } | { ok: false; reason: 'offline' }> => {
+            const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+            let timer: ReturnType<typeof setTimeout> | undefined;
+            const timeoutPromise = new Promise<{ ok: false; reason: 'offline' }>((resolve) => {
+                timer = setTimeout(() => {
+                    if (controller) {
+                        try { controller.abort(); } catch { }
+                    }
+                    resolve({ ok: false, reason: 'offline' });
+                }, timeoutMs);
+            });
+
+            const fetchPromise = (async (): Promise<{ ok: true; dataUrl: string } | { ok: false; reason: 'offline' }> => {
+                try {
+                    const res = await fetch(url, controller ? { signal: controller.signal } : {});
+                    if (!res.ok) return { ok: false, reason: 'offline' };
+                    const blob = await res.blob();
+                    const reader = new FileReader();
+                    const base64 = await new Promise<string>((resolve, reject) => {
+                        reader.onloadend = () => {
+                            if (typeof reader.result === 'string') resolve(reader.result);
+                            else reject(new Error('FileReader returned non-string'));
+                        };
+                        reader.onerror = reject;
+                        reader.readAsDataURL(blob);
+                    });
+                    return { ok: true, dataUrl: base64 };
+                } catch {
+                    return { ok: false, reason: 'offline' };
+                }
+            })();
+
+            try {
+                return await Promise.race([fetchPromise, timeoutPromise]);
+            } finally {
+                if (timer) clearTimeout(timer);
+            }
+        };
+
         const prepareData = async () => {
             if (!rawData) return;
             const mappedData = JSON.parse(JSON.stringify(rawData));
@@ -52,22 +95,18 @@ export default function ReportViewerScreen() {
                         // Resolve Supabase storage paths to signed URLs
                         if (uri && !uri.startsWith('data:') && !uri.startsWith('file://') && !uri.startsWith('content://') && !uri.startsWith('/') && !uri.startsWith('http')) {
                             try {
-                                const signedUrl = await getSignedUrl('report-photos', uri);
-                                if (signedUrl) uri = signedUrl;
+                                const res = await getSignedUrl('report-photos', uri);
+                                if (res.ok) uri = res.url;
                             } catch (e) { console.error('Error getting signed URL:', e); }
                         }
 
                         if (!uri.startsWith('data:') && Platform.OS !== 'web') {
                             try {
                                 if (uri.startsWith('http')) {
-                                    const res = await fetch(uri);
-                                    const blob = await res.blob();
-                                    const reader = new FileReader();
-                                    const base64 = await new Promise((resolve) => {
-                                        reader.onloadend = () => resolve(reader.result);
-                                        reader.readAsDataURL(blob);
-                                    });
-                                    uri = base64 as string;
+                                    const byteRes = await fetchWithTimeout(uri, 8000);
+                                    if (byteRes.ok) {
+                                        uri = byteRes.dataUrl;
+                                    }
                                 } else {
                                     const b64 = await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
                                     uri = `data:image/jpeg;base64,${b64}`;
@@ -88,14 +127,9 @@ export default function ReportViewerScreen() {
                         if (!uri.startsWith('data:') && Platform.OS !== 'web') {
                             try {
                                 if (uri.startsWith('http')) {
-                                    const res = await fetch(uri);
-                                    const blob = await res.blob();
-                                    const reader = new FileReader();
-                                    const base64 = await new Promise((resolve) => {
-                                        reader.onloadend = () => resolve(reader.result);
-                                        reader.readAsDataURL(blob);
-                                    });
-                                    return base64 as string;
+                                    const byteRes = await fetchWithTimeout(uri, 8000);
+                                    if (byteRes.ok) return byteRes.dataUrl;
+                                    return uri;
                                 } else {
                                     const b64 = await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
                                     return `data:audio/m4a;base64,${b64}`;

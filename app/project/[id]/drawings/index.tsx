@@ -155,11 +155,16 @@ export default function DrawingsBrowserScreen() {
                         let fileUri = drawing.uri;
 
                         if (!fileUri.startsWith('http') && !fileUri.startsWith('file:')) {
-                            const signedUrl = await getSignedUrl('drawings', drawing.uri);
-                            if (!signedUrl) {
-                                Alert.alert('Share Failed', 'Could not prepare file for sharing');
+                            const res = await getSignedUrl('drawings', drawing.uri);
+                            if (!res.ok) {
+                                if (res.reason === 'offline') {
+                                    Alert.alert('Share Failed', 'You are offline. Connect to the internet to download this drawing for sharing.');
+                                } else {
+                                    Alert.alert('Share Failed', 'Could not prepare file for sharing');
+                                }
                                 return;
                             }
+                            const signedUrl = res.url;
                             
                             const cacheUri = FileSystem.cacheDirectory + drawing.name;
                             const downloadResult = await FileSystem.downloadAsync(signedUrl, cacheUri);

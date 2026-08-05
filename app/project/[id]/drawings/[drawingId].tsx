@@ -81,9 +81,23 @@ export default function DrawingViewerScreen() {
         const loadFile = async () => {
             setIsLoading(true);
             try {
-                const resolved = drawing.uri.startsWith('file:') || drawing.uri.startsWith('http')
-                    ? drawing.uri
-                    : await getSignedUrl('drawings', drawing.uri);
+                let resolved: string | null = null;
+                if (drawing.uri.startsWith('file:') || drawing.uri.startsWith('http')) {
+                    resolved = drawing.uri;
+                } else {
+                    const res = await getSignedUrl('drawings', drawing.uri);
+                    if (res.ok) {
+                        resolved = res.url;
+                    } else if (res.reason === 'offline') {
+                        setErrorMsg('Offline — cannot load drawing from cloud.');
+                        setIsLoading(false);
+                        return;
+                    } else {
+                        setErrorMsg('Could not load file from storage.');
+                        setIsLoading(false);
+                        return;
+                    }
+                }
                 if (!resolved) { setErrorMsg('Could not load file from storage.'); setIsLoading(false); return; }
                 setSignedUrl(resolved);
 

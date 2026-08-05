@@ -271,31 +271,80 @@ export async function uploadPhoto(
     return storagePath;
 }
 
+export type SignedUrlResult =
+    | { ok: true; url: string }
+    | { ok: false; reason: 'missing' | 'offline' | 'unauthorized' | 'unknown'; message?: string };
+
 /**
- * Get a signed URL for a private storage file (valid for 1 hour).
+ * Get a signed URL for a private storage file (valid for 1 hour by default)
+ * with timeout and discriminated error classification.
  */
 export async function getSignedUrl(
     bucket: 'report-photos' | 'drawings' | 'avatars',
     path: string | null | undefined,
-    expiresIn: number = 3600
-): Promise<string | null> {
-    if (!path || path.trim() === '') return null;
-
-    const { data, error } = await supabase.storage
-        .from(bucket)
-        .createSignedUrl(path, expiresIn);
-
-    if (error) {
-        const msg = error.message?.toLowerCase() ?? '';
-        if (msg.includes('not found')) {
-            if (__DEV__) console.debug('[getSignedUrl] missing object skipped:', bucket, path);
-            return null;
-        }
-        console.error('Error getting signed URL:', error.message);
-        return null;
+    expiresIn: number = 3600,
+    timeoutMs: number = 8000
+): Promise<SignedUrlResult> {
+    if (!path || path.trim() === '') {
+        return { ok: false, reason: 'missing', message: 'Empty or invalid storage path' };
     }
 
-    return data.signedUrl;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeoutPromise = new Promise<SignedUrlResult>((resolve) => {
+        timer = setTimeout(() => {
+            resolve({ ok: false, reason: 'offline', message: `Request timed out after ${timeoutMs}ms` });
+        }, timeoutMs);
+    });
+
+    try {
+        const fetchPromise = (async (): Promise<SignedUrlResult> => {
+            try {
+                const { data, error } = await supabase.storage
+                    .from(bucket)
+                    .createSignedUrl(path, expiresIn);
+
+                if (error) {
+                    const msg = (error.message || '').toLowerCase();
+                    const status = (error as any).status || (error as any).statusCode;
+
+                    if (msg.includes('not found') || status === 404) {
+                        if (typeof __DEV__ !== 'undefined' && __DEV__) {
+                            console.debug('[getSignedUrl] missing object skipped:', bucket, path);
+                        }
+                        return { ok: false, reason: 'missing', message: error.message };
+                    }
+                    if (status === 401 || status === 403 || msg.includes('unauthorized') || msg.includes('forbidden') || msg.includes('jwt')) {
+                        return { ok: false, reason: 'unauthorized', message: error.message };
+                    }
+                    if (msg.includes('network') || msg.includes('fetch') || msg.includes('failed to fetch') || msg.includes('timeout') || msg.includes('abort') || msg.includes('offline') || status === 0) {
+                        return { ok: false, reason: 'offline', message: error.message };
+                    }
+                    return { ok: false, reason: 'unknown', message: error.message };
+                }
+
+                if (data?.signedUrl) {
+                    return { ok: true, url: data.signedUrl };
+                }
+                return { ok: false, reason: 'unknown', message: 'No signed URL returned' };
+            } catch (err: any) {
+                const msg = (err?.message || '').toLowerCase();
+                if (msg.includes('not found')) {
+                    if (typeof __DEV__ !== 'undefined' && __DEV__) {
+                        console.debug('[getSignedUrl] missing object skipped:', bucket, path);
+                    }
+                    return { ok: false, reason: 'missing', message: err?.message };
+                }
+                if (msg.includes('network') || msg.includes('fetch') || msg.includes('abort') || msg.includes('timeout') || msg.includes('offline')) {
+                    return { ok: false, reason: 'offline', message: err?.message || 'Network error' };
+                }
+                return { ok: false, reason: 'unknown', message: err?.message || 'Unknown error' };
+            }
+        })();
+
+        return await Promise.race([fetchPromise, timeoutPromise]);
+    } finally {
+        if (timer) clearTimeout(timer);
+    }
 }
 
 /**
