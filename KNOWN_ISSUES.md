@@ -15,10 +15,6 @@ we proceed to Milestone 2 (Sentry/PostHog observability).
       in snag photo upload payload. Crashes the AI snag-from-photo feature.
       *(Needs re-verification: predates the entire S5–S7 rework and may already
       be fixed incidentally. Verify against current main before spending time on it).*
-- [ ] `app/project/[id]/report/create.tsx:434` — Undefined variable `project`
-      in snag photo upload payload. Crashes the AI snag-from-photo feature.
-      NEEDS RE-VERIFICATION against current main — predates the S5–S7 rework
-      and may already be fixed incidentally.
 - [x] ~~`app/ai-wizard.tsx` — RUNTIME ISSUE: screen hangs while loading and
       silently navigates back to dashboard when user records a snag.~~
       **RESOLVED / SUPERSEDED in S5 & S7b.** The entire flow was rebuilt across
@@ -181,7 +177,7 @@ release — planned improvements.
   while the same curl from the Mac succeeds. Root cause unknown; watch
   `[invoke] ttfbMs`. Suspect managed Wi-Fi (Azizi_Phase4) client isolation.
 - Snag photos are stored base64 in `ProjectSnag.photos: string[]`. Will not
-  scale; migrate to PowerSync attachments / local file URIs.
+  scale; migrate to PowerSync attachments / local file URIs. Note: detailed reports now embed 320px images, so report HTML size grows with snag count and the base64 storage problem is becoming more pressing, not less.
 - `__DEV__` is undefined under Jest — any `if (__DEV__)` in lib/ breaks tests.
   Add a global to jest setup or avoid `__DEV__` outside app/.
 - Area Type chip row has no horizontal-scroll affordance; options off-screen
@@ -202,16 +198,16 @@ release — planned improvements.
 - **Post-deploy verification**: All recently drained snags at `ai_status = 'done'`, four at `ai_attempts = 0` and one at `ai_attempts = 1`.
 - **Caveat**: The post-fix sample was only 5 snags, so a larger drain should be re-checked before treating the failure rate as zero.
 
-## ✅ RESOLVED — S8a / S8b — PDF report pagination and print rendering data loss (dropped snags)
+## ✅ RESOLVED — S8a / S8b / S8c — PDF report pagination and print rendering data loss (dropped snags)
 - **Historical observation / Repro**: Snags disappeared from exported PDF snag reports despite being counted in the summary header. The WebView in-app preview rendered all snags as a continuous scrolling document, so the issue was invisible until the generated PDF was opened in a native viewer.
 - **Root causes**:
-  1. No deterministic pagination chunking: `snagsPerPage` only set CSS density classes, relying entirely on WebKit print pagination.
+  1. No deterministic pagination chunking: before S8a, `snagsPerPage` performed no pagination whatsoever — it only set a CSS density class that activated at `perPage >= 3`. "2 per page" was never real. All placement was left to WebKit heuristics, which is why the behaviour was unpredictable and why a snag could vanish while the summary still counted it.
   2. `page-break-inside: avoid` on tall `.snag-block` elements: when a block was too tall to fit the remaining space on a page (e.g. following summary cards or other blocks), WebKit's print engine pushed it across boundaries and dropped it entirely.
-- **Fix (Tasks S8a & S8b)**:
-  - Added deterministic chunking in `lib/report/templates/SnagReportHTML.ts`: snags per floor are chunked into pages of `snagsPerPage`, wrapped in `<div class="snag-page">` with `page-break-after: always` and repeated `(cont.)` floor headers.
-  - Added `page-break-after: always` on `.summary` for detailed mode so snag pages start on fresh A4 pages.
-  - Removed `page-break-inside: avoid` from base `.snag-block` (kept on `.snag-header` and `.snag-photo` so individual items are not broken).
-  - Scaled photo height to `130px` (contain) and reduced block padding (`10px`) and margins (`12px`) so 2 detailed blocks comfortably fit on a standard A4 page (`margin: 10mm`).
-  - Added `page-break-inside: avoid` to `.snag-page.snag-page-single` for single-snag continuation pages.
+- **Resolution (Tasks S8a, S8b & S8c)**:
+  - **Deterministic Chunking (S8a)**: In `lib/report/templates/SnagReportHTML.ts`, floor snags are chunked into pages of `snagsPerPage`, wrapped in `<div class="snag-page">` with `page-break-after: always` and repeated `(cont.)` floor headers. Added `page-break-after: always` on `.summary` for detailed mode so snag pages start on fresh A4 pages.
+  - **Removed dangerous CSS (S8b)**: Removed `page-break-inside: avoid` from base `.snag-block` (kept on `.snag-header` and `.snag-photo` so individual items are not broken). *(Note: the 130px/2-per-page geometry explored in S8b was a transitional step and is no longer current behaviour).*
+  - **Detailed Report Redesign (S8c)**: Detailed reports are now strictly one snag per page (`snagsPerPage: 1`) with generous photos at `320px` side-by-side (`object-fit: contain`), block padding at `16px`, and description font size at `13px`. Compact mode remains four snags per page at `100px` thumbnails.
+  - **Pathological Overflow Guard (S8c)**: `.snag-block` in detailed mode carries `max-height: 900px; overflow: hidden` as a deliberate safety guard: a pathological block clips visibly rather than being silently dropped by the print engine. Visible clipping is a reportable bug; silent omission ships to a client unnoticed.
+  - **Single-page avoid headroom**: Because detailed mode is now one-snag-per-page, every detailed page receives the `snag-page-single` class and therefore `page-break-inside: avoid`. This is the same property that caused the original loss, and it is safe here only because a detailed page runs roughly 530px against about 1000px of printable A4 at 10mm margins. If anyone increases photo height, block padding, or adds fields to the snag card, that headroom must be re-checked against a real PDF.
 - **Key Takeaway / Verification rule**: The WebView preview cannot detect print-engine pagination and clipping bugs. All future report template changes MUST be verified by opening the generated PDF, not just inspecting the WebView preview.
 
