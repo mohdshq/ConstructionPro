@@ -209,13 +209,31 @@ describe('Report HTML generation with offline/missing logos (Step 5a)', () => {
         },
     ];
 
-    it('produces valid HTML with neutral placeholder when logo cannot be resolved', () => {
+    it('produces valid HTML with client name in header placeholder when logo cannot be resolved', () => {
         const html = generateSnagReportHTML(mockSnags, mockProject, { format: 'detailed' });
 
         expect(html).toContain('<!DOCTYPE html>');
         expect(html).toContain('SNAG REPORT');
         expect(html).toContain('Marina Towers');
-        expect(html).toContain('MAIN CONTRACTOR');
+        expect(html).toContain('Emaar');
+    });
+
+    it('falls back to project.name then MAIN CONTRACTOR when client is absent', () => {
+        const projectEmptyClient: Project = { ...mockProject, client: '' };
+        const htmlNoClient = generateSnagReportHTML(mockSnags, projectEmptyClient, { format: 'detailed' });
+        expect(htmlNoClient).toContain('Marina Towers');
+
+        const projectUndefClient: Project = { ...mockProject, client: undefined as any };
+        const htmlUndef = generateSnagReportHTML(mockSnags, projectUndefClient, { format: 'detailed' });
+        expect(htmlUndef).toContain('Marina Towers');
+
+        const projectNoNameNoClient: Project = { ...mockProject, client: '', name: '' };
+        const htmlEmpty = generateSnagReportHTML(mockSnags, projectNoNameNoClient, { format: 'detailed' });
+        expect(htmlEmpty).toContain('MAIN CONTRACTOR');
+
+        const projectWithSpecialChars: Project = { ...mockProject, client: 'A & B <Contractors> "LLC"' };
+        const htmlEscaped = generateSnagReportHTML(mockSnags, projectWithSpecialChars, { format: 'detailed' });
+        expect(htmlEscaped).toContain('A &amp; B &lt;Contractors&gt; &quot;LLC&quot;');
     });
 
     it('contains no empty <img tags with missing or empty src attributes', () => {
@@ -233,5 +251,41 @@ describe('Report HTML generation with offline/missing logos (Step 5a)', () => {
         const htmlEmptyLogos = generateSnagReportHTML(mockSnags, projectWithEmptyLogos, { format: 'detailed' });
         const emptyImgMatches2 = htmlEmptyLogos.match(/<img[^>]*src=["']\s*["']/g);
         expect(emptyImgMatches2).toBeNull();
+    });
+
+    it('renders two <img> tags and no placeholder when snag has two data:image base64 photos', () => {
+        const base64Photo1 = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+        const base64Photo2 = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+        const snagsWithPhotos: ProjectSnag[] = [
+            {
+                ...mockSnags[0],
+                photos: [base64Photo1, base64Photo2],
+            },
+        ];
+
+        const html = generateSnagReportHTML(snagsWithPhotos, mockProject, { format: 'detailed' });
+        const imgMatches = html.match(/<img[^>]*>/g);
+        expect(imgMatches).toHaveLength(2);
+        expect(html).not.toContain('No Context Photo');
+        expect(html).not.toContain('No Detail Photo');
+    });
+
+    it('renders two <img> tags and no placeholder when snag has two https:// URLs', () => {
+        const httpPhoto1 = 'https://example.com/photos/snag-context.jpg';
+        const httpPhoto2 = 'https://example.com/photos/snag-detail.jpg';
+        const snagsWithHttpPhotos: ProjectSnag[] = [
+            {
+                ...mockSnags[0],
+                photos: [httpPhoto1, httpPhoto2],
+            },
+        ];
+
+        const html = generateSnagReportHTML(snagsWithHttpPhotos, mockProject, { format: 'detailed' });
+        const imgMatches = html.match(/<img[^>]*>/g);
+        expect(imgMatches).toHaveLength(2);
+        expect(html).not.toContain('No Context Photo');
+        expect(html).not.toContain('No Detail Photo');
+        expect(html).toContain('src="https://example.com/photos/snag-context.jpg"');
+        expect(html).toContain('src="https://example.com/photos/snag-detail.jpg"');
     });
 });

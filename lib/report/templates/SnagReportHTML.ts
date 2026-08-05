@@ -3,6 +3,15 @@ import { getSnagStatusColor, getSnagStatusLabel } from '../../units/snagStatus';
 import { makeUnitCode } from '../../units/unitCode';
 import { makeSnagRef } from '../../units/snagRef';
 
+function escapeHtml(str: string): string {
+    return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
 function formatSnagLocation(snag: ProjectSnag, project: Project, building?: any): string {
     const unitCode = makeUnitCode(snag.floor, snag.flat, project, building, snag.areaType);
     const hasUnitCode = !!unitCode;
@@ -44,13 +53,31 @@ export function generateSnagReportHTML(
     const densityClass = perPage >= 3 ? `snags-compact snags-per-${perPage}` : '';
     const dateStr = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 
-    const validateLogo = (l: any) => l && typeof l === 'string' && l.length > 100 && l.startsWith('data:image') && !l.includes('undefined') && !l.includes('null');
+    const isEmbeddableImage = (l: any) => l && typeof l === 'string' && l.length > 100 && l.startsWith('data:image') && !l.includes('undefined') && !l.includes('null');
 
-    const empLogo = validateLogo(project.employerLogo) ? project.employerLogo : null;
-    const consLogo = validateLogo(project.consultantLogo) ? project.consultantLogo : null;
-    const contLogos = Array.isArray(project.contractorLogos) ? project.contractorLogos.filter(validateLogo) : [];
+    // S9 will move photos off base64 to local URIs / storage paths; this gate must not silently drop non-base64 sources.
+    const isRenderablePhoto = (p: any): boolean => {
+        if (!p || typeof p !== 'string') return false;
+        const trimmed = p.trim();
+        if (!trimmed || trimmed.includes('undefined') || trimmed.includes('null')) return false;
+        return (
+            trimmed.startsWith('data:image') ||
+            trimmed.startsWith('http://') ||
+            trimmed.startsWith('https://') ||
+            trimmed.startsWith('file://')
+        );
+    };
+
+    const empLogo = isEmbeddableImage(project.employerLogo) ? project.employerLogo : null;
+    const consLogo = isEmbeddableImage(project.consultantLogo) ? project.consultantLogo : null;
+    const contLogos = Array.isArray(project.contractorLogos) ? project.contractorLogos.filter(isEmbeddableImage) : [];
 
     const hasProjectLogos = empLogo || consLogo || contLogos.length > 0;
+    const fallbackHeaderLabel = escapeHtml(
+        (project.client && project.client.trim()) ||
+        (project.name && project.name.trim()) ||
+        'MAIN CONTRACTOR'
+    );
 
     let headerHTML = '';
 
@@ -82,7 +109,7 @@ export function generateSnagReportHTML(
         headerHTML = `
             <div class="header-container">
                 <div class="logo-container">
-                    <div style="font-weight:bold; font-size: 14px; color: #1E3A5F;">MAIN CONTRACTOR</div>
+                    <div style="font-weight:bold; font-size: 14px; color: #1E3A5F;">${fallbackHeaderLabel}</div>
                 </div>
                 <div class="header-title-container">
                     <div class="header-title">SNAG REPORT</div>
@@ -171,8 +198,8 @@ export function generateSnagReportHTML(
 
     const renderSnagCard = (snag: ProjectSnag, building: any) => {
         const ref = makeSnagRef(snag.legacyCode || makeUnitCode(snag.floor, snag.flat, project, building, snag.areaType), snag.seq);
-        const ctxPhoto = snag.photos && snag.photos[0] && validateLogo(snag.photos[0]) ? snag.photos[0] : null;
-        const detPhoto = snag.photos && snag.photos[1] && validateLogo(snag.photos[1]) ? snag.photos[1] : null;
+        const ctxPhoto = snag.photos && snag.photos[0] && isRenderablePhoto(snag.photos[0]) ? snag.photos[0] : null;
+        const detPhoto = snag.photos && snag.photos[1] && isRenderablePhoto(snag.photos[1]) ? snag.photos[1] : null;
         const snagDateStr = snag.createdAt ? new Date(snag.createdAt).toLocaleDateString('en-GB') : '-';
         
         return `
