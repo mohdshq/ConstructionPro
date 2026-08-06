@@ -167,10 +167,15 @@ release — planned improvements.
   - **S7c**: Added background AI enrichment worker (`lib/ai/useEnrichmentWorker.ts` + `lib/ai/enrichmentQueue.ts`) that drains pending/failed snags oldest-first with exponential backoff (5s/15s/45s/135s capped at 300s, max 5 attempts).
 - **Verification**: Verified on device in airplane mode — zero snag loss, snags persist locally and enrich automatically when connectivity returns.
 
-## [HIGHEST PRIORITY OPEN BUG] Report photo signed URLs fail (`lib/supabaseSync.ts`)
-- **Symptom**: `Error getting signed URL: Network request failed` logged in `lib/supabaseSync.ts`.
+## ✅ RESOLVED — S11 / S11a — Report photo signed URLs fail (`lib/supabaseSync.ts`)
+- **Historical observation**: `Error getting signed URL: Network request failed` logged in `lib/supabaseSync.ts`.
 - **Impact**: Highest-priority open bug. Reports are the primary client-facing deliverable, and a report with broken or missing images is worse than no report.
-- **Intended fix direction**: Generate signed URLs at render time (e.g. when opening/exporting a report) with a sensible expiry rather than persisting signed URLs into the database, and gracefully degrade to a local placeholder if network request fails. (Do not persist short-lived signed URLs).
+- **Resolution (Commits e149551 & db2767b)**:
+  - `getSignedUrl` now returns a discriminated `SignedUrlResult` (`{ ok: true; url: string } | { ok: false; reason: 'missing' | 'offline' | 'unauthorized' | 'unknown'; message?: string }`) instead of a bare `null`, allowing callers (`ProjectImage.tsx`, `report/[reportId].tsx`, `drawings/`) to distinguish a genuinely absent object from a transient network failure or auth expiration.
+  - An 8000ms timeout wraps both the `createSignedUrl` call and the byte fetch in `app/project/[id]/report/[reportId].tsx` so offline/hung network requests fail gracefully and quickly.
+  - Empty or whitespace-only paths short-circuit immediately with `{ ok: false, reason: 'missing' }` without making network calls.
+  - Header logo fallback: when project logos fail to resolve, the report header renders the client name (`project.client`), falling back to `project.name`, and only to `MAIN CONTRACTOR` if both are empty (HTML-escaped).
+- **Verification gap**: Offline branches are covered by mocked unit tests in `lib/__tests__/signedUrl.test.ts` (124/124 tests passing) and have NOT been verified on a real device in airplane mode, because simulator builds are currently blocked by macOS Developer Mode being disabled.
 
 ## S5 follow-ups (observed, not yet fixed)
 - Intermittent edge-function stall: ~61KB POST from device hangs with no TTFB
@@ -198,16 +203,17 @@ release — planned improvements.
 - **Post-deploy verification**: All recently drained snags at `ai_status = 'done'`, four at `ai_attempts = 0` and one at `ai_attempts = 1`.
 - **Caveat**: The post-fix sample was only 5 snags, so a larger drain should be re-checked before treating the failure rate as zero.
 
-## ✅ RESOLVED — S8a / S8b / S8c — PDF report pagination and print rendering data loss (dropped snags)
+## ✅ RESOLVED — S8a / S8b / S8c / S11a — PDF report pagination, print rendering data loss & photo gate
 - **Historical observation / Repro**: Snags disappeared from exported PDF snag reports despite being counted in the summary header. The WebView in-app preview rendered all snags as a continuous scrolling document, so the issue was invisible until the generated PDF was opened in a native viewer.
 - **Root causes**:
   1. No deterministic pagination chunking: before S8a, `snagsPerPage` performed no pagination whatsoever — it only set a CSS density class that activated at `perPage >= 3`. "2 per page" was never real. All placement was left to WebKit heuristics, which is why the behaviour was unpredictable and why a snag could vanish while the summary still counted it.
   2. `page-break-inside: avoid` on tall `.snag-block` elements: when a block was too tall to fit the remaining space on a page (e.g. following summary cards or other blocks), WebKit's print engine pushed it across boundaries and dropped it entirely.
-- **Resolution (Tasks S8a, S8b & S8c)**:
+- **Resolution (Tasks S8a, S8b, S8c & S11a)**:
   - **Deterministic Chunking (S8a)**: In `lib/report/templates/SnagReportHTML.ts`, floor snags are chunked into pages of `snagsPerPage`, wrapped in `<div class="snag-page">` with `page-break-after: always` and repeated `(cont.)` floor headers. Added `page-break-after: always` on `.summary` for detailed mode so snag pages start on fresh A4 pages.
   - **Removed dangerous CSS (S8b)**: Removed `page-break-inside: avoid` from base `.snag-block` (kept on `.snag-header` and `.snag-photo` so individual items are not broken). *(Note: the 130px/2-per-page geometry explored in S8b was a transitional step and is no longer current behaviour).*
   - **Detailed Report Redesign (S8c)**: Detailed reports are now strictly one snag per page (`snagsPerPage: 1`) with generous photos at `320px` side-by-side (`object-fit: contain`), block padding at `16px`, and description font size at `13px`. Compact mode remains four snags per page at `100px` thumbnails.
   - **Pathological Overflow Guard (S8c)**: `.snag-block` in detailed mode carries `max-height: 900px; overflow: hidden` as a deliberate safety guard: a pathological block clips visibly rather than being silently dropped by the print engine. Visible clipping is a reportable bug; silent omission ships to a client unnoticed.
   - **Single-page avoid headroom**: Because detailed mode is now one-snag-per-page, every detailed page receives the `snag-page-single` class and therefore `page-break-inside: avoid`. This is the same property that caused the original loss, and it is safe here only because a detailed page runs roughly 530px against about 1000px of printable A4 at 10mm margins. If anyone increases photo height, block padding, or adds fields to the snag card, that headroom must be re-checked against a real PDF.
+  - **Decoupled Photo Gate ahead of S9 (S11a)**: `validateLogo` was split into `isEmbeddableImage` (header logos, base64-only) and `isRenderablePhoto` (snag photos in `renderSnagCard`, accepts `data:image`, `http://`, `https://`, and `file://` URIs). The old combined gate would have silently rendered "No Context Photo" for every snag once S9 moves photos off base64 to local file URIs or remote URLs. `isRenderablePhoto` must NOT be narrowed back to a base64-only check.
 - **Key Takeaway / Verification rule**: The WebView preview cannot detect print-engine pagination and clipping bugs. All future report template changes MUST be verified by opening the generated PDF, not just inspecting the WebView preview.
 

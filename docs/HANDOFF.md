@@ -45,7 +45,6 @@ AI via Supabase Edge Functions calling Gemini (`supabase/functions/_shared/gemin
   existing snags are not swept into the queue.
 
 ## Roadmap
-- [HIGHEST PRIORITY OPEN BUG] Report photo signed URLs fail (`lib/supabaseSync.ts`) — see `KNOWN_ISSUES.md`.
 - S9 — migrate photos from base64 to PowerSync attachments / local file URIs.
 - S10 (not started) — move the write to capture time so each photo becomes a DB row instantly and review reads from PowerSync (survives app kill mid-session).
   *(Note: The S8 story ID was allocated to PDF report pagination — S8a/S8b/S8c, all complete below — and is NOT the capture-time-write task, which is now S10).*
@@ -53,7 +52,7 @@ AI via Supabase Edge Functions calling Gemini (`supabase/functions/_shared/gemin
 ## Conventions
 - Run as ONE chain so a failure blocks the commit:
   `npx tsc --noEmit && npx jest && git add -A && git commit -m "..."`
-- Baseline: 11 suites / 107 tests green.
+- Baseline: 12 suites / 124 tests green.
 - Test pure functions, not the store. Importing `store/projectsStore.ts` in a
   test pulls in `@/lib/powersync/system`, AsyncStorage and uuid, and the suite
   fails to resolve. Extract logic into pure `lib/**` modules and inject
@@ -124,3 +123,12 @@ AI via Supabase Edge Functions calling Gemini (`supabase/functions/_shared/gemin
   - The `max-height: 900px; overflow: hidden` guard on `.snag-block` in detailed mode is deliberate: a pathological block clips visibly rather than being silently dropped by print engines.
   - Any change to photo height, block padding, or snag card fields MUST be verified by opening a generated PDF because the in-app WebView preview cannot reveal print-engine pagination bugs.
 - See `KNOWN_ISSUES.md` for the full rationale and history.
+
+## Update (Aug 2026) — S11 / S11a complete
+- `getSignedUrl` in `lib/supabaseSync.ts` now returns a discriminated `SignedUrlResult` (`{ ok: true; url: string } | { ok: false; reason: 'missing' | 'offline' | 'unauthorized' | 'unknown'; message?: string }`) rather than a bare `null`, allowing consumers to distinguish between genuinely missing storage objects and transient offline/network or auth failures.
+- Empty or whitespace-only paths short-circuit immediately with `{ ok: false, reason: 'missing' }` without making network calls.
+- An 8000ms timeout wraps both `getSignedUrl` (`createSignedUrl`) and the downstream byte-fetch in `app/project/[id]/report/[reportId].tsx` via `Promise.race` to prevent hung PDF exports when offline.
+- In `lib/report/templates/SnagReportHTML.ts`, `validateLogo` was decoupled into `isEmbeddableImage` (header logos, base64-only) and `isRenderablePhoto` (snag photos, accepts `data:image`, `http(s)://`, and `file://` URIs). This ensures that when Story S9 moves photos off base64 to local file URIs or Supabase storage paths, snag photos are not silently dropped. `isRenderablePhoto` must NOT be narrowed back to a base64-only check.
+- Header logo fallback: when project logos fail to resolve, the report header renders the client name (`project.client`), falling back to `project.name`, and only to `MAIN CONTRACTOR` if both are empty (HTML-escaped).
+- Verification gap: Offline error branches are covered by mocked unit tests in `lib/__tests__/signedUrl.test.ts` (124 tests passing). On-device / simulator airplane mode verification is pending developer mode enablement on the host Mac.
+
