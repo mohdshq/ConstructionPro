@@ -1,7 +1,7 @@
 import { DarkTheme, ThemeProvider } from '@react-navigation/native';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Platform, View, ActivityIndicator } from 'react-native';
 import Purchases from 'react-native-purchases';
 import 'react-native-reanimated';
@@ -41,16 +41,49 @@ function RootLayout() {
   const segments = useSegments();
   const router = useRouter();
 
+  // Track hydration of persisted Zustand stores
+  const [isStoreHydrated, setIsStoreHydrated] = useState(() => {
+    return useProjectsStore.persist.hasHydrated() && useStore.persist.hasHydrated();
+  });
+
+  const syncedUserIdRef = useRef<string | null>(null);
+
   // Register for push notifications
   usePushNotifications();
 
   // Background AI enrichment worker for pending snags
   useEnrichmentWorker();
 
+  // 1. Initialize Supabase Auth on mount
   useEffect(() => {
     initialize();
   }, []);
 
+  // 2. Subscribe to Zustand store hydration completion
+  useEffect(() => {
+    const checkHydration = () => {
+      if (useProjectsStore.persist.hasHydrated() && useStore.persist.hasHydrated()) {
+        setIsStoreHydrated(true);
+      }
+    };
+
+    if (useProjectsStore.persist.hasHydrated() && useStore.persist.hasHydrated()) {
+      setIsStoreHydrated(true);
+      return;
+    }
+
+    const unsubProjects = useProjectsStore.persist.onFinishHydration(checkHydration);
+    const unsubStore = useStore.persist.onFinishHydration(checkHydration);
+
+    checkHydration();
+
+    return () => {
+      unsubProjects();
+      unsubStore();
+    };
+  }, []);
+
+  // 3. Navigation / Auth gate — runs only when auth state or route segments change
   useEffect(() => {
     if (!isInitialized) return;
 
@@ -63,20 +96,41 @@ function RootLayout() {
       // Redirect away from the login page
       router.replace('/(tabs)');
     }
-
-    // Sync data from Supabase when user is authenticated
-    if (session && isInitialized) {
-      initialSync();
-      setupPowerSync().catch((e) =>
-        console.warn('[PowerSync] connect failed:', e?.message)
-      );
-    }
-    if (!session && isInitialized) {
-      teardownPowerSync().catch((e) =>
-        console.warn('[PowerSync] teardown failed:', e?.message)
-      );
-    }
   }, [session, isInitialized, segments]);
+
+  // 4. PowerSync & Supabase sync lifecycle — runs exactly once per user session
+  // after Supabase session is known AND Zustand stores have finished rehydrating.
+  useEffect(() => {
+    if (!isInitialized || !isStoreHydrated) return;
+
+    const currentUserId = session?.user?.id ?? null;
+
+    if (currentUserId) {
+      // If we already initialized sync for this specific user, do not re-run on re-render or navigation
+      if (syncedUserIdRef.current === currentUserId) return;
+      syncedUserIdRef.current = currentUserId;
+
+      // Supabase initial sync
+      initialSync();
+
+      // Connect PowerSync with explicit Sentry error logging and fallback to local-only mode
+      setupPowerSync().catch((error) => {
+        Sentry.captureException(error, {
+          tags: { layer: 'powersync', event: 'startup_connect' },
+          extra: { userId: currentUserId, message: error?.message },
+        });
+        console.warn('[PowerSync] Startup connection failed, running in local-only mode:', error?.message);
+      });
+    } else {
+      // Unauthenticated / signed out
+      if (syncedUserIdRef.current !== null) {
+        syncedUserIdRef.current = null;
+        teardownPowerSync().catch((error) => {
+          console.warn('[PowerSync] Teardown failed:', error?.message);
+        });
+      }
+    }
+  }, [isInitialized, isStoreHydrated, session?.user?.id]);
 
   useEffect(() => {
     const initRevenueCat = async () => {
