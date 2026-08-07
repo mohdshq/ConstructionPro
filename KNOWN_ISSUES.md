@@ -1,3 +1,69 @@
+# Known Issues — Triage Index
+
+> **How to use this file**: Anything in RELEASE BLOCKERS must be closed before
+> any build reaches a real user. Do not start new features while blockers are open.
+> Sections below this index are the detailed historical log — keep them. They
+> contain hard-won debugging context (see especially S7 and S8).
+
+**Last triage**: 2026-08-07
+
+## RELEASE BLOCKERS — security & data loss
+
+| # | Issue | Area | Why it blocks |
+|:--|:------|:-----|:--------------|
+| B1 | PowerSync **development tokens still ON** | Infra | Token verification effectively bypassed; entire multi-tenant DB exposed. Disable in PowerSync dashboard. |
+| B2 | Supabase **email confirmation disabled** | Auth | Anyone can register as anyone. Re-enable before first real signup. |
+| B3 | `initialSync` overwrites **folders, drawings, activities, calculations** | Sync | Offline work on these four entities is destroyed on reconnect. `syncStatus` guard exists only for projects + reports (M3.3b). Note: `supabaseSync.ts` has no update/delete for folders or drawings at all — the write path was never built. |
+| B4 | Offline creates **never flush** | Sync | Records sit at `syncStatus: 'pending'` forever. No flush-on-reconnect exists anywhere in `lib/`. User believes data was sent; office never receives it. |
+| B5 | `setupPowerSync()` **not wired into app startup** | Sync | Sync layer may not initialise deterministically. |
+| B6 | Photos stored as **base64 in `ProjectSnag.photos: string[]`** | Data/Perf | +33% size on every image, flowing through SQLite rows, sync payloads and report HTML. Will OOM the PDF WebView on large inspections. Migrate to PowerSync attachments + file URIs. |
+| B7 | `xlsx@0.18.5` — prototype pollution + ReDoS, **no npm fix exists** | Security | Abandoned on npm (fixed only in SheetJS-hosted 0.19.3+). Migrate or remove. |
+
+## HIGH — correctness
+
+| # | Issue | Area |
+|:--|:------|:-----|
+| H1 | `app/project/[id]/report/create.tsx:434` — undefined `project` in snag photo upload payload. **Re-verify against current main** (predates S5–S7 rework). | AI snag |
+| H2 | `app/project/[id]/team.tsx:51-52` — untyped Supabase RPC response; `data.success` unsafe | Team |
+| H3 | **`fetchUserProjects` filters by `user_id` only** — a user added via `project_members` never sees the shared project, yet `fetchUserActivities` / `fetchUserCalculations` *do* resolve through `project_members`. Sharing is half-wired. Resolved by Phase 7. | Sync/Team |
+| H4 | `insertCalculation(calculation: any)` — untyped parameter | Sync |
+| H5 | No Arabic / RTL despite `expo-localization` being installed | i18n |
+| H6 | Web target configured (`output: "static"`) but untested; RevenueCat throws in browser | Web |
+
+## Structural debt (not bugs — planned migrations)
+
+- **Tenancy is user-scoped throughout.** Every function in `supabaseSync.ts`
+  filters `.eq('user_id', userId)`. Phase 7 rewrites all of them.
+- **Storage paths are `{userId}/{projectId}/{filename}`**, hardcoded in
+  `uploadPhoto`, `uploadDrawingFile`, `uploadAvatar`, and mirrored in storage RLS.
+  Must become `{orgId}/...` in Phase 7, with a migration for existing objects.
+  If deferred, a departing user's files become orphaned under their prefix.
+
+## Invariants — DO NOT REGRESS
+
+These were fixed at real cost. Re-breaking them is the most likely source of
+future bugs. Detailed write-ups are further down this file.
+
+1. **`isRenderablePhoto` must accept `data:`, `https://` AND `file://` URIs.**
+   Never narrow back to a base64-only check — doing so silently renders
+   "No Context Photo" for every snag once photos move off base64. (S9 prep)
+2. **Never apply `page-break-inside: avoid` to tall blocks in report HTML.**
+   WebKit's print engine silently *drops* content that cannot fit while summary
+   counts still include it → reports that under-report snags. (S8)
+3. **PDF changes MUST be verified by opening the generated PDF**, never by
+   inspecting the WebView preview. The preview cannot reproduce print-engine
+   pagination or clipping. (S8)
+4. **Snag capture must stay non-blocking.** Enrichment is a deferred queue with
+   exponential backoff; capture never waits on network. (S7/S7b)
+5. **RLS stays enabled on every table.** No exceptions, no "temporarily".
+6. **`syncStatus` guard applies to ALL synced entities**, not just projects and reports.
+7. **`getSignedUrl` returns the discriminated `SignedUrlResult` union.** Never
+   collapse it back to a bare `null` — callers rely on distinguishing
+   `missing` / `offline` / `unauthorized`.
+8. **Supabase access goes through `lib/supabaseSync.ts` only.** Never call
+   `supabase` directly from a screen.
+
+
 # Known Issues
 
 Tracked pre-existing issues discovered during Phase 5a hardening.

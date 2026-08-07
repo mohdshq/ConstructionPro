@@ -1,230 +1,224 @@
-# ConstructionPro — Master Development Roadmap
+# ConstructionPro — Master Roadmap
 
-> **Last updated**: 2026-05-22 (Phase 3 complete)
-> **Architecture**: Expo Router v6 + React Native + Zustand + Supabase + RevenueCat
-> **Goal**: Launch a premium construction site management app on iOS/Android in ~10 weeks
-
----
-
-## Status Overview
-
-| Phase | Name | Status | Key Deliverables |
-|:---:|:---|:---:|:---|
-| 0 | Stabilization & Bug Fixes | ✅ DONE | isPremium fix, Zustand v5, cleanup, AI refactor |
-| 1 | Supabase Backend Foundation | ✅ DONE | Auth flow, DB schema, RLS, Supabase client |
-| 2 | Connect App to Live Backend | ✅ DONE | Cloud CRUD, Storage buckets, AI Edge Function, image compression |
-| 3 | Data Enhancement & Real-time | ✅ DONE | Supabase Realtime, profile sync, photo uploads, connection badge |
-| 4 | Premium Features & Polish | ✅ DONE | PDF export cloud, team sharing, advanced calculators, push notifications |
-| 5 | Launch Preparation | 🔲 | App Store assets, performance optimization, analytics, CI/CD |
+> **Last updated**: 2026-08-07
+> **Stack**: Expo SDK 54 · Expo Router v6 · RN 0.81 · Zustand v5 · Supabase ·
+> PowerSync + op-sqlite · RevenueCat (mobile IAP) · Paddle (web B2B, planned)
 
 ---
 
-## Phase 0: Stabilization & Bug Fixes ✅
+## Positioning — read before planning any work
 
-**Completed in conversation 33ee45e9**
+**What this is**: the fastest, most reliable way for a site team to produce
+**daily reports** and **snag reports** — and, uniquely, a defensible
+**contemporaneous record for delay and disruption claims**.
 
-- [x] Fixed `isPremium` rehydration bug (was forced to `false` in 3 places)
-- [x] Migrated Zustand from v3 to v5 API (modern `create` + `persist`)
-- [x] Removed 21MB `test.ipa` from git history
-- [x] Removed 8 dead script files
-- [x] Refactored AI tab to use model discovery + fallback
-- [x] Added theme system with `useThemeColors` (light/dark/system)
-- [x] Added unit system toggle (metric/imperial)
+**Primary market**: GCC construction (UAE first), where contracts run on FIDIC
+and Extension-of-Time claims live or die on contemporaneous records.
 
----
+**Sold to both**: individual site engineers buying for themselves, and companies
+buying for teams. The individual buyer is the route into the company — this is
+the proven growth path in field software, not a compromise.
 
-## Phase 1: Supabase Backend Foundation ✅
+**What this is NOT**: a Procore competitor. The previous mission ("beat Procore
+on speed, Raken on features, Fieldwire on AI") is a three-front war against three
+funded companies and is formally retired.
 
-**Completed in conversation 33ee45e9**
+**Frozen scope** — no further investment without an explicit decision:
+calculators (19+ exist; move behind a single "Tools" entry), Standards tab,
+Explore tab, general AI chat. None of these influence a purchase.
 
-- [x] Installed `@supabase/supabase-js` + `react-native-url-polyfill`
-- [x] Created `.env` with Supabase project URL and anon key
-- [x] Built `lib/supabase.ts` — typed client singleton with AsyncStorage persistence
-- [x] Created database schema (migration `20260521082100_init_schema.sql`):
-  - `profiles`, `projects`, `reports`, `drawing_folders`, `drawings`
-  - Row Level Security (RLS) on all tables
-- [x] Built auth screens: Login, Register, Forgot Password (`app/(auth)/`)
-- [x] Created `useAuthStore.ts` — session management with Supabase
-- [x] Added auth guard in `_layout.tsx` — redirects to login when unauthenticated
-- [x] Generated TypeScript types from Supabase schema
+**Buyer vs user**: the field uses it on a phone; the office buys it on a desktop.
+Both must work.
 
 ---
 
-## Phase 2: Connect App to Live Backend ✅
+## Phase status
 
-**Completed in conversation 5eb35906**
-
-- [x] **Security**: Fixed RLS policies — added `WITH CHECK` + `TO authenticated`
-- [x] **Auto-profile**: Database trigger (`handle_new_user`) creates profile on signup
-- [x] **Storage**: 3 Supabase Storage buckets (`report-photos`, `drawings`, `avatars`)
-  - Per-user folder isolation via RLS
-  - File size limits: 10MB photos, 50MB drawings, 2MB avatars
-- [x] **Auth store enhanced**: Fetches real profile from `public.profiles`
-  - Added `updateProfile()`, `refreshProfile()`, `signOut()`
-  - Added Sign Out button to Settings screen
-- [x] **Projects store → Supabase**: All CRUD operations write-through
-  - Optimistic local updates + background Supabase push
-  - `initialSync()` pulls all data from Supabase on login
-- [x] **Image compression**: `lib/imageUtils.ts` with `expo-image-manipulator`
-  - Photos: 1920px max, JPEG 0.7 (~300KB from 5MB originals)
-  - Thumbnails: 800px max, JPEG 0.6
-- [x] **AI Edge Function**: `ai-chat` deployed on Supabase
-  - Dynamic model discovery (works with any Gemini API key)
-  - Server-side API key (never exposed to client)
-  - Removed `@google/generative-ai` client-side dependency
-- [x] **Sync on login**: `_layout.tsx` triggers `initialSync()` after auth
-- [x] **Web fixes**: `Alert.alert` → `window.confirm` on web platform
+| Phase | Name | Status |
+|:---:|:---|:---:|
+| 0–4 | Foundation, backend, realtime, sharing, calculators | ✅ DONE |
+| 5a | Offline-first hardening, drawings viewer, repo polish | 🔄 IN PROGRESS |
+| **6** | **Security & data-integrity lockdown** | 🔲 **NEXT — blocks everything** |
+| 7 | Organisation model & multi-tenancy | 🔲 |
+| 8 | Monetisation (dual-rail) | 🔲 |
+| 9 | Web app | 🔲 |
+| 10 | Arabic / RTL / bilingual reports | 🔲 |
+| 11 | Delay & disruption log (the differentiator) | 🔲 |
+| 12 | Launch | 🔲 |
 
 ---
 
-## Phase 3: Data Enhancement & Real-time ✅
+## Phase 6 — Security & data-integrity lockdown 🔲
 
-**Completed in conversation 5eb35906**
+**Nothing else ships until this is done.** All items are RELEASE BLOCKERS in
+`KNOWN_ISSUES.md`.
 
-- [x] **Supabase Realtime**: Subscriptions on `projects` and `reports` tables
-  - `useRealtimeSync.ts` hook — subscribes to INSERT/UPDATE/DELETE
-  - `_applyRemote*` methods in store — local-only state updates (no infinite loop)
-  - REPLICA IDENTITY FULL for proper DELETE payloads
-- [x] **Report Photo Uploads**: Photos compressed + uploaded to `report-photos/` bucket on save
-  - Storage paths stored in `templateData` instead of local URIs
-  - Signed URL resolution when viewing reports
-  - Save button shows "Saving..." during upload
-- [x] **Profile Sync**: Settings → Supabase profiles table
-  - Avatar: compress → upload to `avatars/{userId}/avatar.jpg` → update profile
-  - Name: debounced sync (1s after typing)
-  - Dashboard uses Supabase profile data with local fallback
-- [x] **Connection Badge**: `ConnectionBadge.tsx` shows Online/Offline/Syncing + last sync time
-  - Added to Dashboard and Projects screens
-- [x] **Pull-to-Refresh**: Projects FlatList with `RefreshControl` → `initialSync()`
-- [x] **Migration**: `20260522045200_phase3_realtime.sql`
+- [ ] B1 — Disable PowerSync development tokens
+- [ ] B2 — Re-enable Supabase email confirmation
+- [ ] B5 — Wire `setupPowerSync()` into app startup
+- [ ] B3 — Extend `syncStatus` guard to folders, drawings, activities, calculations
+      *(also add the missing update/delete paths for folders and drawings)*
+- [ ] B4 — Implement flush-on-reconnect for all `pending` records, with retry +
+      exponential backoff. Reuse the S7 deferred-queue pattern.
+- [ ] B6 — Migrate photos from base64 → PowerSync attachments + local file URIs
+      *(respect Invariant 1: `isRenderablePhoto` keeps accepting all three URI forms)*
+- [ ] B7 — Remove or replace `xlsx@0.18.5`
+- [ ] H1 — Re-verify `report/create.tsx:434`
+- [ ] H2 — Type the `team.tsx` RPC response
+- [ ] H4 — Type `insertCalculation`
 
----
-
-## Phase 4: Premium Features & Polish ✅
-
-**Goal**: Build the features that differentiate ConstructionPro from competitors and justify the $19.99/month premium tier.
-
-### 4.1 Cloud PDF Generation (Deferred)
-- [-] Move PDF generation to Edge Function (faster, consistent rendering)
-- [-] PDF template versioning
-- [-] PDF download/share from cloud
-*(Local Expo Print is working very well and is instantaneous, deferring cloud generation unless needed)*
-
-### 4.2 Team Sharing ✅
-- [x] Invite team members by email
-- [x] Role-based access (Owner, Manager, Viewer)
-- [x] Activity feed per project
-
-### 4.3 Push Notifications ✅
-- [x] Expo push notifications setup
-- [x] Report submission notifications
-- [x] Team activity alerts
-
-### 4.4 Enhanced Calculators ✅
-- [x] Save calculation results to projects
-- [x] Calculation history
-- [x] Share calculations as PDF
-
-### 4.5 App Polish ✅
-- [x] Skeleton loading screens
-- [x] Pull-to-refresh on all lists
-- [x] Empty states with onboarding hints
-- [x] Error boundaries and retry UI
-- [x] Haptic feedback on actions
+**Exit criteria** — all must pass manually, on a real device:
+1. Airplane mode → create project, report, snag, folder, drawing, calculation →
+   reconnect → **all six survive and reach Supabase**
+2. Two devices edit the same record offline → reconnect → deterministic
+   resolution, no silent loss
+3. App killed mid-sync → relaunch → no corruption, no duplicates
+4. 40-snag inspection with photos → PDF renders completely;
+   **summary count == snags actually in the document**
+5. `npm audit` clean of high/critical
 
 ---
 
-## Phase 5: Launch Preparation 🔲
+## Phase 7 — Organisation model 🔲
 
-**Goal**: Get the app ready for App Store/Play Store submission.
+Do this **before** monetisation — entitlements attach to orgs, and retrofitting
+with live customer data is extremely painful.
 
-### 5.1 App Store Assets
-- [ ] App icon (all sizes)
-- [ ] Splash screen
-- [ ] App Store screenshots (iPhone, iPad)
-- [ ] Play Store feature graphic
-- [ ] App description and keywords
+- [ ] `organizations` table
+- [ ] `organization_members` (role: owner | admin | member | viewer)
+- [ ] Add `org_id` to every content table; migrate existing rows
+- [ ] Rewrite RLS: org-scoped, role-aware
+- [ ] **Rewrite every `.eq('user_id', userId)` in `lib/supabaseSync.ts`** — that
+      pattern is the current tenancy model and appears in every fetch
+- [ ] Fixes H3 by construction (shared projects become visible)
+- [ ] **Migrate storage paths `{userId}/...` → `{orgId}/...`** in `uploadPhoto`,
+      `uploadDrawingFile`, `uploadAvatar`, and storage RLS; migrate existing objects
+- [ ] Auto-create a personal org on signup
+- [ ] Invite flow; ownership transfer when a member leaves
 
-### 5.2 Performance
-- [ ] Bundle size audit
-- [ ] Image lazy loading
-- [ ] List virtualization audit
-- [ ] Startup time optimization
-
-### 5.3 Analytics & Monitoring
-- [ ] Crash reporting (Sentry or similar)
-- [ ] Usage analytics
-- [ ] RevenueCat events
-
-### 5.4 CI/CD
-- [ ] EAS Build configuration
-- [ ] Automated builds on push
-- [ ] OTA updates via EAS Update
-
-### 5.5 Security Audit
-- [ ] API key rotation plan
-- [ ] Deep link security
-- [ ] Storage bucket audit
-- [ ] RLS policy review
+**Principle**: one code path. An individual is an organisation with one member.
+No separate "personal mode" — divergent paths here will rot.
 
 ---
 
-## Architecture Reference
+## Phase 8 — Monetisation (dual-rail) 🔲
 
-```
-ConstructionPro/
-├── app/
-│   ├── (auth)/           # Login, Register, Forgot Password
-│   ├── (tabs)/           # Main app tabs
-│   │   ├── index.tsx     # Dashboard
-│   │   ├── projects.tsx  # Project list
-│   │   ├── tools.tsx     # 48 calculators
-│   │   ├── ai.tsx        # AI Assistant (Edge Function)
-│   │   ├── standards.tsx # Construction standards
-│   │   └── explore.tsx   # Community/resources
-│   ├── project/          # Project detail, reports, drawings
-│   ├── settings.tsx      # Profile, theme, premium, sign out
-│   └── _layout.tsx       # Root layout with auth guard
-├── store/
-│   ├── useAuthStore.ts   # Supabase auth + profile
-│   ├── projectsStore.ts  # Projects/reports CRUD (Zustand + Supabase)
-│   ├── useStore.ts       # App preferences (theme, units, premium)
-│   ├── useAIStore.ts     # Chat history
-│   └── useThemeColors.ts # Theme color tokens
-├── lib/
-│   ├── supabase.ts       # Supabase client singleton
-│   ├── supabaseSync.ts   # Typed CRUD helpers for all tables + storage
-│   └── imageUtils.ts     # Image compression utilities
-├── types/
-│   └── supabase.ts       # Auto-generated DB types
-├── supabase/
-│   ├── migrations/       # SQL migration files
-│   └── functions/        # Edge Functions (deployed via MCP)
-└── .env                  # EXPO_PUBLIC_SUPABASE_URL, EXPO_PUBLIC_SUPABASE_ANON_KEY
-```
+**Decision (2026-08-07): keep RevenueCat for mobile IAP.** Free to $2,500 MTR,
+then 1%. Replacing it means owning Apple/Google receipt validation, notification
+webhooks, grace periods, billing retry, restore, refunds and sandbox parity — an
+ongoing tax with a catastrophic failure mode (paying user loses access). Bad
+trade for a solo developer. RevenueCat is one rail, not the whole system.
 
----
+- [ ] **`getEntitlements(user, org)` — single source of truth.**
+      Reads RevenueCat (mobile IAP) *and* org entitlements from Supabase (web
+      purchases), returns one answer. **Every gate in the UI calls this and
+      nothing else.** This abstraction is what makes billing providers swappable.
+- [ ] Rail A — RevenueCat IAP for individuals (finish the "migration pending" keys
+      in `.env.example`)
+- [ ] Rail B — Paddle as merchant of record: onboards individuals with no trade
+      licence, handles VAT, issues the tax invoices UAE finance departments require
+- [ ] Company sign-in flow for web-purchased seats
+      *(App Review 3.1.3 enterprise-services carve-out: employees may sign in to
+      what their organisation bought. **Do not link to or advertise the external
+      purchase path inside the app.** Keep in-app copy neutral.)*
 
-## Supabase Resources
+**Tiers**
 
-| Resource | Details |
-|:---|:---|
-| **Project URL** | `https://nalbazjndjozdksulbwx.supabase.co` |
-| **Database** | PostgreSQL 17.6 |
-| **Tables** | profiles, projects, reports, drawing_folders, drawings |
-| **Storage Buckets** | report-photos, drawings, avatars |
-| **Edge Functions** | ai-chat (Gemini proxy) |
-| **Auth** | Email/password (email confirmation disabled for dev) |
+| Tier | Contents |
+|:--|:--|
+| Free | 1 active project, limited snags, **watermarked PDF export** — every exported report is marketing landing on a consultant's desk |
+| Individual | Unlimited projects/snags, own logo, clean PDFs, offline, AI enrichment. ~$15–25/mo, cheaper annually. Paid personally, so price like a personal purchase |
+| Team | Shared projects, roles, assignment, company branding, delay log. **Per project or per company — NOT per seat.** Unlimited field users |
+| Enterprise | Custom branding, SSO, support. Invoice and a conversation, not a checkout page |
+
+**Why not per-seat**: it is the loudest complaint in this market and directly
+penalises adoption. Free field seats turn the adoption barrier into the pitch.
+
+⚠️ **Free-tier cost risk**: free users on a sync- and photo-heavy offline app cost
+real money in storage and bandwidth. Keep limits tight. **Do not launch the free
+tier until B6 is done.** Track cost per active user from day one.
 
 ---
 
-## Key Decisions Log
+## Phase 9 — Web app 🔲
+
+Not optional. The consultant reviewing 200 snags will not do it on a phone, and
+the person signing the purchase order works at a desk.
+
+- [ ] Verify/repair the `output: "static"` build
+- [ ] Guard RevenueCat calls (throws in browser)
+- [ ] Responsive review screens: snag list, drawings, report preview
+- [ ] Org admin: members, roles, billing
+
+---
+
+## Phase 10 — Arabic / RTL / bilingual 🔲
+
+`expo-localization` is already a dependency and unused.
+
+- [ ] Full RTL layout support
+- [ ] AR/EN UI strings
+- [ ] **Bilingual reports** — one PDF, both languages.
+      *No competitor (PlanRadar, Fieldwire, Procore) offers this. It is the demo
+      that closes meetings in the Gulf.*
+- [ ] Hijri dates where required
+- [ ] WhatsApp as a first-class share action (the actual comms layer of GCC construction)
+
+---
+
+## Phase 11 — Delay & disruption log 🔲 ← **the differentiator**
+
+Highest-value item in the roadmap. Under FIDIC, EOT and disruption claims turn on
+**contemporaneous records**, and Clause 20 notice periods are unforgiving.
+Contractors lose eight-figure claims on poor site records.
+
+- [ ] Delay events: start/stop timestamps + cause codes
+      (weather standby · late information · access denied · client instruction ·
+      utility diversion · material shortage · authority approval)
+- [ ] Link delays to affected activities and photo evidence
+- [ ] Immutable audit trail — **record event time and creation time separately**;
+      a record created three weeks later is not contemporaneous and must not
+      appear to be
+- [ ] Formal EOT-support export
+- [ ] Notice-window awareness / reminders
+
+**Positioning**: not a $20/month field tool. Risk documentation for a contractor
+with nine figures of exposure. Price and sell accordingly.
+
+---
+
+## Phase 12 — Launch 🔲
+
+- [ ] Store assets, screenshots, privacy policy, terms
+- [ ] **Populate the `production` EAS environment** — currently only `preview` has
+      variables; production will fail exactly like the preview login bug did
+- [ ] `"environment": "production"` in the production build profile
+- [ ] Sentry source maps enabled for production (disabled in preview)
+- [ ] Design-partner programme: 5–10 UAE contractors/consultants
+- [ ] Subcontractor invite loop — free collaborators, the proven growth mechanic
+
+---
+
+## Open non-technical items
+
+- [ ] Dubai freelance permit (~AED 7.5–12K) — unlocks Stripe; defer until revenue
+      justifies it. Paddle covers the gap until then.
+- [ ] Register a trademark before spending on marketing
+
+---
+
+## Decision log
 
 | Date | Decision | Rationale |
-|:---|:---|:---|
-| 2026-05-21 | Supabase as backend | User preference; free tier, Postgres, auth, storage, edge functions |
-| 2026-05-21 | PowerSync deferred to Phase 3+ | Requires separate cloud account; get online-first working first |
-| 2026-05-21 | Write-through sync pattern | Optimistic local UI + background Supabase push; simple, works well |
-| 2026-05-21 | Gemini API key as Edge Function secret | Never expose to client; easy to rotate; any valid key works |
-| 2026-05-21 | Dynamic model discovery | User's API key didn't have access to hardcoded model names |
-| 2026-05-21 | Image compression before upload | 1920px/0.7q saves ~70% storage; user requested cost optimization |
+|:--|:--|:--|
+| 2026-05-21 | Write-through sync (optimistic local + background push) | Simple, works well |
+| 2026-05-21 | Gemini key as Edge Function secret | Never exposed to client; rotatable |
+| 2026-05-21 | Compress images 1920px/0.7q before upload | ~70% storage saving |
+| 2026-08-07 | Retire "beat Procore/Raken/Fieldwire" mission | Three-front war vs funded competitors, one part-time developer |
+| 2026-08-07 | Focus: daily reports + snagging + delay records, GCC/FIDIC first | Founder domain expertise is the only defensible moat |
+| 2026-08-07 | Sell to individuals **and** companies from one codebase | Individual buyer is the route into the company; standard field-software growth path |
+| 2026-08-07 | **Keep RevenueCat for mobile IAP** | Free <$2.5K MTR then 1%; replacing it means owning receipt validation, webhooks, grace periods, refunds |
+| 2026-08-07 | **Add Paddle as second rail for web B2B** | Merchant of record: onboards individuals with no trade licence, handles VAT, issues invoices UAE finance departments require |
+| 2026-08-07 | Org-scoped tenancy; individual = org of one | One code path; avoids painful retrofit once customers exist |
+| 2026-08-07 | Price per project/company, not per seat | Per-seat is the market's loudest complaint and penalises adoption |
+| 2026-08-07 | Freeze calculators / Standards / Explore | Maintenance burden with no influence on purchase |
