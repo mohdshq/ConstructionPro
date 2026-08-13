@@ -18,7 +18,8 @@ import * as Sentry from '@sentry/react-native';
 import { PostHogProvider } from 'posthog-react-native';
 import { OfflineBanner } from '@/components/OfflineBanner';
 import { PowerSyncContext } from '@powersync/react';
-import { setupPowerSync, teardownPowerSync, powersync } from '@/lib/powersync/system';
+import { powersync } from '@/lib/powersync/system';
+import { setupPowerSync, teardownPowerSync } from '@/lib/powersync/lifecycle';
 
 Sentry.init({
   dsn: process.env.EXPO_PUBLIC_SENTRY_DSN,
@@ -114,7 +115,7 @@ function RootLayout() {
       initialSync();
 
       // Connect PowerSync with explicit Sentry error logging and fallback to local-only mode
-      setupPowerSync().catch((error) => {
+      setupPowerSync(powersync).catch((error) => {
         Sentry.captureException(error, {
           tags: { layer: 'powersync', event: 'startup_connect' },
           extra: { userId: currentUserId, message: error?.message },
@@ -125,7 +126,7 @@ function RootLayout() {
       // Unauthenticated / signed out
       if (syncedUserIdRef.current !== null) {
         syncedUserIdRef.current = null;
-        teardownPowerSync().catch((error) => {
+        teardownPowerSync(powersync).catch((error) => {
           console.warn('[PowerSync] Teardown failed:', error?.message);
         });
       }
