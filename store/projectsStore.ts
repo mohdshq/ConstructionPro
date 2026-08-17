@@ -567,6 +567,9 @@ export const useProjectsStore = create<ProjectsState>()(
             // ──────────────────────────────────────────
             // Sync: Pull all data from Supabase
             // ──────────────────────────────────────────
+            // DEPRECATED — no longer called. UI reads via PowerSync useQuery hooks. Mutates
+            // orphaned Zustand arrays. Scheduled for deletion; see
+            // docs/powersync_investigation_report.md.
             initialSync: async () => {
                 const userId = getCurrentUserId();
                 if (!userId) {

@@ -19,7 +19,8 @@ import { PostHogProvider } from 'posthog-react-native';
 import { OfflineBanner } from '@/components/OfflineBanner';
 import { PowerSyncContext } from '@powersync/react';
 import { powersync } from '@/lib/powersync/system';
-import { setupPowerSync, teardownPowerSync } from '@/lib/powersync/lifecycle';
+import { setupPowerSync, teardownPowerSync, clearPowerSyncForNewUser } from '@/lib/powersync/lifecycle';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 Sentry.init({
   dsn: process.env.EXPO_PUBLIC_SENTRY_DSN,
@@ -111,17 +112,38 @@ function RootLayout() {
       if (syncedUserIdRef.current === currentUserId) return;
       syncedUserIdRef.current = currentUserId;
 
-      // Supabase initial sync
-      initialSync();
+      // Supabase initial sync (removed)
+      
+      const initPowerSync = async () => {
+        const lastUserId = await AsyncStorage.getItem('last_powersync_user');
+        
+        const proceedWithSetup = async () => {
+          await AsyncStorage.setItem('last_powersync_user', currentUserId);
+          setupPowerSync(powersync).catch((error) => {
+            Sentry.captureException(error, {
+              tags: { layer: 'powersync', event: 'startup_connect' },
+              extra: { userId: currentUserId, message: error?.message },
+            });
+            console.warn('[PowerSync] Startup connection failed, running in local-only mode:', error?.message);
+          });
+        };
 
-      // Connect PowerSync with explicit Sentry error logging and fallback to local-only mode
-      setupPowerSync(powersync).catch((error) => {
-        Sentry.captureException(error, {
-          tags: { layer: 'powersync', event: 'startup_connect' },
-          extra: { userId: currentUserId, message: error?.message },
-        });
-        console.warn('[PowerSync] Startup connection failed, running in local-only mode:', error?.message);
-      });
+        if (lastUserId && lastUserId !== currentUserId) {
+          await clearPowerSyncForNewUser(
+            powersync,
+            proceedWithSetup,
+            () => {
+              // User canceled, sign out to prevent mixing data
+              useAuthStore.getState().signOut();
+              syncedUserIdRef.current = null;
+            }
+          );
+        } else {
+          await proceedWithSetup();
+        }
+      };
+
+      initPowerSync();
     } else {
       // Unauthenticated / signed out
       if (syncedUserIdRef.current !== null) {

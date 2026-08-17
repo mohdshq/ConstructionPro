@@ -13,11 +13,12 @@
 |:--|:------|:-----|:--------------|
 | B1 | PowerSync **development tokens still ON** | Infra | Token verification effectively bypassed; entire multi-tenant DB exposed. Disable in PowerSync dashboard. |
 | B2 | Supabase **email confirmation disabled** | Auth | Anyone can register as anyone. Re-enable before first real signup. |
-| B3 | `initialSync` overwrites **folders, drawings, activities, calculations** | Sync | Offline work on these four entities is destroyed on reconnect. `syncStatus` guard exists only for projects + reports (M3.3b). Note: `supabaseSync.ts` has no update/delete for folders or drawings at all — the write path was never built. |
-| B4 | Offline creates **never flush** | Sync | Records sit at `syncStatus: 'pending'` forever. No flush-on-reconnect exists anywhere in `lib/`. User believes data was sent; office never receives it. |
+| ~~B3~~ | **[CLOSED / NOT-A-BUG]** `initialSync` overwriting entities | Sync | Audit revealed UI reads from PowerSync SQLite (`useQuery`), ignoring Zustand store. `initialSync` only mutated orphaned Zustand arrays without touching SQLite. Removed from startup; see `docs/powersync_investigation_report.md`. |
+| B4 | **Binary file uploads bypass PowerSync queue** | Sync | Binary file uploads (photos, avatars, drawing files) bypass the PowerSync queue and are silently lost when created offline. (Database row creates flush correctly via PowerSync CRUD queue). |
 | B5 | `setupPowerSync()` **not wired into app startup** | Sync | Sync layer may not initialise deterministically. |
 | B6 | Photos stored as **base64 in `ProjectSnag.photos: string[]`** | Data/Perf | +33% size on every image, flowing through SQLite rows, sync payloads and report HTML. Will OOM the PDF WebView on large inspections. Migrate to PowerSync attachments + file URIs. |
 | B7 | `xlsx@0.18.5` — prototype pollution + ReDoS, **no npm fix exists** | Security | Abandoned on npm (fixed only in SheetJS-hosted 0.19.3+). Migrate or remove. |
+| ~~B8~~ | **[FIXED]** Sign-out teardown wiping offline DB | Sync | `teardownPowerSync()` previously wiped SQLite DB on sign-out destroying pending offline queue. Fixed: teardown only disconnects, warns if queue non-empty; database cleared only when a different user signs in. |
 
 ## HIGH — correctness
 
@@ -62,6 +63,7 @@ future bugs. Detailed write-ups are further down this file.
    `missing` / `offline` / `unauthorized`.
 8. **Supabase access goes through `lib/supabaseSync.ts` only.** Never call
    `supabase` directly from a screen.
+9. **Sign-in requires network by design; the app must never require network to resume an existing session.**
 
 
 # Known Issues
@@ -96,19 +98,18 @@ we proceed to Milestone 2 (Sentry/PostHog observability).
       `proj.referenceNumber` which does not exist on the Project type.
 ## M2b — PostHog runtime verification ✅ VERIFIED
 - Verified live on iOS Simulator dev build: 'M2b Test Event' captured via usePostHog().capture() + flush() appeared in PostHog Events dashboard (US region). Autocapture (Application Opened) also confirmed firing.
-## M3.3 ✅ RESOLVED — Offline data-loss: partial fix (projects + reports only) 
+## M3.3 ✅ RESOLVED — Offline data-loss: resolved via PowerSync
 - M3.3b made initialSync NON-DESTRUCTIVE for projects and reports: local records
   with syncStatus === 'pending' that are absent from the server are now PRESERVED
   (not wiped), fixing the catastrophic "offline-created report disappears on sync" bug.
-- STILL DESTRUCTIVE (data-loss bug remains): folders, drawings, activities, calculations.
-  These have optimistic offline-create paths that silently swallow failures and are still
-  wholesale-overwritten by initialSync. They lack the syncStatus field.
-  TO FIX: extend M3.3a groundwork (syncStatus on interfaces/mappers/add fns) to these four,
-  then add them to the reconcile — OR resolve fully via M4 PowerSync.
+- ~~STILL DESTRUCTIVE (folders, drawings, activities, calculations)~~: **CLOSED (NOT A BUG)**.
+  Investigation (see `docs/powersync_investigation_report.md`) showed the UI reads all four entities
+  from PowerSync local SQLite (`usePowerSync*` hooks) and writes to SQLite. `initialSync` only mutated
+  orphaned Zustand arrays. `initialSync` has been deprecated and removed from startup.
 - Legacy records (syncStatus === undefined) absent from server are DROPPED by design
   (treated as remote-deleted, not resurrected) to avoid zombie data.
 - Offline EDITS to existing records: server wins on sync (edit-conflict resolution
-  deferred to M4). Only offline CREATES are preserved.
+  handled via PowerSync). Only offline CREATES are preserved.
 
 ## M3.3c ✅ RESOLVED — — Network detection + offline banner (NOT STARTED)  
 - Plan reviewed and approved: use @react-native-community/netinfo, add
@@ -161,7 +162,26 @@ Two PowerSync auth config requirements (Client Auth dashboard), required for Sup
 
 JWKS URI configured (project uses new ECC P-256 signing keys, not legacy HS256 secret): https://<project-ref>.supabase.co/auth/v1/.well-known/jwks.json
 JWT Audience must include authenticated — Supabase signs all user tokens with aud: "authenticated"; without this, sync fails with [PSYNC_S2105] Unexpected "aud" claim value.
-setupPowerSync() is NOT yet wired into app startup (deferred to M4.2). user_tokens intentionally excluded from sync (PK is user_id, kept on direct-Supabase path). Dev note: PowerSync Development tokens toggle still ON (enable for diagnostics) — disable before production.
+setupPowerSync() is wired into app startup (`app/_layout.tsx`). user_tokens intentionally excluded from sync (PK is user_id, kept on direct-Supabase path). Dev note: PowerSync Development tokens toggle still ON (enable for diagnostics) — disable before production.
+
+## PowerSync Sync Path Hardening & Lifecycle Resolution (B3, B4, B8)
+
+Detailed investigation report located at `docs/powersync_investigation_report.md`.
+
+### ✅ CLOSED (Not a Bug) — B3: `initialSync` overwrite of folders/drawings/activities/calculations
+- **Finding**: Audit of all screen files showed that the UI reads from PowerSync live query hooks (`usePowerSyncFolders`, `usePowerSyncDrawings`, `usePowerSyncActivities`, `usePowerSyncCalculations`) querying local SQLite, not Zustand state.
+- **Action**: `initialSync()` was only mutating orphaned arrays in Zustand without touching the local SQLite database. Removed `initialSync()` execution from `app/_layout.tsx` startup and marked `initialSync` as deprecated in `store/projectsStore.ts`.
+
+### ⚠️ RE-SCOPED — B4: Binary file uploads bypass PowerSync queue
+- **Finding**: Database rows (`projects`, `reports`, `snags`, `folders`, `drawings`, `activities`, `calculations`) write to SQLite and are automatically flushed upon reconnect via `Connector.uploadData()`.
+- **Re-scope**: B4 now specifically tracks binary file uploads (`uploadPhoto`, `uploadAvatar`, `uploadDrawingFile` in `lib/supabaseSync.ts`) which use direct HTTP uploads (`FileSystem.uploadAsync`). When offline, these uploads fail immediately and are not queued, resulting in missing files in Supabase Storage.
+
+### ✅ RESOLVED (FIXED) — B8: Sign-out teardown wiping offline SQLite database
+- **Finding**: `teardownPowerSync()` previously called `powersync.disconnectAndClear()` upon sign-out, dropping the local SQLite DB and destroying any pending CRUD queue entries created offline.
+- **Fix**:
+  1. `teardownPowerSync()` now calls `powersync.disconnect()` only, preserving the local SQLite DB and pending queue across sessions.
+  2. Inspects `powersync.getUploadQueueStats()` on sign-out to show a non-blocking informational warning if unsynced changes are pending.
+  3. `clearPowerSyncForNewUser()` introduced in `lib/powersync/lifecycle.ts`. On startup, `app/_layout.tsx` compares `currentUserId` with `last_powersync_user` in AsyncStorage. The database is cleared *only* when a different user signs in (with explicit destructive-action confirmation if unsynced items are present).
 
 ### ✅ RESOLVED — Storage uploads via uriToBlob write 0-byte files (uploadPhoto, uploadAvatar)
 - ✅ RESOLVED (branch fix/upload-blob-zero-bytes): `uploadPhoto` and `uploadAvatar` now use `FileSystem.uploadAsync` with `BINARY_CONTENT` (same fix applied to `uploadDrawingFile` in M6.3b). Verified on iOS: avatar and report-photo uploads write real (non-zero) bytes to their Supabase Storage buckets and render correctly in-app. `uriToBlob` removed from `lib/supabaseSync.ts`.
