@@ -5,6 +5,9 @@ import { supabase } from '@/lib/supabase';
 
 export class Connector implements PowerSyncBackendConnector {
   async fetchCredentials() {
+    // getSession() remains a plain call: with processLock configured in lib/supabase.ts,
+    // this call serializes safely against concurrent app-side token refreshes, preventing
+    // Supabase's refresh-token reuse detection from triggering legitimate session revocations (B10).
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return null;
     return {

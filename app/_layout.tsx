@@ -2,7 +2,7 @@ import { DarkTheme, ThemeProvider } from '@react-navigation/native';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef, useState } from 'react';
-import { Platform, View, ActivityIndicator } from 'react-native';
+import { Platform, View, ActivityIndicator, AppState } from 'react-native';
 import Purchases from 'react-native-purchases';
 import 'react-native-reanimated';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -23,6 +23,7 @@ import { powersync } from '@/lib/powersync/system';
 import { setupPowerSync, teardownPowerSync, clearPowerSyncForNewUser } from '@/lib/powersync/lifecycle';
 import { supabase } from '@/lib/supabase';
 import { saveLastSession, isAuthServerRejection } from '@/lib/auth/offlineSession';
+import { handleAppStateAuthRefresh } from '@/lib/auth/appStateAutoRefresh';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 Sentry.init({
@@ -242,6 +243,18 @@ function RootLayout() {
       }
     };
     initRevenueCat();
+  }, []);
+
+  // 7. Manage Supabase token auto-refresh on AppState changes (B10)
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (state) => {
+      const currentAuthMode = useAuthStore.getState().authMode;
+      handleAppStateAuthRefresh(state, currentAuthMode, supabase.auth);
+    });
+
+    return () => {
+      subscription.remove();
+    };
   }, []);
 
   if (!isInitialized) {

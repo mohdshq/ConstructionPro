@@ -27,6 +27,10 @@
 - **Setting**: **Enabled**.
 - **Rationale**: Prevents unauthorized registration and prevents arbitrary account takeover by requiring verified ownership of the email address prior to first sign-in.
 
+### Detect and Revoke Potentially Compromised Refresh Tokens (Release Blocker B10)
+- **Setting**: **Enabled**.
+- **Rationale**: Critical auth security protection against token replay / theft attacks. With `processLock` configured in `lib/supabase.ts`, concurrent in-process token refresh calls are serialized, making this protection completely safe from false-positive session revocations.
+
 ---
 
 ## 2. PowerSync Dashboard Settings
@@ -50,5 +54,6 @@
 | **Supabase** | Inactivity Timeout | `Disabled` | Preserves offline-grace field sessions |
 | **Supabase** | Single Session Per User | `Disabled` | Allows simultaneous Phone + Tablet usage |
 | **Supabase** | Confirm Email | `Enabled` | Enforces email verification on signup (B2) |
+| **Supabase** | Detect Compromised Refresh Tokens | `Enabled` | Prevents token reuse attacks; safe via `processLock` (B10) |
 | **PowerSync** | Dev Tokens | `Disabled` | Enforces secure JWKS token verification (B1) |
 | **PowerSync** | JWT Audience | `authenticated` | Authorizes Supabase auth tokens |

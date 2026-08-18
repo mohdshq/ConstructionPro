@@ -20,6 +20,7 @@
 | B7 | `xlsx@0.18.5` — prototype pollution + ReDoS, **no npm fix exists** | Security | Abandoned on npm (fixed only in SheetJS-hosted 0.19.3+). Migrate or remove. |
 | ~~B8~~ | **[FIXED]** Sign-out teardown wiping offline DB | Sync | `teardownPowerSync()` previously wiped SQLite DB on sign-out destroying pending offline queue. Fixed: teardown only disconnects, warns if queue non-empty; database cleared only when a different user signs in. |
 | ~~B9~~ | **[FIXED]** Cold launch with no network signs user out | Auth | Cold launch >1h offline treated expired access token as signed out. Fixed: 3-state authMode, 30-day offline-grace window backed by AsyncStorage mirror, 4s getSession race, reconnect refresh. |
+| ~~B10~~ | **[FIXED]** Missing auth lock allows concurrent refresh | Auth | Absence of auth lock allowed concurrent `getSession()` / auto-refresh calls to exchange same refresh token, triggering Supabase reuse detection and revoking sessions. Fixed via `processLock` and AppState auto-refresh. |
 
 ## HIGH — correctness
 
@@ -195,6 +196,15 @@ Detailed investigation report located at `docs/powersync_investigation_report.md
   4. **NetInfo Reconnection Listener**: When connectivity returns in `offline-grace` mode, the app calls `supabase.auth.refreshSession()`. On success, it transitions to `online` and connects PowerSync.
   5. **Explicit Sign-Out Gate**: Sign-out transitions occur only on explicit user action (`isExplicitSignOut = true`) or an auth-server credential rejection (HTTP 400 `invalid_grant` / revoked refresh token) — never on a network error.
   6. **UI Adjustments**: Added persistent dismissible `OfflineGraceBanner` ("Offline — signed in as {email}. Changes will sync when you reconnect.") and hid server-dependent UI (paywall, subscription flows) in `offline-grace` mode.
+
+### ✅ RESOLVED (FIXED) — B10: Missing auth lock allows concurrent refresh
+- **Symptom / Vulnerability**: Without an auth lock, concurrent asynchronous callers (such as PowerSync's backend connector `fetchCredentials()`, background workers, or parallel API requests) invoking `getSession()` or token auto-refresh simultaneously would send concurrent refresh requests with the same refresh token. Supabase Auth's security feature "Detect and revoke potentially compromised refresh tokens" interprets two concurrent exchanges of the same refresh token as token reuse by an attacker, revoking the user's refresh token family server-side and forcefully signing the user out.
+- **Fix**:
+  1. **`processLock` in `lib/supabase.ts`**: Configured `lock: processLock` from `@supabase/supabase-js` in the client's `auth` options. This serializes all internal token acquisitions and refresh requests across the process.
+  2. **AppState Auto-Refresh Lifecycle in `app/_layout.tsx`**: Added an `AppState` event listener (registered once at mount, removed on unmount) backed by pure helper `handleAppStateAuthRefresh` (`lib/auth/appStateAutoRefresh.ts`). When the app enters `'active'`, it resumes auto-refresh via `supabase.auth.startAutoRefresh()` if authenticated (`'online'` or `'offline-grace'`), or stops it if `'signed-out'` (guaranteeing any lingering timer is halted). Any transition to non-active states (`'background'`, `'inactive'`, `'unknown'`) halts auto-refresh via `supabase.auth.stopAutoRefresh()`.
+  3. **PowerSync Connector (`lib/powersync/Connector.ts`)**: `fetchCredentials()` remains a plain `supabase.auth.getSession()` call. With `processLock` active in the client, token acquisition is safely serialized without needing ad-hoc locking in callers.
+  4. **Security Invariant**: Supabase's "Detect and revoke potentially compromised refresh tokens" is deliberately left **enabled**; `processLock` is what ensures legitimate concurrent client refreshes are serialized and never trigger false-positive revocations.
+- **Coverage**: `handleAppStateAuthRefresh` is covered by pure unit tests in `lib/auth/__tests__/appStateAutoRefresh.test.ts` across all state transitions (`active`, `background`, `inactive`, `unknown`, `signed-out`, `online`, `offline-grace`).
 
 ### ✅ RESOLVED — Storage uploads via uriToBlob write 0-byte files (uploadPhoto, uploadAvatar)
 - ✅ RESOLVED (branch fix/upload-blob-zero-bytes): `uploadPhoto` and `uploadAvatar` now use `FileSystem.uploadAsync` with `BINARY_CONTENT` (same fix applied to `uploadDrawingFile` in M6.3b). Verified on iOS: avatar and report-photo uploads write real (non-zero) bytes to their Supabase Storage buckets and render correctly in-app. `uriToBlob` removed from `lib/supabaseSync.ts`.
