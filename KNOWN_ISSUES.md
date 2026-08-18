@@ -19,6 +19,7 @@
 | B6 | Photos stored as **base64 in `ProjectSnag.photos: string[]`** | Data/Perf | +33% size on every image, flowing through SQLite rows, sync payloads and report HTML. Will OOM the PDF WebView on large inspections. Migrate to PowerSync attachments + file URIs. |
 | B7 | `xlsx@0.18.5` — prototype pollution + ReDoS, **no npm fix exists** | Security | Abandoned on npm (fixed only in SheetJS-hosted 0.19.3+). Migrate or remove. |
 | ~~B8~~ | **[FIXED]** Sign-out teardown wiping offline DB | Sync | `teardownPowerSync()` previously wiped SQLite DB on sign-out destroying pending offline queue. Fixed: teardown only disconnects, warns if queue non-empty; database cleared only when a different user signs in. |
+| ~~B9~~ | **[FIXED]** Cold launch with no network signs user out | Auth | Cold launch >1h offline treated expired access token as signed out. Fixed: 3-state authMode, 30-day offline-grace window backed by AsyncStorage mirror, 4s getSession race, reconnect refresh. |
 
 ## HIGH — correctness
 
@@ -63,7 +64,8 @@ future bugs. Detailed write-ups are further down this file.
    `missing` / `offline` / `unauthorized`.
 8. **Supabase access goes through `lib/supabaseSync.ts` only.** Never call
    `supabase` directly from a screen.
-9. **Sign-in requires network by design; the app must never require network to resume an existing session.**
+9. **Sign-in requires network by design. Resuming an existing session must never require network, must never be blocked on a pending network request, and must never be terminated by a network failure — only by explicit sign-out or an auth-server rejection.**
+10. **Network failure and authorization failure are distinct states and must never be collapsed. Any code path that signs a user out must be able to prove the server actively rejected the credential.**
 
 
 # Known Issues
@@ -182,6 +184,17 @@ Detailed investigation report located at `docs/powersync_investigation_report.md
   1. `teardownPowerSync()` now calls `powersync.disconnect()` only, preserving the local SQLite DB and pending queue across sessions.
   2. Inspects `powersync.getUploadQueueStats()` on sign-out to show a non-blocking informational warning if unsynced changes are pending.
   3. `clearPowerSyncForNewUser()` introduced in `lib/powersync/lifecycle.ts`. On startup, `app/_layout.tsx` compares `currentUserId` with `last_powersync_user` in AsyncStorage. The database is cleared *only* when a different user signs in (with explicit destructive-action confirmation if unsynced items are present).
+
+### ✅ RESOLVED (FIXED) — B9: Cold launch with no network signs the user out
+- **Symptom**: App hangs on the loading spinner then redirects to login when launched offline more than one hour after the last successful token refresh.
+- **Root Cause**: `useAuthStore.initialize()` treated `getSession()` returning null as signed-out, when it only means no valid access token is currently available; the stored refresh token was never actually deleted.
+- **Fix**:
+  1. **Three-state `authMode`**: Introduced `'online' | 'offline-grace' | 'signed-out'` with `offlineUser: { id, email, fullName }`.
+  2. **AsyncStorage Session Mirror**: Persisted mirror in AsyncStorage under key `cp.auth.lastSession` (`{ userId, email, fullName, savedAt }`) with a 30-day grace window (`OFFLINE_GRACE_MS = 30 * 24 * 60 * 60 * 1000`).
+  3. **4-second Timeout Race**: In `initialize()`, `supabase.auth.getSession()` races against a 4000ms timeout so startup is never blocked on a hanging socket. If offline, the app falls back to `readLastSession()` and enters `offline-grace` mode within the 30-day window.
+  4. **NetInfo Reconnection Listener**: When connectivity returns in `offline-grace` mode, the app calls `supabase.auth.refreshSession()`. On success, it transitions to `online` and connects PowerSync.
+  5. **Explicit Sign-Out Gate**: Sign-out transitions occur only on explicit user action (`isExplicitSignOut = true`) or an auth-server credential rejection (HTTP 400 `invalid_grant` / revoked refresh token) — never on a network error.
+  6. **UI Adjustments**: Added persistent dismissible `OfflineGraceBanner` ("Offline — signed in as {email}. Changes will sync when you reconnect.") and hid server-dependent UI (paywall, subscription flows) in `offline-grace` mode.
 
 ### ✅ RESOLVED — Storage uploads via uriToBlob write 0-byte files (uploadPhoto, uploadAvatar)
 - ✅ RESOLVED (branch fix/upload-blob-zero-bytes): `uploadPhoto` and `uploadAvatar` now use `FileSystem.uploadAsync` with `BINARY_CONTENT` (same fix applied to `uploadDrawingFile` in M6.3b). Verified on iOS: avatar and report-photo uploads write real (non-zero) bytes to their Supabase Storage buckets and render correctly in-app. `uriToBlob` removed from `lib/supabaseSync.ts`.

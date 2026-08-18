@@ -2,12 +2,14 @@ import { View, Text, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WifiOff } from 'lucide-react-native';
 import { useNetworkStatus } from '@/lib/useNetworkStatus';
+import { useAuthStore } from '@/store/useAuthStore';
 
 export function OfflineBanner() {
     const { isOffline } = useNetworkStatus();
+    const authMode = useAuthStore((state) => state.authMode);
     const insets = useSafeAreaInsets();
 
-    if (!isOffline) return null;
+    if (!isOffline || authMode === 'offline-grace') return null;
 
     return (
         <View style={[styles.container, { paddingTop: Math.max(insets.top, 10) }]}>

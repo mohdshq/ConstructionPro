@@ -7,19 +7,22 @@ import Purchases from 'react-native-purchases';
 import 'react-native-reanimated';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import NetInfo from '@react-native-community/netinfo';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useStore } from '@/store/useStore';
 import { useAuthStore } from '@/store/useAuthStore';
-import { useProjectsStore } from '@/store/projectsStore';
 import { usePushNotifications } from '@/lib/usePushNotifications';
 import { useEnrichmentWorker } from '@/lib/ai/useEnrichmentWorker';
 import * as Sentry from '@sentry/react-native';
 import { PostHogProvider } from 'posthog-react-native';
 import { OfflineBanner } from '@/components/OfflineBanner';
+import { OfflineGraceBanner } from '@/components/OfflineGraceBanner';
 import { PowerSyncContext } from '@powersync/react';
 import { powersync } from '@/lib/powersync/system';
 import { setupPowerSync, teardownPowerSync, clearPowerSyncForNewUser } from '@/lib/powersync/lifecycle';
+import { supabase } from '@/lib/supabase';
+import { saveLastSession, isAuthServerRejection } from '@/lib/auth/offlineSession';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 Sentry.init({
@@ -38,14 +41,13 @@ function RootLayout() {
   const colorScheme = useColorScheme();
   const { setIsPremium } = useStore();
   
-  const { isInitialized, session, initialize } = useAuthStore();
-  const { initialSync } = useProjectsStore();
+  const { isInitialized, session, offlineUser, authMode, initialize } = useAuthStore();
   const segments = useSegments();
   const router = useRouter();
 
   // Track hydration of persisted Zustand stores
   const [isStoreHydrated, setIsStoreHydrated] = useState(() => {
-    return useProjectsStore.persist.hasHydrated() && useStore.persist.hasHydrated();
+    return useStore.persist.hasHydrated();
   });
 
   const syncedUserIdRef = useRef<string | null>(null);
@@ -64,23 +66,21 @@ function RootLayout() {
   // 2. Subscribe to Zustand store hydration completion
   useEffect(() => {
     const checkHydration = () => {
-      if (useProjectsStore.persist.hasHydrated() && useStore.persist.hasHydrated()) {
+      if (useStore.persist.hasHydrated()) {
         setIsStoreHydrated(true);
       }
     };
 
-    if (useProjectsStore.persist.hasHydrated() && useStore.persist.hasHydrated()) {
+    if (useStore.persist.hasHydrated()) {
       setIsStoreHydrated(true);
       return;
     }
 
-    const unsubProjects = useProjectsStore.persist.onFinishHydration(checkHydration);
     const unsubStore = useStore.persist.onFinishHydration(checkHydration);
 
     checkHydration();
 
     return () => {
-      unsubProjects();
       unsubStore();
     };
   }, []);
@@ -90,42 +90,92 @@ function RootLayout() {
     if (!isInitialized) return;
 
     const inAuthGroup = segments[0] === '(auth)';
+    const isAuthenticated = authMode !== 'signed-out';
 
-    if (!session && !inAuthGroup) {
+    if (!isAuthenticated && !inAuthGroup) {
       // Redirect to the login page
       router.replace('/(auth)/login');
-    } else if (session && inAuthGroup) {
+    } else if (isAuthenticated && inAuthGroup) {
       // Redirect away from the login page
       router.replace('/(tabs)');
     }
-  }, [session, isInitialized, segments]);
+  }, [authMode, isInitialized, segments]);
 
-  // 4. PowerSync & Supabase sync lifecycle — runs exactly once per user session
-  // after Supabase session is known AND Zustand stores have finished rehydrating.
+  // 4. NetInfo listener for offline-grace session refresh upon reconnect
+  useEffect(() => {
+    const unsubscribe = NetInfo.addEventListener(async (state) => {
+      const isOnline = state.isConnected && state.isInternetReachable !== false;
+      const currentAuthMode = useAuthStore.getState().authMode;
+
+      if (isOnline && currentAuthMode === 'offline-grace') {
+        try {
+          const { data, error } = await supabase.auth.refreshSession();
+          if (error) {
+            if (isAuthServerRejection(error)) {
+              console.warn('[Auth] Refresh token rejected by server, signing out:', error.message);
+              await teardownPowerSync(powersync);
+              await useAuthStore.getState().signOut();
+            } else {
+              console.warn('[Auth] Transient error refreshing session, staying in offline-grace:', error.message);
+            }
+          } else if (data?.session?.user) {
+            useAuthStore.setState({
+              session: data.session,
+              user: data.session.user,
+              offlineUser: null,
+              authMode: 'online',
+            });
+            await saveLastSession(data.session);
+            useAuthStore.getState().refreshProfile();
+            setupPowerSync(powersync).catch((err) => {
+              console.warn('[PowerSync] Reconnect failed:', err?.message);
+            });
+          }
+        } catch (e: any) {
+          if (isAuthServerRejection(e)) {
+            await teardownPowerSync(powersync);
+            await useAuthStore.getState().signOut();
+          } else {
+            console.warn('[Auth] Exception during session refresh:', e);
+          }
+        }
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  // 5. PowerSync lifecycle — runs per user session
   useEffect(() => {
     if (!isInitialized || !isStoreHydrated) return;
 
-    const currentUserId = session?.user?.id ?? null;
+    const currentUserId = session?.user?.id ?? offlineUser?.id ?? null;
 
-    if (currentUserId) {
-      // If we already initialized sync for this specific user, do not re-run on re-render or navigation
-      if (syncedUserIdRef.current === currentUserId) return;
+    if (currentUserId && authMode !== 'signed-out') {
+      if (syncedUserIdRef.current === currentUserId) {
+        if (authMode === 'online') {
+          setupPowerSync(powersync).catch((error) => {
+            console.warn('[PowerSync] Connection failed:', error?.message);
+          });
+        }
+        return;
+      }
       syncedUserIdRef.current = currentUserId;
 
-      // Supabase initial sync (removed)
-      
       const initPowerSync = async () => {
         const lastUserId = await AsyncStorage.getItem('last_powersync_user');
         
         const proceedWithSetup = async () => {
           await AsyncStorage.setItem('last_powersync_user', currentUserId);
-          setupPowerSync(powersync).catch((error) => {
-            Sentry.captureException(error, {
-              tags: { layer: 'powersync', event: 'startup_connect' },
-              extra: { userId: currentUserId, message: error?.message },
+          if (authMode === 'online') {
+            setupPowerSync(powersync).catch((error) => {
+              Sentry.captureException(error, {
+                tags: { layer: 'powersync', event: 'startup_connect' },
+                extra: { userId: currentUserId, message: error?.message },
+              });
+              console.warn('[PowerSync] Startup connection failed, running in local-only mode:', error?.message);
             });
-            console.warn('[PowerSync] Startup connection failed, running in local-only mode:', error?.message);
-          });
+          }
         };
 
         if (lastUserId && lastUserId !== currentUserId) {
@@ -144,7 +194,7 @@ function RootLayout() {
       };
 
       initPowerSync();
-    } else {
+    } else if (authMode === 'signed-out') {
       // Unauthenticated / signed out
       if (syncedUserIdRef.current !== null) {
         syncedUserIdRef.current = null;
@@ -153,7 +203,7 @@ function RootLayout() {
         });
       }
     }
-  }, [isInitialized, isStoreHydrated, session?.user?.id]);
+  }, [isInitialized, isStoreHydrated, session?.user?.id, offlineUser?.id, authMode]);
 
   useEffect(() => {
     const initRevenueCat = async () => {
@@ -216,6 +266,7 @@ function RootLayout() {
             <Stack.Screen name="ai-wizard" options={{ presentation: 'fullScreenModal', headerShown: false }} />
           </Stack>
           <OfflineBanner />
+          <OfflineGraceBanner />
           <StatusBar style="light" />
         </SafeAreaProvider>
       </ThemeProvider>

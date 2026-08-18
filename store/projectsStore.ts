@@ -431,7 +431,8 @@ interface ProjectsState {
 
 // Helper: Get current user ID (returns null if not authenticated)
 function getCurrentUserId(): string | null {
-    return useAuthStore.getState().user?.id ?? null;
+    const auth = useAuthStore.getState();
+    return auth.user?.id ?? auth.offlineUser?.id ?? null;
 }
 
 // Helper: Convert Supabase snake_case row to camelCase Project

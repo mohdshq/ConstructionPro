@@ -55,11 +55,11 @@ Both must work.
 
 - [ ] B1 — Disable PowerSync development tokens
 - [ ] B2 — Re-enable Supabase email confirmation
-- [ ] B5 — Wire `setupPowerSync()` into app startup
-- [ ] B3 — Extend `syncStatus` guard to folders, drawings, activities, calculations
-      *(also add the missing update/delete paths for folders and drawings)*
-- [ ] B4 — Implement flush-on-reconnect for all `pending` records, with retry +
-      exponential backoff. Reuse the S7 deferred-queue pattern.
+- [x] ~~B5 — Wire `setupPowerSync()` into app startup~~ (Done in `app/_layout.tsx`)
+- [x] ~~B3 — Extend `syncStatus` guard to folders, drawings, activities, calculations~~ (Closed / Not a bug: UI reads from PowerSync SQLite)
+- [ ] B4 — Binary file uploads (photos, avatars, drawing files) bypass the durable queue and are silently lost when created offline. *(**Last remaining data-loss blocker**; all database rows already flush durably via PowerSync)*
+- [x] ~~B8 — Teardown wiping local SQLite DB on sign-out~~ (Fixed: disconnect-only teardown, clear only on user switch)
+- [x] ~~B9 — Cold launch with no network signs the user out~~ (Fixed: 3-state authMode, 30-day offline-grace window backed by AsyncStorage mirror, 4s getSession race, reconnect refresh)
 - [ ] B6 — Migrate photos from base64 → PowerSync attachments + local file URIs
       *(respect Invariant 1: `isRenderablePhoto` keeps accepting all three URI forms)*
 - [ ] B7 — Remove or replace `xlsx@0.18.5`

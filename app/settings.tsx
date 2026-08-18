@@ -32,10 +32,11 @@ export default function SettingsScreen() {
     const glowOpacity = useSharedValue(0.15);
     const { theme, units, setTheme, setUnits } = useStore();
     const { colors, isDark } = useThemeColors();
-    const { signOut, user, profile, updateProfile, isLoadingProfile } = useAuthStore();
+    const { signOut, user, offlineUser, authMode, profile, updateProfile, isLoadingProfile } = useAuthStore();
+    const isOfflineGrace = authMode === 'offline-grace';
 
     // Local state for profile editing
-    const [displayName, setDisplayName] = useState(profile?.full_name || '');
+    const [displayName, setDisplayName] = useState(profile?.full_name || offlineUser?.fullName || '');
     const [avatarUri, setAvatarUri] = useState<string | null>(null);
     const [isSavingProfile, setIsSavingProfile] = useState(false);
     const nameDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -51,7 +52,7 @@ export default function SettingsScreen() {
         }
     }, [profile]);
 
-    // Debounced name sync to Supabase
+    // Debounced name sync
     const handleNameChange = useCallback((text: string) => {
         setDisplayName(text);
         if (nameDebounceRef.current) clearTimeout(nameDebounceRef.current);
@@ -106,6 +107,11 @@ export default function SettingsScreen() {
     });
 
     const pickImage = async () => {
+        if (isOfflineGrace) {
+            Alert.alert('Offline Mode', 'Updating your avatar photo requires an active internet connection.');
+            return;
+        }
+
         let result = await ImagePicker.launchImageLibraryAsync({
             mediaTypes: ['images'],
             allowsEditing: true,
@@ -117,12 +123,13 @@ export default function SettingsScreen() {
             const uri = result.assets[0].uri;
             setAvatarUri(uri); // Show preview immediately
 
-            if (user) {
+            const currentUserId = user?.id ?? offlineUser?.id;
+            if (currentUserId) {
                 setIsSavingProfile(true);
                 try {
                     // Compress and upload to Supabase Storage
                     const compressedUri = await compressThumbnail(uri);
-                    const storagePath = `${user.id}/avatar.jpg`;
+                    const storagePath = `${currentUserId}/avatar.jpg`;
                     await uploadAvatar(storagePath, compressedUri);
                     await updateProfile({ avatar_url: storagePath });
                 } catch (err) {
@@ -282,43 +289,47 @@ export default function SettingsScreen() {
                     </View>
                 </Animated.View>
 
-                {/* Premium Paywall Section */}
-                <Animated.View entering={FadeIn.duration(1000).delay(150)} style={styles.header}>
-                    <Text style={[styles.title, { color: colors.text }]}>Unlock Pro</Text>
-                    <Text style={[styles.subtitle, { color: colors.textMuted }]}>Maximize your on-site potential.</Text>
-                </Animated.View>
+                {/* Premium Paywall Section — Hidden in offline-grace mode */}
+                {!isOfflineGrace && (
+                    <>
+                        <Animated.View entering={FadeIn.duration(1000).delay(150)} style={styles.header}>
+                            <Text style={[styles.title, { color: colors.text }]}>Unlock Pro</Text>
+                            <Text style={[styles.subtitle, { color: colors.textMuted }]}>Maximize your on-site potential.</Text>
+                        </Animated.View>
 
-                <Animated.View entering={FadeInDown.delay(200).springify()} style={styles.cardContainer}>
-                    <Animated.View style={[styles.glowBackground, animatedGlow, { backgroundColor: colors.primary }]} />
-                    <View style={[styles.paywallCard, { backgroundColor: colors.card, borderColor: colors.border, shadowColor: colors.primary }]}>
-                        <View style={styles.crownContainer}>
-                            <Crown color="#F59E0B" size={40} />
-                        </View>
+                        <Animated.View entering={FadeInDown.delay(200).springify()} style={styles.cardContainer}>
+                            <Animated.View style={[styles.glowBackground, animatedGlow, { backgroundColor: colors.primary }]} />
+                            <View style={[styles.paywallCard, { backgroundColor: colors.card, borderColor: colors.border, shadowColor: colors.primary }]}>
+                                <View style={styles.crownContainer}>
+                                    <Crown color="#F59E0B" size={40} />
+                                </View>
 
-                        <Text style={[styles.planName, { color: isDark ? colors.text : '#1E3A8A' }]}>Construction Pro Premium</Text>
-                        <Text style={[styles.price, { color: colors.primary }]}>$19.99<Text style={styles.period}>/month</Text></Text>
+                                <Text style={[styles.planName, { color: isDark ? colors.text : '#1E3A8A' }]}>Construction Pro Premium</Text>
+                                <Text style={[styles.price, { color: colors.primary }]}>$19.99<Text style={styles.period}>/month</Text></Text>
 
-                        <View style={styles.featuresContainer}>
-                            <FeatureRow title="Unlimited Projects & Reports" delay={400} colors={colors} />
-                            <FeatureRow title="Advanced Snagging with PDF Markup" delay={500} colors={colors} />
-                            <FeatureRow title="Unlimited AI Assistant Queries" delay={600} colors={colors} />
-                            <FeatureRow title="Cloud Sync & Team Collaboration" delay={700} colors={colors} />
-                            <FeatureRow title="Priority Human Support" delay={800} colors={colors} />
-                        </View>
+                                <View style={styles.featuresContainer}>
+                                    <FeatureRow title="Unlimited Projects & Reports" delay={400} colors={colors} />
+                                    <FeatureRow title="Advanced Snagging with PDF Markup" delay={500} colors={colors} />
+                                    <FeatureRow title="Unlimited AI Assistant Queries" delay={600} colors={colors} />
+                                    <FeatureRow title="Cloud Sync & Team Collaboration" delay={700} colors={colors} />
+                                    <FeatureRow title="Priority Human Support" delay={800} colors={colors} />
+                                </View>
 
-                        <TouchableOpacity style={styles.subscribeButton} onPress={handleSubscribe} activeOpacity={0.8}>
-                            <Animated.View entering={FadeInDown.delay(900).springify()} style={[styles.subscribeInner, { backgroundColor: colors.primary, shadowColor: colors.primary }]}>
-                                <Zap color="#FFFFFF" size={20} />
-                                <Text style={styles.subscribeText}>Upgrade to Premium</Text>
-                            </Animated.View>
-                        </TouchableOpacity>
-                    </View>
-                </Animated.View>
+                                <TouchableOpacity style={styles.subscribeButton} onPress={handleSubscribe} activeOpacity={0.8}>
+                                    <Animated.View entering={FadeInDown.delay(900).springify()} style={[styles.subscribeInner, { backgroundColor: colors.primary, shadowColor: colors.primary }]}>
+                                        <Zap color="#FFFFFF" size={20} />
+                                        <Text style={styles.subscribeText}>Upgrade to Premium</Text>
+                                    </Animated.View>
+                                </TouchableOpacity>
+                            </View>
+                        </Animated.View>
 
-                <Animated.View entering={FadeInDown.delay(1000).springify()} style={styles.footer}>
-                    <ShieldCheck color="#94A3B8" size={16} />
-                    <Text style={styles.footerText}>Secure billing handled by RevenueCat</Text>
-                </Animated.View>
+                        <Animated.View entering={FadeInDown.delay(1000).springify()} style={styles.footer}>
+                            <ShieldCheck color="#94A3B8" size={16} />
+                            <Text style={styles.footerText}>Secure billing handled by RevenueCat</Text>
+                        </Animated.View>
+                    </>
+                )}
 
                 {/* Sign Out Section */}
                 <Animated.View entering={FadeInDown.delay(1100).springify()} style={styles.prefSection}>
@@ -330,9 +341,9 @@ export default function SettingsScreen() {
                         <LogOut size={20} color={isDark ? '#FCA5A5' : '#DC2626'} />
                         <Text style={[styles.signOutText, { color: isDark ? '#FCA5A5' : '#DC2626' }]}>Sign Out</Text>
                     </TouchableOpacity>
-                    {user?.email && (
+                    {(user?.email || offlineUser?.email) && (
                         <Text style={{ fontSize: 12, color: colors.textMuted, textAlign: 'center', marginTop: 8 }}>
-                            Signed in as {user.email}
+                            Signed in as {user?.email || offlineUser?.email}
                         </Text>
                     )}
                 </Animated.View>
