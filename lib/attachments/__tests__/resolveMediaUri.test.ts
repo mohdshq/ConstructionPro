@@ -89,4 +89,25 @@ describe('resolveMediaUri', () => {
     expect(legacyAvatar).toBe('https://supabase.co/public/avatar.jpg');
     expect(supabaseSync.getPublicUrl).toHaveBeenCalledWith('avatars', 'user-1/avatar.jpg');
   });
+
+  describe('Avatar Resolution with userId guard', () => {
+    it('resolves avatar attachment ref when userId is provided', async () => {
+      const filename = 'avatar-uuid-123.jpg';
+      (attachmentLocalStorage.fileExists as jest.Mock).mockResolvedValue(false);
+      (supabaseSync.getPublicUrl as jest.Mock).mockReturnValue('https://supabase.co/public/avatars/user-999/avatar-uuid-123.jpg');
+
+      const result = await resolveMediaUri(filename, { bucket: 'avatars', userId: 'user-999' });
+      expect(result).toBe('https://supabase.co/public/avatars/user-999/avatar-uuid-123.jpg');
+      expect(supabaseSync.getPublicUrl).toHaveBeenCalledWith('avatars', 'user-999/avatar-uuid-123.jpg');
+    });
+
+    it('returns null (unresolvable) when userId is missing for avatar attachment ref to prevent 404 bad URLs', async () => {
+      const filename = 'avatar-uuid-123.jpg';
+      (attachmentLocalStorage.fileExists as jest.Mock).mockResolvedValue(false);
+
+      const result = await resolveMediaUri(filename, { bucket: 'avatars' });
+      expect(result).toBeNull();
+      expect(supabaseSync.getPublicUrl).not.toHaveBeenCalled();
+    });
+  });
 });

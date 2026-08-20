@@ -7,9 +7,9 @@ import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useProjectsStore } from '../../../store/projectsStore';
 import { useThemeColors } from '../../../store/useThemeColors';
 import { useAuthStore } from '../../../store/useAuthStore';
-import { Image } from 'react-native';
 import { supabase } from '../../../lib/supabase';
 import { usePowerSyncMembers } from '../../../lib/powersync/useMembers';
+import { UserAvatar } from '../../../components/UserAvatar';
 
 interface InviteResponse {
     success: boolean;
@@ -122,15 +122,15 @@ export default function TeamScreen() {
                     {members.map((member, index) => (
                         <Animated.View entering={FadeInDown.delay(100 + index * 50).springify()} key={member.id}>
                             <View style={[styles.memberCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                                {member.profile?.avatar_url ? (
-                                    <Image source={{ uri: member.profile.avatar_url }} style={styles.avatar} />
-                                ) : (
-                                    <View style={[styles.avatarPlaceholder, { backgroundColor: colors.border }]}>
-                                        <Text style={[styles.avatarText, { color: colors.text }]}>
-                                            {(member.profile?.full_name || 'U').charAt(0).toUpperCase()}
-                                        </Text>
-                                    </View>
-                                )}
+                                <UserAvatar
+                                    avatarUrl={member.profile?.avatar_url}
+                                    userId={member.userId}
+                                    name={member.profile?.full_name}
+                                    size={48}
+                                    style={styles.avatar}
+                                    placeholderStyle={[styles.avatarPlaceholder, { backgroundColor: colors.border }]}
+                                    placeholderTextStyle={[styles.avatarText, { color: colors.text }]}
+                                />
                                 
                                 <View style={styles.memberInfo}>
                                     <Text style={[styles.memberName, { color: colors.text }]}>

@@ -12,6 +12,7 @@ import { useThemeColors } from '../../store/useThemeColors';
 import { useAuthStore } from '../../store/useAuthStore';
 import { getPublicUrl } from '../../lib/supabaseSync';
 import ConnectionBadge from '../../components/ConnectionBadge';
+import { UserAvatar } from '../../components/UserAvatar';
 
 const AnimatedBlurView = Animated.createAnimatedComponent(BlurView);
 
@@ -117,15 +118,15 @@ export default function HomeScreen() {
     >
       <Animated.View entering={FadeIn.duration(1000)} style={styles.header}>
         <View style={styles.headerProfileRow}>
-          {avatarUrl ? (
-            <Image source={{ uri: avatarUrl }} style={styles.profileAvatarImage} />
-          ) : (
-            <View style={[styles.profileAvatar, { backgroundColor: colors.avatarBackground }]}>
-              <Text style={[styles.profileText, { color: colors.avatarText }]}>
-                {displayName.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()}
-              </Text>
-            </View>
-          )}
+          <UserAvatar
+            avatarUrl={profile?.avatar_url || userPhoto}
+            userId={profile?.id || user?.id}
+            name={displayName}
+            size={48}
+            style={styles.profileAvatarImage}
+            placeholderStyle={[styles.profileAvatar, { backgroundColor: colors.avatarBackground }]}
+            placeholderTextStyle={[styles.profileText, { color: colors.avatarText }]}
+          />
           <View style={styles.headerTextContainer}>
             <Text style={[styles.greeting, { color: colors.textMuted }]}>{getGreeting()}</Text>
             <Text style={[styles.name, { color: colors.text }]}>{displayName}</Text>

@@ -91,7 +91,11 @@ export async function resolveMediaUri(
 
     let remotePath = trimmed;
     if (bucket === 'avatars') {
-      remotePath = options.userId ? `${options.userId}/${trimmed}` : trimmed;
+      if (!options.userId) {
+        // Without userId, a bare filename avatar attachment ref cannot be resolved to a valid storage path
+        return null;
+      }
+      remotePath = `${options.userId}/${trimmed}`;
       const publicUrl = getPublicUrl('avatars', remotePath);
       if (publicUrl) {
         urlCache.set(cacheKey, { url: publicUrl, expiresAt: Date.now() + CACHE_TTL_MS });

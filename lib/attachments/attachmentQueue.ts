@@ -7,6 +7,20 @@ import { createWatchAttachments } from './watchAttachments';
 export const attachmentLocalStorage = new ExpoFileSystemLocalStorageAdapter();
 export const attachmentRemoteStorage = new SupabaseRemoteStorageAdapter();
 
+export function isPermanentNotFoundError(error: unknown): boolean {
+  if (!error) return false;
+  const msg = (typeof error === 'string' ? error : (error as any).message || '').toLowerCase();
+  const status = (error as any).status || (error as any).statusCode;
+  return (
+    status === 404 ||
+    msg.includes('not found') ||
+    msg.includes('not_found') ||
+    msg.includes('404') ||
+    msg.includes('resource was not found') ||
+    msg.includes('object not found')
+  );
+}
+
 export const attachmentErrorHandler: AttachmentErrorHandler = {
   async onUploadError(attachment, error) {
     console.warn(`[AttachmentQueue] Upload error for ${attachment.filename}:`, error);
@@ -14,7 +28,11 @@ export const attachmentErrorHandler: AttachmentErrorHandler = {
   },
   async onDownloadError(attachment, error) {
     console.warn(`[AttachmentQueue] Download error for ${attachment.filename}:`, error);
-    return true; // Unconditionally return true to prevent archive/restore churn loop
+    if (isPermanentNotFoundError(error)) {
+      console.warn(`[AttachmentQueue] Permanent 404 for ${attachment.filename} — stopping retry.`);
+      return false; // Stop retrying non-existent remote object
+    }
+    return true; // Retry transient/network errors
   },
   async onDeleteError(attachment, error) {
     console.warn(`[AttachmentQueue] Delete error for ${attachment.filename}:`, error);
