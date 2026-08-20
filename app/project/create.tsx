@@ -4,13 +4,16 @@ import BackButton from "../../components/BackButton";
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useState, createElement, useEffect } from 'react';
 import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
+import { File } from 'expo-file-system';
 import { Image } from 'expo-image';
 import { useProjectsStore, Building } from '../../store/projectsStore';
 import { useThemeColors } from '../../store/useThemeColors';
 import { useAuthStore } from '../../store/useAuthStore';
-import { uploadPhoto } from '../../lib/supabaseSync';
 import { ActivityIndicator, Alert } from 'react-native';
 import ProjectImage from '../../components/ProjectImage';
+import { attachmentQueue } from '@/lib/attachments/attachmentQueue';
+import { classifyMediaSource } from '@/lib/attachments/resolveMediaUri';
 import 'react-native-get-random-values';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -31,6 +34,7 @@ export default function CreateProjectScreen() {
     const [mainContractorName, setMainContractorName] = useState('');
     const [referenceNumber, setReferenceNumber] = useState('');
     const [photoUri, setPhotoUri] = useState<string | null>(null);
+    const [initialPhotoUri, setInitialPhotoUri] = useState<string | null>(null);
     const [employerLogo, setEmployerLogo] = useState<string | null>(null);
     const [consultantLogo, setConsultantLogo] = useState<string | null>(null);
     const [contractorLogos, setContractorLogos] = useState<string[]>([]);
@@ -44,8 +48,8 @@ export default function CreateProjectScreen() {
             const project = getProject(id);
             if (project) {
                 setName(project.name);
-                setLocation(project.location || '');
-                setClient(project.client || '');
+                setLocation(project.location);
+                setClient(project.client);
                 setDescription(project.description || '');
                 setContractValue(project.contractValue || '');
                 setStartDate(project.startDate || '');
@@ -54,6 +58,7 @@ export default function CreateProjectScreen() {
                 setMainContractorName(project.mainContractorName || '');
                 setReferenceNumber(project.referenceNumber || '');
                 setPhotoUri(project.photoUri || null);
+                setInitialPhotoUri(project.photoUri || null);
                 setEmployerLogo(project.employerLogo || null);
                 setConsultantLogo(project.consultantLogo || null);
                 setContractorLogos(project.contractorLogos || []);
@@ -70,8 +75,31 @@ export default function CreateProjectScreen() {
             quality: 0.8,
         });
 
-        if (!result.canceled) {
-            setPhotoUri(result.assets[0].uri);
+        if (!result.canceled && result.assets[0]) {
+            const picked = result.assets[0];
+            // Normalize to JPEG with 1920px max dimension (downscale only on long edge)
+            const w = picked.width || 0;
+            const h = picked.height || 0;
+            const maxDim = Math.max(w, h);
+            const actions = (maxDim > 1920)
+                ? [{ resize: (w >= h) ? { width: 1920 } : { height: 1920 } }]
+                : [];
+            const manipulated = await ImageManipulator.manipulateAsync(
+                picked.uri,
+                actions,
+                { format: ImageManipulator.SaveFormat.JPEG, compress: 0.8 }
+            );
+
+            // 10MB Size guard (report-photos bucket limit is 10MB)
+            const f = new File(manipulated.uri);
+            const size = f.size ?? (picked as any).fileSize ?? 0;
+
+            if (size > 10 * 1024 * 1024) {
+                Alert.alert('File Too Large', 'Maximum supported file size for cover photo is 10MB.');
+                return;
+            }
+
+            setPhotoUri(manipulated.uri);
         }
     };
 
@@ -85,10 +113,8 @@ export default function CreateProjectScreen() {
         });
         if (!result.canceled && result.assets[0].base64) {
             const uri = `data:image/jpeg;base64,${result.assets[0].base64}`;
-            console.log('[logo pick] first 50 chars:', uri?.slice(0, 50), 'len:', uri?.length);
             return uri;
         }
-        console.log('[logo pick] returned null. Canceled:', result.canceled, 'base64 exists:', !result.canceled ? !!result.assets[0].base64 : false);
         return null;
     };
 
@@ -99,9 +125,8 @@ export default function CreateProjectScreen() {
         const isDuplicate = projects.some(p => 
             p.id !== id && p.name.toLowerCase() === trimmedName.toLowerCase()
         );
-
         if (isDuplicate) {
-            Alert.alert("Duplicate Project", `A project named '${trimmedName}' already exists. Choose a different name.`);
+            Alert.alert("Duplicate Project", "A project with this name already exists.");
             return;
         }
 
@@ -116,32 +141,40 @@ export default function CreateProjectScreen() {
 
         setIsSubmitting(true);
 
-        const uploadIfNeeded = async (uri: string | null, prefix: string) => {
-            if (uri && (uri.includes('://') || uri.startsWith('data:') || uri.startsWith('blob:'))) {
-                try {
-                    if (user?.id) {
-                        return await uploadPhoto('report-photos', user.id, uri, { prefix });
-                    }
-                } catch (e: any) {
-                    throw new Error(`Failed to upload ${prefix}: ${e.message}`);
-                }
-            }
-            return uri;
-        };
-
+        const targetProjectId = id || uuidv4();
         let finalPhotoUri = photoUri;
-        // Project logos are stored as raw base64 data URIs so they render in offline PDFs
-        let finalEmployerLogo = employerLogo;
-        let finalConsultantLogo = consultantLogo;
-        let finalContractorLogos = [...contractorLogos];
 
-        try {
-            finalPhotoUri = await uploadIfNeeded(photoUri, 'project_cover');
-            // We NO LONGER upload logos to Storage because PDF generator requires them to be base64.
-        } catch (e: any) {
-            Alert.alert('Upload Failed', e.message);
-            setIsSubmitting(false);
-            return;
+        // Process cover photo through AttachmentQueue if it is a new/local URI
+        if (photoUri && classifyMediaSource(photoUri) === 'direct_uri') {
+            try {
+                const attId = await attachmentQueue.generateAttachmentId();
+                const file = new File(photoUri);
+                const bytes = await file.bytes();
+                const arrayBuffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+
+                const attachment = await attachmentQueue.saveFile({
+                    id: attId,
+                    data: arrayBuffer,
+                    fileExtension: 'jpg',
+                    mediaType: 'image/jpeg',
+                    metaData: JSON.stringify({
+                        kind: 'project_cover',
+                        userId: user?.id || 'anonymous',
+                        projectId: targetProjectId,
+                    }),
+                });
+
+                finalPhotoUri = attachment.filename;
+
+                // If replacing an existing attachment cover, clean up the old one
+                if (initialPhotoUri && classifyMediaSource(initialPhotoUri) === 'attachment_ref') {
+                    const oldAttId = initialPhotoUri.split('.')[0];
+                    try { await attachmentQueue.deleteFile({ id: oldAttId }); } catch (e) { console.warn('Failed to delete replaced cover:', e); }
+                }
+            } catch (e: any) {
+                console.warn('[CreateProject] Failed to queue cover attachment:', e);
+                // Keep local photoUri as fallback
+            }
         }
 
         const projectData = {
@@ -156,17 +189,18 @@ export default function CreateProjectScreen() {
             mainContractorName: mainContractorName.trim() || undefined,
             referenceNumber: referenceNumber.trim() || undefined,
             photoUri: finalPhotoUri || undefined,
-            employerLogo: finalEmployerLogo || undefined,
-            consultantLogo: finalConsultantLogo || undefined,
-            contractorLogos: finalContractorLogos.length > 0 ? finalContractorLogos : undefined,
+            employerLogo: employerLogo || undefined,
+            consultantLogo: consultantLogo || undefined,
+            contractorLogos: contractorLogos.length > 0 ? contractorLogos : undefined,
             buildings: validBuildings,
         };
 
         if (id) {
-            updateProject(id, projectData);
+            await updateProject(id, projectData);
         } else {
-            addProject({ ...projectData, status: 'planning' });
+            await addProject({ ...projectData, status: 'planning' });
         }
+
 
         setIsSubmitting(false);
         router.back();

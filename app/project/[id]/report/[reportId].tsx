@@ -1,4 +1,4 @@
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as Print from 'expo-print';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import * as Sharing from 'expo-sharing';
@@ -15,7 +15,7 @@ import { generateDailyReportHTML } from '../../../../lib/report/templates/DailyR
 import { generateSnaggingHTML } from '../../../../lib/report/templates/SnaggingReportHTML';
 import { generateHSEHTML } from '../../../../lib/report/templates/HSEReportHTML';
 import { generateQuickLogHTML } from '../../../../lib/report/templates/QuickLogHTML';
-import { getSignedUrl } from '../../../../lib/supabaseSync';
+import { resolveMediaUri } from '@/lib/attachments/resolveMediaUri';
 import { supabase } from '../../../../lib/supabase';
 export default function ReportViewerScreen() {
     const { colors } = useThemeColors();
@@ -92,15 +92,19 @@ export default function ReportViewerScreen() {
                         let uri = typeof photo === 'string' ? photo : photo.uri;
                         let caption = typeof photo === 'string' ? '' : photo.caption || '';
 
-                        // Resolve Supabase storage paths to signed URLs
-                        if (uri && !uri.startsWith('data:') && !uri.startsWith('file://') && !uri.startsWith('content://') && !uri.startsWith('/') && !uri.startsWith('http')) {
+                        if (uri) {
                             try {
-                                const res = await getSignedUrl('report-photos', uri);
-                                if (res.ok) uri = res.url;
-                            } catch (e) { console.error('Error getting signed URL:', e); }
+                                const resolved = await resolveMediaUri(uri, {
+                                    bucket: 'report-photos',
+                                    projectId: report?.projectId,
+                                });
+                                if (resolved) uri = resolved;
+                            } catch (e) {
+                                console.error('Error resolving photo URI:', e);
+                            }
                         }
 
-                        if (!uri.startsWith('data:') && Platform.OS !== 'web') {
+                        if (uri && !uri.startsWith('data:') && Platform.OS !== 'web') {
                             try {
                                 if (uri.startsWith('http')) {
                                     const byteRes = await fetchWithTimeout(uri, 8000);

@@ -8,16 +8,17 @@ import {
     StyleSheet,
     ActivityIndicator,
 } from 'react-native';
-import { getSignedUrl } from '../lib/supabaseSync';
+import { resolveMediaUri } from '@/lib/attachments/resolveMediaUri';
 import { Image as ImageIcon, WifiOff, RefreshCw } from 'lucide-react-native';
 
 interface ProjectImageProps extends Omit<ImageProps, 'source'> {
     photoUri?: string | null;
+    projectId?: string;
 }
 
 type ImageState = 'loading' | 'success' | 'missing' | 'offline';
 
-export default function ProjectImage({ photoUri, style, ...props }: ProjectImageProps) {
+export default function ProjectImage({ photoUri, projectId, style, ...props }: ProjectImageProps) {
     const [signedUrl, setSignedUrl] = useState<string | null>(null);
     const [state, setState] = useState<ImageState>('loading');
     const [retryCount, setRetryCount] = useState(0);
@@ -39,31 +40,18 @@ export default function ProjectImage({ photoUri, style, ...props }: ProjectImage
                 return;
             }
 
-            if (
-                photoUri.includes('://') ||
-                photoUri.startsWith('data:') ||
-                photoUri.startsWith('blob:') ||
-                photoUri.startsWith('file:')
-            ) {
-                if (isMounted) {
-                    setSignedUrl(photoUri);
-                    setState('success');
-                }
-                return;
-            }
-
-            // Supabase storage path
             if (isMounted) setState('loading');
             try {
-                const res = await getSignedUrl('report-photos', photoUri);
+                const resolved = await resolveMediaUri(photoUri, {
+                    bucket: 'report-photos',
+                    projectId,
+                });
+
                 if (!isMounted) return;
 
-                if (res.ok) {
-                    setSignedUrl(res.url);
+                if (resolved) {
+                    setSignedUrl(resolved);
                     setState('success');
-                } else if (res.reason === 'offline') {
-                    setSignedUrl(null);
-                    setState('offline');
                 } else {
                     setSignedUrl(null);
                     setState('missing');
@@ -81,7 +69,7 @@ export default function ProjectImage({ photoUri, style, ...props }: ProjectImage
         return () => {
             isMounted = false;
         };
-    }, [photoUri, retryCount]);
+    }, [photoUri, projectId, retryCount]);
 
     if (state === 'offline') {
         return (

@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, SafeAr
 import { ArrowLeft, Mic, MicOff, Camera, MapPin, CheckCircle, Image as ImageIcon, X, Trash2, Zap } from "lucide-react-native";
 import BackButton from "../components/BackButton";
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
 import { Audio } from 'expo-av';
 import { Image } from 'expo-image';

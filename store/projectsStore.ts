@@ -14,6 +14,8 @@ import {
 } from '../lib/supabaseSync';
 import { addBuildingToList } from '../lib/projects/buildings';
 import { useAuthStore } from './useAuthStore';
+import { attachmentQueue, safeDeleteAttachmentRef } from '@/lib/attachments/attachmentQueue';
+import { classifyMediaSource } from '@/lib/attachments/resolveMediaUri';
 
 export type ProjectStatus = 'planning' | 'active' | 'completed' | 'on-hold';
 export type ReportType = 'daily' | 'snagging' | 'hse' | 'quick-log';
@@ -769,6 +771,10 @@ export const useProjectsStore = create<ProjectsState>()(
             },
 
             deleteProject: async (id) => {
+                const project = get().projects.find((p) => p.id === id);
+                const projDrawings = get().drawings.filter((d) => d.projectId === id);
+                const projReports = get().reports.filter((r) => r.projectId === id);
+
                 set((state) => ({
                     projects: state.projects.filter((p) => p.id !== id),
                     reports: state.reports.filter((r) => r.projectId !== id),
@@ -778,6 +784,49 @@ export const useProjectsStore = create<ProjectsState>()(
 
                 try {
                     await powersync.execute(`DELETE FROM projects WHERE id = ?`, [id]);
+
+                    // Clean up project cover attachment
+                    if (project?.photoUri) {
+                        try {
+                            await safeDeleteAttachmentRef(project.photoUri);
+                        } catch (e) {
+                            console.warn('Attachment cover delete error:', e);
+                        }
+                    }
+
+                    // Clean up drawing attachments
+                    for (const d of projDrawings) {
+                        if (d.uri) {
+                            try {
+                                await safeDeleteAttachmentRef(d.uri);
+                            } catch (e) {
+                                console.warn('Attachment drawing delete error:', e);
+                            }
+                        }
+                    }
+
+                    // Clean up report photo attachments
+                    for (const r of projReports) {
+                        try {
+                            const parsed = r.templateData ? JSON.parse(r.templateData) : null;
+                            const photos = parsed?.photos;
+                            if (Array.isArray(photos)) {
+                                for (const item of photos) {
+                                    const uri = typeof item === 'string' ? item : item?.uri;
+                                    if (uri) {
+                                        try {
+                                            await safeDeleteAttachmentRef(uri);
+                                        } catch (e) {
+                                            console.warn('Attachment report photo delete error:', e);
+                                        }
+                                    }
+                                }
+                            }
+                        } catch (e) {
+                            console.warn('Failed parsing report templateData during cascade delete:', e);
+                        }
+                    }
+
                 } catch (error) {
                     console.error('Failed to delete project from PowerSync:', error);
                 }
@@ -1050,8 +1099,13 @@ export const useProjectsStore = create<ProjectsState>()(
                 if (userId) {
                     try {
                         await powersync.execute('DELETE FROM drawings WHERE id = ?', [id]);
-                        if (d?.uri && !d.uri.startsWith('file:') && !d.uri.startsWith('http')) {
-                            try { await deleteStorageFile('drawings', d.uri); } catch (e) { console.error('Storage delete error:', e); }
+                        if (d?.uri) {
+                            const mediaKind = classifyMediaSource(d.uri);
+                            if (mediaKind === 'attachment_ref') {
+                                try { await safeDeleteAttachmentRef(d.uri); } catch (e) { console.warn('Attachment delete error:', e); }
+                            } else if (mediaKind === 'legacy_path') {
+                                try { await deleteStorageFile('drawings', d.uri); } catch (e) { console.error('Storage delete error:', e); }
+                            }
                         }
                     } catch (error) {
                         console.error('Failed to delete drawing from Supabase:', error);

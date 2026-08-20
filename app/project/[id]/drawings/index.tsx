@@ -5,13 +5,19 @@ import { useProjectsStore, Drawing, DrawingFolder } from '../../../../store/proj
 import { useState, useMemo } from 'react';
 import { Folder, FileText, Image as ImageIcon, File, Plus, MoreVertical, ChevronRight, X, ArrowLeft, Trash2, Compass, FileSpreadsheet } from 'lucide-react-native';
 import * as DocumentPicker from 'expo-document-picker';
+import { File as FSFile } from 'expo-file-system';
 import { useThemeColors } from '../../../../store/useThemeColors';
 import { usePowerSyncFolders } from '../../../../lib/powersync/useFolders';
 import { usePowerSyncDrawings } from '../../../../lib/powersync/useDrawings';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
-import { uploadDrawingFile, getSignedUrl } from '../../../../lib/supabaseSync';
+import { getSignedUrl } from '../../../../lib/supabaseSync';
 import { useAuthStore } from '../../../../store/useAuthStore';
+import { attachmentQueue } from '@/lib/attachments/attachmentQueue';
+import * as ImageManipulator from 'expo-image-manipulator';
+import { resolveDrawingUploadMeta } from '@/lib/attachments/drawingMime';
+import 'react-native-get-random-values';
+import { v4 as uuidv4 } from 'uuid';
 
 type ListItem = 
   | { type: 'folder'; data: DrawingFolder }
@@ -83,44 +89,116 @@ export default function DrawingsBrowserScreen() {
         setRenameItem(null);
     };
 
-    const handleUploadFile = async () => {
+    const handleUpload = async () => {
+        setIsActionMenuVisible(false);
+        if (!project) return;
+
         try {
             const result = await DocumentPicker.getDocumentAsync({
-                type: ['application/pdf', 'image/*', 'application/acad', 'application/x-autocad', '.dwg', '.dxf', '.doc', '.docx', '.xls', '.xlsx', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
+                type: ['application/pdf', 'image/*', 'application/acad', '.dwg', '.dxf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
                 copyToCacheDirectory: true
             });
 
             if (!result.canceled && result.assets && result.assets.length > 0) {
                 const asset = result.assets[0];
-                let fileType: 'pdf' | 'image' | 'cad' | 'word' | 'excel' | 'other' = 'other';
-                
-                if (asset.mimeType?.includes('pdf') || asset.name.toLowerCase().endsWith('.pdf')) {
-                    fileType = 'pdf';
-                } else if (asset.mimeType?.includes('image') || asset.name.toLowerCase().match(/\.(jpg|jpeg|png)$/)) {
-                    fileType = 'image';
-                } else if (asset.name.toLowerCase().match(/\.(dwg|dxf)$/)) {
-                    fileType = 'cad';
-                } else if (asset.name.toLowerCase().match(/\.(doc|docx)$/) || asset.mimeType?.includes('word')) {
-                    fileType = 'word';
-                } else if (asset.name.toLowerCase().match(/\.(xls|xlsx)$/) || asset.mimeType?.includes('excel') || asset.mimeType?.includes('spreadsheet')) {
-                    fileType = 'excel';
+                if (!userId) { Alert.alert('Error', 'You must be signed in to upload.'); return; }
+
+                const uploadMeta = resolveDrawingUploadMeta(asset.name, asset.mimeType);
+
+                // 25MB Size guard with fallback to FSFile size
+                let size = asset.size;
+                if (size === undefined || size === null) {
+                    const f = new FSFile(asset.uri);
+                    size = f.size ?? 0;
+                }
+                if (size > 25 * 1024 * 1024) {
+                    Alert.alert('File Too Large', 'Maximum supported file size for offline drawing is 25MB.');
+                    return;
                 }
 
-                if (!userId) { Alert.alert('Error', 'You must be signed in to upload.'); return; }
                 try {
-                    const storagePath = await uploadDrawingFile(userId, project.id, asset.uri, asset.mimeType ?? 'application/octet-stream');
-                    addDrawing({
+                    let sourceUri = asset.uri;
+                    let fileExtension = uploadMeta.fileExtension;
+                    let mediaType = uploadMeta.mediaType;
+
+                    // Normalise image drawings to JPEG
+                    if (uploadMeta.fileType === 'image') {
+                        const manipulated = await ImageManipulator.manipulateAsync(
+                            asset.uri,
+                            [],
+                            { format: ImageManipulator.SaveFormat.JPEG, compress: 0.8 }
+                        );
+                        sourceUri = manipulated.uri;
+                        fileExtension = 'jpg';
+                        mediaType = 'image/jpeg';
+                    }
+
+                    const attId = await attachmentQueue.generateAttachmentId();
+                    const f = new FSFile(sourceUri);
+                    const bytes = await f.bytes();
+                    const arrayBuffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+
+                    const drawingId = uuidv4();
+                    const now = new Date().toISOString();
+
+                    const attachment = await attachmentQueue.saveFile({
+                        id: attId,
+                        data: arrayBuffer,
+                        fileExtension,
+                        mediaType,
+                        metaData: JSON.stringify({
+                            kind: 'drawing',
+                            userId,
+                            projectId: project.id,
+                        }),
+                        updateHook: async (tx, att) => {
+                            await tx.execute(
+                                `INSERT INTO drawings (id, project_id, user_id, folder_id, name, type, storage_path, size, uploaded_at, author)
+                                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                                [
+                                    drawingId,
+                                    project.id,
+                                    userId,
+                                    currentFolderId || null,
+                                    asset.name,
+                                    uploadMeta.fileType,
+                                    att.filename,
+                                    size || 0,
+                                    now,
+                                    authorName,
+                                ]
+                            );
+                        },
+                    });
+
+                    // Update in-memory Zustand store and log activity
+                    useProjectsStore.setState((state) => ({
+                        drawings: [
+                            ...state.drawings,
+                            {
+                                id: drawingId,
+                                projectId: project.id,
+                                folderId: currentFolderId || undefined,
+                                name: asset.name,
+                                type: uploadMeta.fileType,
+                                uri: attachment.filename,
+                                size: size || 0,
+                                uploadedAt: now,
+                                author: authorName,
+                            },
+                        ],
+                    }));
+
+                    await useProjectsStore.getState().addActivity({
                         projectId: project.id,
-                        folderId: currentFolderId || undefined,
-                        name: asset.name,
-                        type: fileType,
-                        uri: storagePath,
-                        size: asset.size || 0,
-                        author: authorName,
+                        userId,
+                        action: 'uploaded ' + asset.name,
+                        entityType: 'drawing',
+                        entityId: drawingId,
                     });
                 } catch (e: any) {
-                    console.error('Upload failed:', e);
-                    Alert.alert('Upload Failed', e.message ?? 'Could not upload the file.');
+                    console.error('Queue save failed:', e);
+                    Alert.alert('Error', 'Could not save file locally: ' + (e.message ?? 'Unknown error'));
                 }
             }
         } catch (error) {
@@ -406,8 +484,9 @@ export default function DrawingsBrowserScreen() {
                             style={styles.actionMenuItem}
                             onPress={() => {
                                 setIsActionMenuVisible(false);
-                                setTimeout(() => handleUploadFile(), 100);
+                                setTimeout(() => handleUpload(), 100);
                             }}
+
                         >
                             <Plus size={24} color="#10B981" style={{ marginRight: 16 }} />
                             <Text style={[styles.actionMenuText, { color: colors.text }]}>Upload Document/Drawing</Text>

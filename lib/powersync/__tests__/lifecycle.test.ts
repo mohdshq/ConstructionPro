@@ -10,7 +10,9 @@ jest.mock('../Connector', () => ({
 const mockAlert = jest.fn();
 jest.mock('react-native', () => ({
   Alert: { alert: mockAlert },
+  Platform: { OS: 'ios', select: (obj: any) => obj.ios ?? obj.default },
 }));
+
 
 import { setupPowerSync, teardownPowerSync, clearPowerSyncForNewUser } from '../lifecycle';
 import { AbstractPowerSyncDatabase } from '@powersync/react-native';
@@ -20,7 +22,12 @@ const mockPowerSync = {
   disconnectAndClear: mockDisconnectAndClear,
   disconnect: mockDisconnect,
   getUploadQueueStats: mockGetUploadQueueStats,
+  getOptional: jest.fn().mockResolvedValue(null),
+  getAll: jest.fn().mockResolvedValue([]),
+  resolveTables: jest.fn().mockResolvedValue(['projects', 'drawings', 'profiles', 'reports']),
 } as unknown as AbstractPowerSyncDatabase;
+
+
 
 describe('PowerSync lifecycle', () => {
   beforeEach(() => {
@@ -114,13 +121,15 @@ describe('PowerSync lifecycle', () => {
       const onConfirm = jest.fn().mockResolvedValue(undefined);
       const onCancel = jest.fn();
 
+      let confirmPromise: Promise<void> | null = null;
       // Mock Alert.alert to simulate pressing "Delete and Sign In"
       mockAlert.mockImplementation((title: any, message: any, buttons: any) => {
         const confirmBtn = buttons.find((b: any) => b.style === 'destructive');
-        confirmBtn.onPress();
+        confirmPromise = confirmBtn.onPress();
       });
 
       await clearPowerSyncForNewUser(mockPowerSync, onConfirm, onCancel);
+      if (confirmPromise) await confirmPromise;
 
       expect(mockAlert).toHaveBeenCalledWith(
         'Warning: Unsynced Data',
@@ -131,6 +140,7 @@ describe('PowerSync lifecycle', () => {
       expect(onConfirm).toHaveBeenCalledTimes(1);
       expect(onCancel).not.toHaveBeenCalled();
     });
+
 
     it('prompts user if queue has pending items and handles cancel', async () => {
       mockGetUploadQueueStats.mockResolvedValue({ count: 3, size: 500 });

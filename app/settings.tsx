@@ -2,7 +2,8 @@ import BackButton from "../components/BackButton";
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Platform, TextInput, Image, ActivityIndicator } from 'react-native';
 import { Crown, CheckCircle2, ShieldCheck, Zap, ArrowLeft, Settings2, Moon, Sun, Monitor, Scale, User, Camera, LogOut } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
-import * as FileSystem from 'expo-file-system';
+import * as ImageManipulator from 'expo-image-manipulator';
+import { File } from 'expo-file-system';
 import Purchases from 'react-native-purchases';
 import Animated, { FadeIn, FadeInDown, useSharedValue, useAnimatedStyle, withRepeat, withTiming, withSequence } from 'react-native-reanimated';
 import { useEffect, useState, useCallback, useRef } from 'react';
@@ -10,8 +11,8 @@ import { router } from 'expo-router';
 import { useStore, ThemeType, UnitSystem } from '../store/useStore';
 import { useThemeColors } from '../store/useThemeColors';
 import { useAuthStore } from '../store/useAuthStore';
-import { uploadAvatar, getPublicUrl } from '../lib/supabaseSync';
-import { compressThumbnail } from '../lib/imageUtils';
+import { resolveMediaUri, classifyMediaSource } from '@/lib/attachments/resolveMediaUri';
+import { attachmentQueue } from '@/lib/attachments/attachmentQueue';
 
 interface FeatureRowProps {
     title: string;
@@ -47,10 +48,14 @@ export default function SettingsScreen() {
             setDisplayName(profile.full_name);
         }
         if (profile?.avatar_url) {
-            const publicUrl = getPublicUrl('avatars', profile.avatar_url);
-            setAvatarUri(publicUrl || profile.avatar_url);
+            resolveMediaUri(profile.avatar_url, {
+                bucket: 'avatars',
+                userId: profile.id || user?.id,
+            }).then((resolved) => {
+                if (resolved) setAvatarUri(resolved);
+            });
         }
-    }, [profile]);
+    }, [profile, user?.id]);
 
     // Debounced name sync
     const handleNameChange = useCallback((text: string) => {
@@ -60,12 +65,12 @@ export default function SettingsScreen() {
             if (text.trim() && text.trim() !== profile?.full_name) {
                 try {
                     await updateProfile({ full_name: text.trim() });
-                } catch (e) {
-                    console.error('Failed to sync name:', e);
+                } catch (err) {
+                    console.error('Failed to sync name:', err);
                 }
             }
-        }, 1000);
-    }, [profile?.full_name, updateProfile]);
+        }, 800);
+    }, [profile, updateProfile]);
 
     const handleSignOut = () => {
         const doSignOut = async () => {
@@ -92,8 +97,8 @@ export default function SettingsScreen() {
     useEffect(() => {
         glowOpacity.value = withRepeat(
             withSequence(
-                withTiming(0.25, { duration: 2000 }),
-                withTiming(0.15, { duration: 2000 })
+                withTiming(0.4, { duration: 1500 }),
+                withTiming(0.15, { duration: 1500 })
             ),
             -1,
             true
@@ -107,36 +112,72 @@ export default function SettingsScreen() {
     });
 
     const pickImage = async () => {
-        if (isOfflineGrace) {
-            Alert.alert('Offline Mode', 'Updating your avatar photo requires an active internet connection.');
-            return;
-        }
-
         let result = await ImagePicker.launchImageLibraryAsync({
             mediaTypes: ['images'],
             allowsEditing: true,
             aspect: [1, 1],
-            quality: 0.5,
+            quality: 0.8,
         });
 
         if (!result.canceled && result.assets && result.assets.length > 0) {
-            const uri = result.assets[0].uri;
-            setAvatarUri(uri); // Show preview immediately
-
+            const picked = result.assets[0];
             const currentUserId = user?.id ?? offlineUser?.id;
-            if (currentUserId) {
-                setIsSavingProfile(true);
-                try {
-                    // Compress and upload to Supabase Storage
-                    const compressedUri = await compressThumbnail(uri);
-                    const storagePath = `${currentUserId}/avatar.jpg`;
-                    await uploadAvatar(storagePath, compressedUri);
-                    await updateProfile({ avatar_url: storagePath });
-                } catch (err) {
-                    console.error('Failed to upload avatar:', err);
-                } finally {
+            if (!currentUserId) return;
+
+            setIsSavingProfile(true);
+            try {
+                // Normalize to JPEG with 512px max dimension (downscale only on long edge) and 0.8 compression
+                const w = picked.width || 0;
+                const h = picked.height || 0;
+                const maxDim = Math.max(w, h);
+                const actions = (maxDim > 512 || !maxDim)
+                    ? [{ resize: (w >= h || !h) ? { width: 512 } : { height: 512 } }]
+                    : [];
+                const manipulated = await ImageManipulator.manipulateAsync(
+                    picked.uri,
+                    actions,
+                    { format: ImageManipulator.SaveFormat.JPEG, compress: 0.8 }
+                );
+
+                // Size guard (Avatars bucket limit is 2MB)
+                const f = new File(manipulated.uri);
+                const size = f.size ?? (picked as any).fileSize ?? 0;
+
+                if (size > 2 * 1024 * 1024) {
+                    Alert.alert('File Too Large', 'Maximum supported file size for avatar is 2MB.');
                     setIsSavingProfile(false);
+                    return;
                 }
+
+                setAvatarUri(manipulated.uri); // Instant preview
+
+                const attId = await attachmentQueue.generateAttachmentId();
+                const bytes = await f.bytes();
+                const arrayBuffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+
+                const attachment = await attachmentQueue.saveFile({
+                    id: attId,
+                    data: arrayBuffer,
+                    fileExtension: 'jpg',
+                    mediaType: 'image/jpeg',
+                    metaData: JSON.stringify({ kind: 'avatar', userId: currentUserId }),
+                });
+
+                // If user had an existing attachment avatar, delete the old attachment
+                if (profile?.avatar_url) {
+                    const mediaKind = classifyMediaSource(profile.avatar_url);
+                    if (mediaKind === 'attachment_ref') {
+                        const oldAttId = profile.avatar_url.split('.')[0];
+                        try { await attachmentQueue.deleteFile({ id: oldAttId }); } catch (e) { console.warn('Failed to delete old avatar attachment:', e); }
+                    }
+                }
+
+                await updateProfile({ avatar_url: attachment.filename });
+            } catch (err) {
+                console.error('Failed to save avatar:', err);
+                Alert.alert('Error', 'Failed to update avatar photo.');
+            } finally {
+                setIsSavingProfile(false);
             }
         }
     };
