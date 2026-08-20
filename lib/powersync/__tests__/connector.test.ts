@@ -19,7 +19,7 @@ describe('PowerSync Connector - Upload Data & Error Handling', () => {
     connector = new Connector();
   });
 
-  it('drops permanently rejected 403 / 42501 operations without throwing to avoid head-of-line blocking', async () => {
+  it('drops permanently rejected 42501 RLS operations without throwing to avoid head-of-line blocking', async () => {
     const mockComplete = jest.fn().mockResolvedValue(undefined);
     const mockDatabase = {
       getNextCrudTransaction: jest.fn().mockResolvedValue({
@@ -52,6 +52,43 @@ describe('PowerSync Connector - Upload Data & Error Handling', () => {
     // Should complete the transaction without rethrowing
     await expect(connector.uploadData(mockDatabase as any)).resolves.toBeUndefined();
     expect(mockComplete).toHaveBeenCalledTimes(1);
+  });
+
+  it('rethrows transient JWT auth errors (PGRST301) so PowerSync will retry on token refresh', async () => {
+    const mockComplete = jest.fn().mockResolvedValue(undefined);
+    const mockDatabase = {
+      getNextCrudTransaction: jest.fn().mockResolvedValue({
+        crud: [
+          {
+            table: 'drawings',
+            op: UpdateType.DELETE,
+            id: 'drawing-id-jwt-fail',
+            opData: null,
+          },
+        ],
+        complete: mockComplete,
+      }),
+    };
+
+    const mockDelete = jest.fn().mockReturnValue({
+      eq: jest.fn().mockResolvedValue({
+        error: {
+          code: 'PGRST301',
+          message: 'JWT expired',
+          status: 401,
+        },
+      }),
+    });
+
+    (supabase.from as jest.Mock).mockReturnValue({
+      delete: mockDelete,
+    });
+
+    // Must re-throw so it retries, never silently drop
+    await expect(connector.uploadData(mockDatabase as any)).rejects.toEqual(
+      expect.objectContaining({ code: 'PGRST301' })
+    );
+    expect(mockComplete).not.toHaveBeenCalled();
   });
 
   it('rethrows transient or network errors so PowerSync will retry later', async () => {

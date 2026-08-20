@@ -59,18 +59,23 @@ export class Connector implements PowerSyncBackendConnector {
         }
         if (result?.error) {
           const err = result.error;
-          const isAuthRejection =
+          // Only drop on permanent Postgres RLS violations (42501 or explicit RLS policy error).
+          // Do NOT drop on JWT/auth expiry errors like PGRST301; those must throw and retry.
+          const isRlsRejection =
             err.code === '42501' ||
-            err.code === 'PGRST301' ||
-            (err as any).status === 403 ||
-            (err as any).statusCode === '403' ||
-            err.message?.toLowerCase().includes('violates row-level security policy') ||
-            err.message?.toLowerCase().includes('permission denied');
+            err.message?.toLowerCase().includes('violates row-level security policy');
 
-          if (isAuthRejection) {
+          if (isRlsRejection) {
             console.warn(
-              `[PowerSync Connector] Permanent authorization rejection for ${op.op} on table ${op.table} (id: ${op.id}). ` +
-              `Dropping operation to avoid head-of-line queue blocking. Reason: ${err.message}`
+              '[PowerSync Connector] Permanent RLS authorization rejection — dropping operation to prevent head-of-line blocking:',
+              JSON.stringify({
+                op: op.op,
+                table: op.table,
+                id: op.id,
+                opData: op.opData,
+                errorCode: err.code,
+                errorMessage: err.message,
+              })
             );
             continue;
           }
