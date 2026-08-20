@@ -57,7 +57,25 @@ export class Connector implements PowerSyncBackendConnector {
             result = await table.delete().eq('id', op.id);
             break;
         }
-        if (result?.error) throw result.error;
+        if (result?.error) {
+          const err = result.error;
+          const isAuthRejection =
+            err.code === '42501' ||
+            err.code === 'PGRST301' ||
+            (err as any).status === 403 ||
+            (err as any).statusCode === '403' ||
+            err.message?.toLowerCase().includes('violates row-level security policy') ||
+            err.message?.toLowerCase().includes('permission denied');
+
+          if (isAuthRejection) {
+            console.warn(
+              `[PowerSync Connector] Permanent authorization rejection for ${op.op} on table ${op.table} (id: ${op.id}). ` +
+              `Dropping operation to avoid head-of-line queue blocking. Reason: ${err.message}`
+            );
+            continue;
+          }
+          throw err;
+        }
       }
       await transaction.complete();
     } catch (ex: any) {

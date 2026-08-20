@@ -26,6 +26,12 @@ export enum AttachmentState {
   ARCHIVED = 4,
 }
 
+export enum UpdateType {
+  PUT = 'PUT',
+  PATCH = 'PATCH',
+  DELETE = 'DELETE',
+}
+
 export interface AttachmentRecord {
   id: string;
   filename: string;

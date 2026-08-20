@@ -32,8 +32,9 @@
 | H3 | **`fetchUserProjects` filters by `user_id` only** — a user added via `project_members` never sees the shared project, yet `fetchUserActivities` / `fetchUserCalculations` *do* resolve through `project_members`. Sharing is half-wired. Resolved by Phase 7. | Sync/Team |
 | H4 | `insertCalculation(calculation: any)` — untyped parameter | Sync |
 | H5 | No Arabic / RTL despite `expo-localization` being installed | i18n |
-| H6 | Web target configured (`output: "static"`) but untested; RevenueCat throws in browser | Web |
 | H7 | Supabase Storage **`pdfs` bucket has `public=true`, NULL size limit, NULL allowed MIME types** | Security/Infra | Discovered during B4 storage audit (outside B4 scope). Bucket is publicly readable on CDN and lacks server-side file size and MIME-type restrictions. Must be hardened with size limits, MIME restrictions, or converted to private authenticated access before production. |
+| H8 | **Pending local attachment loss during user switch / reset (`clearPowerSyncForNewUser`)** | Sync/Attachments | When a user signs out or switches accounts with unsynced local attachments, `clearPowerSyncForNewUser` wipes the local attachment queue and PowerSync SQLite database. If a referencing database row (e.g. `projects.photo_url` or `reports`) synced to Supabase Postgres before the binary uploaded, the row retains a reference to a nonexistent storage object (observed on project "Castle"). UI handles missing storage objects gracefully; users are prompted with an explicit warning during sign-out. |
+
 
 
 ## Structural debt (not bugs — planned migrations)

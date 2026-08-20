@@ -9,6 +9,7 @@ import { File as FSFile } from 'expo-file-system';
 import { useThemeColors } from '../../../../store/useThemeColors';
 import { usePowerSyncFolders } from '../../../../lib/powersync/useFolders';
 import { usePowerSyncDrawings } from '../../../../lib/powersync/useDrawings';
+import { usePowerSyncMembers } from '../../../../lib/powersync/useMembers';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { getSignedUrl } from '../../../../lib/supabaseSync';
@@ -29,12 +30,18 @@ export default function DrawingsBrowserScreen() {
     const { getProject, addFolder, addDrawing, deleteFolder, deleteDrawing } = useProjectsStore();
     const folders = usePowerSyncFolders(id);
     const drawings = usePowerSyncDrawings(id);
+    const members = usePowerSyncMembers(id);
     const authState = useAuthStore.getState();
     const userId = authState.user?.id;
     const authorName = authState.profile?.full_name || authState.user?.user_metadata?.full_name || authState.user?.email || 'Unknown';
     const { colors } = useThemeColors();
 
     const project = useMemo(() => getProject(id), [id, getProject]);
+    const isOwnerOrManager = useMemo(() => {
+        if (!userId) return false;
+        const currentMember = members.find(m => m.userId === userId);
+        return currentMember?.role === 'owner' || currentMember?.role === 'manager';
+    }, [userId, members]);
     const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
     
     // Modal states
@@ -214,15 +221,18 @@ export default function DrawingsBrowserScreen() {
     const handleItemOptions = (item: ListItem) => {
         const options: any[] = [
             { text: 'Cancel', style: 'cancel' },
-            { 
+        ];
+
+        if (isOwnerOrManager) {
+            options.push({ 
                 text: 'Rename', 
                 onPress: () => {
                     setRenameItem(item);
                     setNewName(item.data.name);
                     setIsRenameModalVisible(true);
                 }
-            }
-        ];
+            });
+        }
 
         if (item.type === 'file') {
             options.push({
@@ -263,14 +273,21 @@ export default function DrawingsBrowserScreen() {
             });
         }
 
-        options.push({ 
-            text: 'Delete', 
-            style: 'destructive', 
-            onPress: () => {
-                if (item.type === 'folder') deleteFolder(item.data.id);
-                if (item.type === 'file') deleteDrawing(item.data.id);
-            }
-        });
+        if (isOwnerOrManager) {
+            options.push({ 
+                text: 'Delete', 
+                style: 'destructive', 
+                onPress: () => {
+                    if (item.type === 'folder') deleteFolder(item.data.id);
+                    if (item.type === 'file') deleteDrawing(item.data.id);
+                }
+            });
+        }
+
+        // If non-manager viewing a folder with no options other than Cancel, do not show empty dialog
+        if (options.length === 1 && item.type === 'folder') {
+            return;
+        }
 
         Alert.alert(
             'Options',

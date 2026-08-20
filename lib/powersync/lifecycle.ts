@@ -101,7 +101,7 @@ export const clearPowerSyncForNewUser = async (
     if (stats.count > 0) {
       Alert.alert(
         'Warning: Unsynced Data',
-        `The previous user left ${stats.count} unsynced changes on this device. Signing in as a different user will permanently delete these changes.\n\nAre you sure you want to proceed?`,
+        `The previous user left ${stats.count} unsynced changes on this device. Signing in as a different user will permanently delete these changes and any unsynced photos, drawings, or attachments.\n\nAre you sure you want to proceed?`,
         [
           { text: 'Cancel', style: 'cancel', onPress: onCancel },
           {

@@ -85,7 +85,7 @@ export default function SettingsScreen() {
         } else {
             Alert.alert(
                 'Sign Out',
-                'Are you sure you want to sign out?',
+                'Are you sure you want to sign out? Any unsynced changes, photos, drawings, or attachments will be lost if you switch users or reset this device.',
                 [
                     { text: 'Cancel', style: 'cancel' },
                     { text: 'Sign Out', style: 'destructive', onPress: doSignOut },

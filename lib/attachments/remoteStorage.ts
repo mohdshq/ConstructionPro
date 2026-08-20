@@ -125,18 +125,18 @@ export class SupabaseRemoteStorageAdapter implements RemoteStorageAdapter {
       const { error } = await supabase.storage.from(bucket).remove([storagePath]);
       if (error) {
         const msg = (error.message || '').toLowerCase();
-        // IDEMPOTENT: 404 / not found / empty results are treated as SUCCESS
+        // IDEMPOTENT: 404 / not found is treated as SUCCESS
         if (msg.includes('not found') || msg.includes('404') || (error as any).status === 404) {
           return;
         }
-        console.warn(`[SupabaseRemoteStorage] Delete warning for ${bucket}/${storagePath}:`, error.message);
+        throw new Error(`Supabase delete failed for ${bucket}/${storagePath}: ${error.message}`);
       }
     } catch (e: any) {
       const msg = (e?.message || '').toLowerCase();
       if (msg.includes('not found') || msg.includes('404') || e?.status === 404) {
         return;
       }
-      console.warn(`[SupabaseRemoteStorage] Delete catch for ${bucket}/${storagePath}:`, e);
+      throw e;
     }
   }
 }

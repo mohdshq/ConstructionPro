@@ -30,7 +30,7 @@ describe('SupabaseRemoteStorageAdapter', () => {
     });
   });
 
-  describe('deleteFile (Idempotency)', () => {
+  describe('deleteFile (Idempotency and Error Propagation)', () => {
     it('treats 404 and not-found errors as success without throwing', async () => {
       const mockRemove = jest.fn().mockResolvedValue({
         error: { message: 'Object not found', status: 404 },
@@ -49,6 +49,24 @@ describe('SupabaseRemoteStorageAdapter', () => {
       // Should complete normally without throwing
       await expect(adapter.deleteFile(attachment)).resolves.toBeUndefined();
       expect(mockRemove).toHaveBeenCalledWith(['proj-1/att-1.jpg']);
+    });
+
+    it('re-throws non-404 authorization errors (403) so the queue can retry and surface failures', async () => {
+      const mockRemove = jest.fn().mockResolvedValue({
+        error: { message: 'Unauthorized or forbidden', status: 403 },
+      });
+      (supabase.storage.from as jest.Mock).mockReturnValue({
+        remove: mockRemove,
+      });
+
+      const attachment: AttachmentRecord = {
+        id: 'att-2',
+        filename: 'att-2.jpg',
+        metaData: JSON.stringify({ kind: 'drawing', userId: 'user-1', projectId: 'proj-1' }),
+        state: AttachmentState.QUEUED_DELETE,
+      };
+
+      await expect(adapter.deleteFile(attachment)).rejects.toThrow('Supabase delete failed for drawings/proj-1/att-2.jpg: Unauthorized or forbidden');
     });
   });
 
