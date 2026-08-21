@@ -2,6 +2,7 @@ import { RemoteStorageAdapter, AttachmentRecord } from '@powersync/react-native'
 import { supabase } from '@/lib/supabase';
 import { getSignedUrl, getPublicUrl } from '@/lib/supabaseSync';
 import { decode as decodeBase64 } from 'base64-arraybuffer';
+import { captureWarning } from '@/lib/sentryLogger';
 
 export interface AttachmentMetadata {
   kind: 'project_cover' | 'drawing' | 'report_photo' | 'avatar';
@@ -69,11 +70,10 @@ export class SupabaseRemoteStorageAdapter implements RemoteStorageAdapter {
     if (!response.ok) {
       const errorText = await response.text();
       if (response.status === 403 || response.status === 401) {
-        console.warn(
-          `[AttachmentQueue] HTTP ${response.status} Authorization failure uploading ${bucket}/${storagePath}. ` +
+        const warnMsg = `[SupabaseRemoteStorage] HTTP ${response.status} Authorization failure uploading ${bucket}/${storagePath}. ` +
           `If this project was created offline, the attachment queue ran before the projects row reached Postgres. ` +
-          `This will automatically resolve on the next sync tick once the project row syncs.`
-        );
+          `This will automatically resolve on the next sync tick once the project row syncs.`;
+        captureWarning('SupabaseRemoteStorage', warnMsg, { bucket, storagePath, status: response.status });
       }
       throw new Error(`Supabase upload failed (${response.status}): ${errorText}`);
     }

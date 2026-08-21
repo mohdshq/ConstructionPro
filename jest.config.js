@@ -13,5 +13,6 @@ module.exports = {
     '^expo-file-system/legacy$': '<rootDir>/lib/attachments/__mocks__/expo-file-system-legacy.ts',
     '^expo-file-system$': '<rootDir>/lib/attachments/__mocks__/expo-file-system.ts',
     '^@powersync/react-native$': '<rootDir>/lib/attachments/__mocks__/powersync-react-native.ts',
+    '^@sentry/react-native$': '<rootDir>/lib/attachments/__mocks__/sentry-react-native.ts',
   },
 };

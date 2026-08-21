@@ -2,6 +2,7 @@ import {
   AbstractPowerSyncDatabase, PowerSyncBackendConnector, UpdateType,
 } from '@powersync/react-native';
 import { supabase } from '@/lib/supabase';
+import { captureWarning } from '@/lib/sentryLogger';
 
 export class Connector implements PowerSyncBackendConnector {
   async fetchCredentials() {
@@ -66,17 +67,21 @@ export class Connector implements PowerSyncBackendConnector {
             err.message?.toLowerCase().includes('violates row-level security policy');
 
           if (isRlsRejection) {
-            console.warn(
-              '[PowerSync Connector] Permanent RLS authorization rejection — dropping operation to prevent head-of-line blocking:',
-              JSON.stringify({
-                op: op.op,
-                table: op.table,
-                id: op.id,
-                opData: op.opData,
-                errorCode: err.code,
-                errorMessage: err.message,
-              })
-            );
+            const warnMsg = `[PowerSync Connector] Permanent RLS authorization rejection — dropping operation to prevent head-of-line blocking: ${JSON.stringify({
+              op: op.op,
+              table: op.table,
+              id: op.id,
+              opData: op.opData,
+              errorCode: err.code,
+              errorMessage: err.message,
+            })}`;
+            captureWarning('PowerSyncConnector', warnMsg, {
+              op: op.op,
+              table: op.table,
+              id: op.id,
+              errorCode: err.code,
+              errorMessage: err.message,
+            });
             continue;
           }
           throw err;

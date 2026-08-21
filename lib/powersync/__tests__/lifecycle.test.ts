@@ -160,5 +160,39 @@ describe('PowerSync lifecycle', () => {
       expect(onConfirm).not.toHaveBeenCalled();
       expect(onCancel).toHaveBeenCalledTimes(1);
     });
+
+    it('resets isConnected flag so a subsequent setupPowerSync reconnects', async () => {
+      mockConnect.mockResolvedValue(undefined);
+      mockDisconnectAndClear.mockResolvedValue(undefined);
+
+      // Initial connect
+      await setupPowerSync(mockPowerSync);
+      expect(mockConnect).toHaveBeenCalledTimes(1);
+
+      // Clear for new user
+      const onConfirm = jest.fn().mockResolvedValue(undefined);
+      await clearPowerSyncForNewUser(mockPowerSync, onConfirm, jest.fn());
+      expect(mockDisconnectAndClear).toHaveBeenCalledTimes(1);
+
+      // Next user setup must call connect again
+      await setupPowerSync(mockPowerSync);
+      expect(mockConnect).toHaveBeenCalledTimes(2);
+    });
+
+    it('resets isConnected even if teardown encounters an error', async () => {
+      mockConnect.mockResolvedValue(undefined);
+      mockDisconnect.mockRejectedValueOnce(new Error('Native bridge disconnected'));
+
+      // Initial connect
+      await setupPowerSync(mockPowerSync);
+      expect(mockConnect).toHaveBeenCalledTimes(1);
+
+      // Teardown with error
+      await teardownPowerSync(mockPowerSync);
+
+      // Subsequent setup must still call connect again
+      await setupPowerSync(mockPowerSync);
+      expect(mockConnect).toHaveBeenCalledTimes(2);
+    });
   });
 });

@@ -21,21 +21,26 @@ export function isPermanentNotFoundError(error: unknown): boolean {
   );
 }
 
+import { captureWarning } from '@/lib/sentryLogger';
+
 export const attachmentErrorHandler: AttachmentErrorHandler = {
   async onUploadError(attachment, error) {
-    console.warn(`[AttachmentQueue] Upload error for ${attachment.filename}:`, error);
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    captureWarning('AttachmentQueue', `[AttachmentQueue] Upload error for ${attachment.filename}: ${errorMsg}`, { filename: attachment.filename });
     return true; // Always retry upload on transient/network error
   },
   async onDownloadError(attachment, error) {
-    console.warn(`[AttachmentQueue] Download error for ${attachment.filename}:`, error);
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    captureWarning('AttachmentQueue', `[AttachmentQueue] Download error for ${attachment.filename}: ${errorMsg}`, { filename: attachment.filename });
     if (isPermanentNotFoundError(error)) {
-      console.warn(`[AttachmentQueue] Permanent 404 for ${attachment.filename} — stopping retry.`);
+      captureWarning('AttachmentQueue', `[AttachmentQueue] Permanent 404 for ${attachment.filename} — stopping retry.`, { filename: attachment.filename });
       return false; // Stop retrying non-existent remote object
     }
     return true; // Retry transient/network errors
   },
   async onDeleteError(attachment, error) {
-    console.warn(`[AttachmentQueue] Delete error for ${attachment.filename}:`, error);
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    captureWarning('AttachmentQueue', `[AttachmentQueue] Delete error for ${attachment.filename}: ${errorMsg}`, { filename: attachment.filename });
     return true; // Retry delete
   },
 };
@@ -77,7 +82,8 @@ export async function safeDeleteAttachmentRef(ref?: string | null): Promise<bool
     }
     return false;
   } catch (error) {
-    console.warn(`[AttachmentQueue] Safe delete failed for ref ${ref}:`, error);
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    captureWarning('AttachmentQueue', `[AttachmentQueue] Safe delete failed for ref ${ref}: ${errorMsg}`, { ref });
     return false;
   }
 }

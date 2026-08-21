@@ -70,9 +70,34 @@ export const setupPowerSync = async (powersync: AbstractPowerSyncDatabase) => {
   return connectPromise;
 };
 
-export const teardownPowerSync = async (powersync: AbstractPowerSyncDatabase) => {
+export const isPowerSyncConnected = () => isConnected;
+
+export const resetPowerSyncConnectionStateForTesting = () => {
+  isConnected = false;
   connectPromise = null;
-  if (!isConnected) return;
+};
+
+const resetConnectionState = () => {
+  isConnected = false;
+  connectPromise = null;
+};
+
+const performDisconnectAndClear = async (
+  powersync: AbstractPowerSyncDatabase,
+  onConfirm: () => Promise<void>
+) => {
+  try {
+    await attachmentQueue.stopSync();
+    await attachmentQueue.clearQueue();
+    await powersync.disconnectAndClear();
+  } finally {
+    resetConnectionState();
+  }
+  await onConfirm();
+};
+
+export const teardownPowerSync = async (powersync: AbstractPowerSyncDatabase) => {
+  if (!isConnected && !connectPromise) return;
   try {
     const stats = await getCombinedUploadQueueStats(powersync);
     if (stats.count > 0) {
@@ -85,9 +110,10 @@ export const teardownPowerSync = async (powersync: AbstractPowerSyncDatabase) =>
     // Stop sync only; do NOT clear attachments (preserves queued files across sign-out)
     await attachmentQueue.stopSync();
     await powersync.disconnect();
-    isConnected = false;
   } catch (error) {
     console.warn('[PowerSync] teardown failed:', error);
+  } finally {
+    resetConnectionState();
   }
 };
 
@@ -108,26 +134,17 @@ export const clearPowerSyncForNewUser = async (
             text: 'Delete and Sign In',
             style: 'destructive',
             onPress: async () => {
-              await attachmentQueue.stopSync();
-              await attachmentQueue.clearQueue();
-              await powersync.disconnectAndClear();
-              await onConfirm();
+              await performDisconnectAndClear(powersync, onConfirm);
             },
           },
         ]
       );
     } else {
-      await attachmentQueue.stopSync();
-      await attachmentQueue.clearQueue();
-      await powersync.disconnectAndClear();
-      await onConfirm();
+      await performDisconnectAndClear(powersync, onConfirm);
     }
   } catch (error) {
     console.warn('[PowerSync] clear for new user failed:', error);
-    await attachmentQueue.stopSync();
-    await attachmentQueue.clearQueue();
-    await powersync.disconnectAndClear();
-    await onConfirm();
+    await performDisconnectAndClear(powersync, onConfirm);
   }
 };
 
