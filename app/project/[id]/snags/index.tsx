@@ -96,7 +96,7 @@ export default function SnagsListScreen() {
             >
                 <View style={[styles.thumbnailContainer, { borderColor: colors.border }]}>
                     {item.photos?.[0] ? (
-                        <ProjectImage photoUri={item.photos[0]} style={styles.thumbnail} resizeMode="cover" />
+                        <ProjectImage photoUri={item.photos[0]} projectId={id} style={styles.thumbnail} resizeMode="cover" />
                     ) : (
                         <Camera size={24} color={colors.textMuted} />
                     )}

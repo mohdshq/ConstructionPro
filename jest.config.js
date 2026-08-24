@@ -14,5 +14,6 @@ module.exports = {
     '^expo-file-system$': '<rootDir>/lib/attachments/__mocks__/expo-file-system.ts',
     '^@powersync/react-native$': '<rootDir>/lib/attachments/__mocks__/powersync-react-native.ts',
     '^@sentry/react-native$': '<rootDir>/lib/attachments/__mocks__/sentry-react-native.ts',
+    '^uuid$': '<rootDir>/lib/attachments/__mocks__/uuid.ts',
   },
 };

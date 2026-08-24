@@ -3,10 +3,13 @@ import { ArrowLeft, MapPin, Calendar, Clock, FileText, CheckSquare, ShieldAlert,
 import BackButton from "../../components/BackButton";
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { Image } from 'react-native';
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import Animated, { FadeInDown, FadeIn } from 'react-native-reanimated';
 import { useProjectsStore, Project, Report } from '../../store/projectsStore';
 import { usePowerSyncReports } from '../../lib/powersync/useReports';
+import { usePowerSyncProject } from '../../lib/powersync/useProjects';
+import { usePowerSyncMembers } from '../../lib/powersync/useMembers';
+import { useAuthStore } from '../../store/useAuthStore';
 import { useThemeColors } from '../../store/useThemeColors';
 import { useStore } from '../../store/useStore';
 import ProjectImage from '../../components/ProjectImage';
@@ -146,12 +149,25 @@ export default function ProjectDashboardScreen() {
     const router = useRouter();
     const { getProject, deleteProject, getReportsForProject, deleteReport, updateReport, initialSync } = useProjectsStore();
     const { colors } = useThemeColors();
+    const currentUserId = useAuthStore(state => state.user?.id);
+
+    // Live PowerSync query for the project
+    const { data: powerSyncProject, isLoading: isProjectLoading } = usePowerSyncProject(id as string);
+    const members = usePowerSyncMembers(id as string);
 
     // Make reports reactive to instantly show newly created ones
     const reports = usePowerSyncReports(id as string);
     const { isPremium } = useStore();
 
-    const [project, setProject] = useState<Project | null>(null);
+    // Prefer live PowerSync data, falling back to zustand store if available
+    const project = powerSyncProject || getProject(id);
+
+    const currentMember = members.find(m => m.userId === currentUserId);
+    const isOwnerOrManager = useMemo(() => {
+        if (!project) return false;
+        return project.userId === currentUserId || project.memberRole === 'owner' || project.memberRole === 'manager' || currentMember?.role === 'owner' || currentMember?.role === 'manager';
+    }, [project, currentUserId, currentMember]);
+
     const [refreshing, setRefreshing] = useState(false);
 
     const onRefresh = useCallback(async () => {
@@ -163,15 +179,11 @@ export default function ProjectDashboardScreen() {
     }, [initialSync]);
 
     useEffect(() => {
-        if (id) {
-            const p = getProject(id);
-            if (p) {
-                setProject(p);
-            } else {
-                router.back();
-            }
+        // Only redirect back after the query has settled (not loading) and project is definitely missing
+        if (!isProjectLoading && !project && id) {
+            router.back();
         }
-    }, [id, getProject]);
+    }, [isProjectLoading, project, id, router]);
 
     if (!project) return null;
 
@@ -267,14 +279,16 @@ export default function ProjectDashboardScreen() {
             <View style={[styles.header, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
                 <BackButton style={{ position: "absolute", left: 20, zIndex: 20, bottom: 8 }} />
                 <Text style={[styles.headerTitle, { color: colors.text }]} numberOfLines={1}>{project.name}</Text>
-                <View style={styles.headerActions}>
-                    <TouchableOpacity onPress={() => router.push(`/project/create?id=${project.id}` as any)} style={[styles.actionIcon, { backgroundColor: colors.card }]}>
-                        <Pencil size={20} color={colors.textMuted} />
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={handleDelete} style={[styles.actionIcon, styles.actionIconDelete]}>
-                        <Trash2 size={20} color="#EF4444" />
-                    </TouchableOpacity>
-                </View>
+                {isOwnerOrManager && (
+                    <View style={styles.headerActions}>
+                        <TouchableOpacity onPress={() => router.push(`/project/create?id=${project.id}` as any)} style={[styles.actionIcon, { backgroundColor: colors.card }]}>
+                            <Pencil size={20} color={colors.textMuted} />
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={handleDelete} style={[styles.actionIcon, styles.actionIconDelete]}>
+                            <Trash2 size={20} color="#EF4444" />
+                        </TouchableOpacity>
+                    </View>
+                )}
             </View>
 
             <ScrollView 
@@ -285,7 +299,7 @@ export default function ProjectDashboardScreen() {
                 {/* Hero Section */}
                 <View style={[styles.heroSection, { backgroundColor: colors.card }]}>
                     {project.photoUri ? (
-                        <ProjectImage photoUri={project.photoUri} style={styles.heroImage} resizeMode="cover" />
+                        <ProjectImage photoUri={project.photoUri} projectId={id} style={styles.heroImage} resizeMode="cover" />
                     ) : (
                         <View style={[styles.heroPlaceholder, { backgroundColor: colors.card }]}>
                             <FolderOpen size={48} color={colors.textMuted} />

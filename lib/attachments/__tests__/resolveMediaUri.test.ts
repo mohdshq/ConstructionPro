@@ -110,4 +110,20 @@ describe('resolveMediaUri', () => {
       expect(supabaseSync.getPublicUrl).not.toHaveBeenCalled();
     });
   });
+
+  describe('Project-Scoped Path Resolution for report-photos', () => {
+    it('builds project-scoped path {projectId}/{filename} for an attachment ref', async () => {
+      const filename = 'project_cover_1780307021264_u6ky3c.jpg';
+      const projectId = '0516d9f7-342e-4305-8df8-525a6212998a';
+      (attachmentLocalStorage.fileExists as jest.Mock).mockResolvedValue(false);
+      (supabaseSync.getSignedUrl as jest.Mock).mockResolvedValue({
+        ok: true,
+        url: `https://supabase.co/signed/${projectId}/${filename}`,
+      });
+
+      const result = await resolveMediaUri(filename, { bucket: 'report-photos', projectId });
+      expect(result).toBe(`https://supabase.co/signed/${projectId}/${filename}`);
+      expect(supabaseSync.getSignedUrl).toHaveBeenCalledWith('report-photos', `${projectId}/${filename}`, 3600);
+    });
+  });
 });

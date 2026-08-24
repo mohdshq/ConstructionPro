@@ -316,6 +316,8 @@ export interface Project {
     createdAt: string;
     updatedAt: string;
     syncStatus?: 'synced' | 'pending';
+    userId?: string;
+    memberRole?: 'owner' | 'manager' | 'viewer';
 }
 
 export interface ProjectMember {

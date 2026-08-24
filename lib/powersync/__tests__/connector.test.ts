@@ -124,4 +124,40 @@ describe('PowerSync Connector - Upload Data & Error Handling', () => {
     );
     expect(mockComplete).not.toHaveBeenCalled();
   });
+
+  it('drops unauthorized 42501 DELETE on projects table to prevent head-of-line blocking', async () => {
+    const mockComplete = jest.fn().mockResolvedValue(undefined);
+    const mockDatabase = {
+      getNextCrudTransaction: jest.fn().mockResolvedValue({
+        crud: [
+          {
+            table: 'projects',
+            op: UpdateType.DELETE,
+            id: 'unauthorized-project-id',
+            opData: null,
+          },
+        ],
+        complete: mockComplete,
+      }),
+    };
+
+    const mockDelete = jest.fn().mockReturnValue({
+      eq: jest.fn().mockResolvedValue({
+        error: {
+          code: '42501',
+          message: 'new row violates row-level security policy for table "projects"',
+          status: 403,
+        },
+      }),
+    });
+
+    (supabase.from as jest.Mock).mockReturnValue({
+      delete: mockDelete,
+    });
+
+    // Should complete the transaction and drop the rejected delete operation
+    await expect(connector.uploadData(mockDatabase as any)).resolves.toBeUndefined();
+    expect(mockComplete).toHaveBeenCalledTimes(1);
+    expect(mockDelete).toHaveBeenCalledTimes(1);
+  });
 });

@@ -328,7 +328,7 @@ export default function EditSnagScreen() {
                         <View style={{ alignItems: 'flex-start' }}>
                             <Text style={[styles.photoSubtext, { color: colors.text, marginBottom: 8 }]}>Context</Text>
                             <TouchableOpacity style={[styles.logoPickerFull, { borderColor: colors.border }]} onPress={() => contextPhoto ? setMarkupPhoto({ uri: contextPhoto, target: 'context' }) : handlePickImage('context')}>
-                                {contextPhoto ? <ProjectImage photoUri={contextPhoto} style={styles.logoPreview} resizeMode="cover" /> : <Camera size={24} color={colors.textMuted} />}
+                                {contextPhoto ? <ProjectImage photoUri={contextPhoto} projectId={id} style={styles.logoPreview} resizeMode="cover" /> : <Camera size={24} color={colors.textMuted} />}
                                 {contextPhoto && (
                                     <TouchableOpacity style={styles.removeLogoBtn} onPress={(e) => { e.stopPropagation(); setContextPhoto(null); }}>
                                         <X size={12} color="#FFF" />
@@ -339,7 +339,7 @@ export default function EditSnagScreen() {
                         <View style={{ alignItems: 'flex-start' }}>
                             <Text style={[styles.photoSubtext, { color: colors.text, marginBottom: 8 }]}>Detail</Text>
                             <TouchableOpacity style={[styles.logoPickerFull, { borderColor: colors.border }]} onPress={() => detailPhoto ? setMarkupPhoto({ uri: detailPhoto, target: 'detail' }) : handlePickImage('detail')}>
-                                {detailPhoto ? <ProjectImage photoUri={detailPhoto} style={styles.logoPreview} resizeMode="cover" /> : <Camera size={24} color={colors.textMuted} />}
+                                {detailPhoto ? <ProjectImage photoUri={detailPhoto} projectId={id} style={styles.logoPreview} resizeMode="cover" /> : <Camera size={24} color={colors.textMuted} />}
                                 {detailPhoto && (
                                     <TouchableOpacity style={styles.removeLogoBtn} onPress={(e) => { e.stopPropagation(); setDetailPhoto(null); }}>
                                         <X size={12} color="#FFF" />

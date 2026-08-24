@@ -7,6 +7,7 @@ import { useProjectsStore, Project } from '../../store/projectsStore';
 import { usePowerSyncProjects } from '@/lib/powersync/useProjects';
 import { useThemeColors } from '../../store/useThemeColors';
 import { useStore } from '../../store/useStore';
+import { useAuthStore } from '../../store/useAuthStore';
 import { useMemo, useCallback, useState } from 'react';
 import ConnectionBadge from '../../components/ConnectionBadge';
 
@@ -19,6 +20,7 @@ export default function ProjectsScreen() {
     const { isPremium } = useStore();
     const { colors, isDark } = useThemeColors();
     const [refreshing, setRefreshing] = useState(false);
+    const currentUserId = useAuthStore(state => state.user?.id);
 
     const onRefresh = useCallback(async () => {
         setRefreshing(true);
@@ -129,6 +131,7 @@ export default function ProjectsScreen() {
 
     const renderProjectCard = ({ item, index }: { item: Project & { displayStatus: string }, index: number }) => {
         const projectReports = reports.filter(r => r.projectId === item.id);
+        const isManager = item.userId === currentUserId || item.memberRole === 'owner' || item.memberRole === 'manager';
 
         return (
             <Animated.View entering={FadeInDown.delay(index * 100).springify()}>
@@ -139,7 +142,7 @@ export default function ProjectsScreen() {
                 >
                     {/* Project Image Banner */}
                     {item.photoUri ? (
-                        <ProjectImage photoUri={item.photoUri} style={styles.cardImage} />
+                        <ProjectImage photoUri={item.photoUri} projectId={item.id} style={styles.cardImage} />
                     ) : (
                         <View style={[styles.cardImagePlaceholder, { backgroundColor: isDark ? colors.background : '#F8FAFC' }]}>
                             <FolderOpen size={32} color={colors.textMuted} />
@@ -157,18 +160,22 @@ export default function ProjectsScreen() {
                                         {item.displayStatus.toUpperCase()}
                                     </Text>
                                 </View>
-                                <TouchableOpacity
-                                    onPress={() => router.push(`/project/create?id=${item.id}` as any)}
-                                    style={[styles.actionIconButton, { backgroundColor: colors.inputBackground }]}
-                                >
-                                    <Pencil size={18} color={colors.textMuted} />
-                                </TouchableOpacity>
-                                <TouchableOpacity
-                                    onPress={() => handleDeleteProject(item.id, item.name)}
-                                    style={[styles.actionIconButton, { backgroundColor: isDark ? '#7F1D1D' : '#FEE2E2' }]}
-                                >
-                                    <Trash2 size={18} color={isDark ? '#FCA5A5' : "#EF4444"} />
-                                </TouchableOpacity>
+                                {isManager && (
+                                    <>
+                                        <TouchableOpacity
+                                            onPress={() => router.push(`/project/create?id=${item.id}` as any)}
+                                            style={[styles.actionIconButton, { backgroundColor: colors.inputBackground }]}
+                                        >
+                                            <Pencil size={18} color={colors.textMuted} />
+                                        </TouchableOpacity>
+                                        <TouchableOpacity
+                                            onPress={() => handleDeleteProject(item.id, item.name)}
+                                            style={[styles.actionIconButton, { backgroundColor: isDark ? '#7F1D1D' : '#FEE2E2' }]}
+                                        >
+                                            <Trash2 size={18} color={isDark ? '#FCA5A5' : "#EF4444"} />
+                                        </TouchableOpacity>
+                                    </>
+                                )}
                             </View>
                         </View>
 

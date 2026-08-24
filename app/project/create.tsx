@@ -232,7 +232,7 @@ export default function CreateProjectScreen() {
                 <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
                     <TouchableOpacity style={[styles.photoPickerContainer, { backgroundColor: colors.card, borderColor: colors.border }]} onPress={handlePickImage} activeOpacity={0.8}>
                         {photoUri ? (
-                            <ProjectImage photoUri={photoUri} style={styles.photoPreview} resizeMode="cover" />
+                            <ProjectImage photoUri={photoUri} projectId={id} style={styles.photoPreview} resizeMode="cover" />
                         ) : (
                             <View style={[styles.photoPlaceholder, { backgroundColor: colors.background }]}>
                                 <View style={styles.photoIconCircle}>
@@ -479,7 +479,7 @@ export default function CreateProjectScreen() {
                             <View style={{ flex: 1, marginRight: 8, alignItems: 'center' }}>
                                 <Text style={[styles.photoSubtext, { color: colors.text, marginBottom: 8 }]}>Employer</Text>
                                 <TouchableOpacity style={[styles.logoPicker, { borderColor: colors.border }]} onPress={async () => { const uri = await pickLogo(); if (uri) setEmployerLogo(uri); }}>
-                                    {employerLogo ? <ProjectImage photoUri={employerLogo} style={styles.logoPreview} resizeMode="contain" /> : <Plus size={24} color={colors.textMuted} />}
+                                    {employerLogo ? <ProjectImage photoUri={employerLogo} projectId={id} style={styles.logoPreview} resizeMode="contain" /> : <Plus size={24} color={colors.textMuted} />}
                                     {employerLogo && (
                                         <TouchableOpacity style={styles.removeLogoBtn} onPress={() => setEmployerLogo(null)}>
                                             <X size={12} color="#FFF" />
@@ -491,7 +491,7 @@ export default function CreateProjectScreen() {
                             <View style={{ flex: 1, marginLeft: 8, alignItems: 'center' }}>
                                 <Text style={[styles.photoSubtext, { color: colors.text, marginBottom: 8 }]}>Consultant</Text>
                                 <TouchableOpacity style={[styles.logoPicker, { borderColor: colors.border }]} onPress={async () => { const uri = await pickLogo(); if (uri) setConsultantLogo(uri); }}>
-                                    {consultantLogo ? <ProjectImage photoUri={consultantLogo} style={styles.logoPreview} resizeMode="contain" /> : <Plus size={24} color={colors.textMuted} />}
+                                    {consultantLogo ? <ProjectImage photoUri={consultantLogo} projectId={id} style={styles.logoPreview} resizeMode="contain" /> : <Plus size={24} color={colors.textMuted} />}
                                     {consultantLogo && (
                                         <TouchableOpacity style={styles.removeLogoBtn} onPress={() => setConsultantLogo(null)}>
                                             <X size={12} color="#FFF" />
@@ -505,7 +505,7 @@ export default function CreateProjectScreen() {
                         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
                             {contractorLogos.map((uri, idx) => (
                                 <View key={idx} style={[styles.logoPicker, { borderColor: colors.border }]}>
-                                    <ProjectImage photoUri={uri} style={styles.logoPreview} resizeMode="contain" />
+                                    <ProjectImage photoUri={uri} projectId={id} style={styles.logoPreview} resizeMode="contain" />
                                     <TouchableOpacity style={styles.removeLogoBtn} onPress={() => setContractorLogos(prev => prev.filter((_, i) => i !== idx))}>
                                         <X size={12} color="#FFF" />
                                     </TouchableOpacity>
