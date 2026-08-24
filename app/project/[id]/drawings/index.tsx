@@ -1,5 +1,5 @@
 import BackButton from "../../../../components/BackButton";
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert, Modal, TextInput, SafeAreaView, Platform, ActionSheetIOS } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert, Modal, TextInput, SafeAreaView, Platform, ActionSheetIOS, ActivityIndicator } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useProjectsStore, Drawing, DrawingFolder } from '../../../../store/projectsStore';
 import { useState, useMemo } from 'react';
@@ -10,6 +10,7 @@ import { useThemeColors } from '../../../../store/useThemeColors';
 import { usePowerSyncFolders } from '../../../../lib/powersync/useFolders';
 import { usePowerSyncDrawings } from '../../../../lib/powersync/useDrawings';
 import { usePowerSyncMembers } from '../../../../lib/powersync/useMembers';
+import { usePowerSyncProject } from '@/lib/powersync/useProjects';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { getSignedUrl } from '../../../../lib/supabaseSync';
@@ -31,17 +32,21 @@ export default function DrawingsBrowserScreen() {
     const folders = usePowerSyncFolders(id);
     const drawings = usePowerSyncDrawings(id);
     const members = usePowerSyncMembers(id);
-    const authState = useAuthStore.getState();
-    const userId = authState.user?.id;
-    const authorName = authState.profile?.full_name || authState.user?.user_metadata?.full_name || authState.user?.email || 'Unknown';
+    const { data: powerSyncProject, isLoading } = usePowerSyncProject(id);
+    const project = powerSyncProject || getProject(id);
+
+    const userId = useAuthStore(s => s.user?.id);
+    const authorName = useAuthStore(s => s.profile?.full_name || s.user?.user_metadata?.full_name || s.user?.email || 'Unknown');
     const { colors } = useThemeColors();
 
-    const project = useMemo(() => getProject(id), [id, getProject]);
     const isOwnerOrManager = useMemo(() => {
-        if (!userId) return false;
+        if (!userId || !project) return false;
+        const isDirectOwner = Boolean(project.userId && project.userId === userId);
+        const hasManagerMemberRole = project.memberRole === 'owner' || project.memberRole === 'manager';
         const currentMember = members.find(m => m.userId === userId);
-        return currentMember?.role === 'owner' || currentMember?.role === 'manager';
-    }, [userId, members]);
+        const hasManagerCurrentMember = currentMember?.role === 'owner' || currentMember?.role === 'manager';
+        return isDirectOwner || hasManagerMemberRole || hasManagerCurrentMember;
+    }, [userId, project, members]);
     const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
     
     // Modal states
@@ -72,7 +77,43 @@ export default function DrawingsBrowserScreen() {
         currentFolderId ? folders.find(f => f.id === currentFolderId) : null,
     [currentFolderId, folders]);
 
-    if (!project) return null;
+    if (isLoading && !project) {
+        return (
+            <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
+                <Stack.Screen options={{ headerShown: false }} />
+                <View style={[styles.header, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
+                    <BackButton style={{ position: "absolute", left: 20, zIndex: 20, bottom: 8 }} />
+                    <Text style={[styles.headerTitle, { color: colors.text }]}>Drawings</Text>
+                </View>
+                <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                    <ActivityIndicator size="large" color={colors.primary || '#2563EB'} />
+                    <Text style={{ marginTop: 12, fontSize: 15, color: colors.textMuted }}>Loading drawings...</Text>
+                </View>
+            </SafeAreaView>
+        );
+    }
+
+    if (!project) {
+        return (
+            <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
+                <Stack.Screen options={{ headerShown: false }} />
+                <View style={[styles.header, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
+                    <BackButton style={{ position: "absolute", left: 20, zIndex: 20, bottom: 8 }} />
+                    <Text style={[styles.headerTitle, { color: colors.text }]}>Project Not Found</Text>
+                </View>
+                <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 32 }}>
+                    <Text style={{ fontSize: 18, fontWeight: '600', color: colors.text, marginBottom: 8 }}>Project Not Found</Text>
+                    <Text style={{ fontSize: 14, color: colors.textMuted, textAlign: 'center', marginBottom: 24 }}>The requested project could not be found or you do not have access.</Text>
+                    <TouchableOpacity
+                        style={{ backgroundColor: colors.primary || '#2563EB', paddingHorizontal: 20, paddingVertical: 12, borderRadius: 8 }}
+                        onPress={() => router.back()}
+                    >
+                        <Text style={{ color: '#FFFFFF', fontWeight: '600', fontSize: 15 }}>Go Back</Text>
+                    </TouchableOpacity>
+                </View>
+            </SafeAreaView>
+        );
+    }
 
     const handleCreateFolder = () => {
         if (!newFolderName.trim()) return;

@@ -52,6 +52,7 @@ function RootLayout() {
   });
 
   const syncedUserIdRef = useRef<string | null>(null);
+  const lastNavigatedTargetRef = useRef<string | null>(null);
 
   // Register for push notifications
   usePushNotifications();
@@ -93,12 +94,20 @@ function RootLayout() {
     const inAuthGroup = segments[0] === '(auth)';
     const isAuthenticated = authMode !== 'signed-out';
 
+    let target: string | null = null;
     if (!isAuthenticated && !inAuthGroup) {
-      // Redirect to the login page
-      router.replace('/(auth)/login');
+      target = '/(auth)/login';
     } else if (isAuthenticated && inAuthGroup) {
-      // Redirect away from the login page
-      router.replace('/(tabs)');
+      target = '/(tabs)';
+    }
+
+    if (target) {
+      if (lastNavigatedTargetRef.current !== target) {
+        lastNavigatedTargetRef.current = target;
+        router.replace(target as any);
+      }
+    } else {
+      lastNavigatedTargetRef.current = null;
     }
   }, [authMode, isInitialized, segments]);
 
@@ -269,7 +278,7 @@ function RootLayout() {
   const posthogKey = process.env.EXPO_PUBLIC_POSTHOG_KEY;
 
   const appContent = (
-    <PowerSyncContext.Provider value={powersync}>
+    <PowerSyncContext.Provider value={powersync as any}>
       <ThemeProvider value={DarkTheme}>
         <SafeAreaProvider>
           <Stack screenOptions={{ headerShown: false }}>

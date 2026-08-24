@@ -17,6 +17,10 @@ const Alert = {
   alert: jest.fn(),
 };
 
+const ActionSheetIOS = {
+  showActionSheetWithOptions: jest.fn(),
+};
+
 const AppState = {
   addEventListener: jest.fn(() => ({ remove: jest.fn() })),
   currentState: 'active',
@@ -38,6 +42,9 @@ const TouchableOpacity = mockComponent('TouchableOpacity');
 const ActivityIndicator = mockComponent('ActivityIndicator');
 const ScrollView = mockComponent('ScrollView');
 const SafeAreaView = mockComponent('SafeAreaView');
+const TextInput = mockComponent('TextInput');
+const Modal = mockComponent('Modal');
+
 const FlatList = React.forwardRef(({ data, renderItem, ListEmptyComponent, ListHeaderComponent, ListFooterComponent, ...props }: any, ref: any) => {
   return React.createElement(
     'FlatList',
@@ -61,6 +68,7 @@ const Touchable = {
 module.exports = {
   Platform,
   Alert,
+  ActionSheetIOS,
   AppState,
   Dimensions,
   StyleSheet,
@@ -72,11 +80,14 @@ module.exports = {
   ActivityIndicator,
   ScrollView,
   SafeAreaView,
+  TextInput,
+  Modal,
   FlatList,
   RefreshControl,
   default: {
     Platform,
     Alert,
+    ActionSheetIOS,
     AppState,
     Dimensions,
     StyleSheet,
@@ -88,6 +99,8 @@ module.exports = {
     ActivityIndicator,
     ScrollView,
     SafeAreaView,
+    TextInput,
+    Modal,
     FlatList,
     RefreshControl,
   },
