@@ -10,6 +10,7 @@ import { useAuthStore } from '../../../store/useAuthStore';
 import { supabase } from '../../../lib/supabase';
 import { usePowerSyncMembers } from '../../../lib/powersync/useMembers';
 import { usePowerSyncProject } from '@/lib/powersync/useProjects';
+import { useStatus } from '@powersync/react';
 import { UserAvatar } from '../../../components/UserAvatar';
 
 interface InviteResponse {
@@ -24,6 +25,8 @@ export default function TeamScreen() {
     const { getProject } = useProjectsStore();
     const { colors } = useThemeColors();
     const currentUserId = useAuthStore(state => state.user?.id);
+    const status = useStatus();
+    const hasSynced = status?.hasSynced ?? false;
 
     const { data: powerSyncProject, isLoading } = usePowerSyncProject(id);
     const project = powerSyncProject || getProject(id);
@@ -40,7 +43,7 @@ export default function TeamScreen() {
     const [inviteEmail, setInviteEmail] = useState('');
     const [isInviting, setIsInviting] = useState(false);
 
-    if (isLoading && !project) {
+    if ((!hasSynced || isLoading) && !project) {
         return (
             <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
                 <Stack.Screen options={{ headerShown: false }} />

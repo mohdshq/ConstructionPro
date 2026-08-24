@@ -29,7 +29,7 @@ module.exports = {
     '^test-renderer$': '<rootDir>/lib/attachments/__mocks__/test-renderer.ts',
     '^lucide-react-native$': '<rootDir>/lib/attachments/__mocks__/lucide-react-native.ts',
     '^expo-document-picker$': '<rootDir>/lib/attachments/__mocks__/empty.ts',
-    '^expo-sharing$': '<rootDir>/lib/attachments/__mocks__/empty.ts',
+    '^expo-sharing$': '<rootDir>/lib/attachments/__mocks__/expo-sharing.ts',
     '^expo-status-bar$': '<rootDir>/lib/attachments/__mocks__/empty.ts',
     '^react-native-safe-area-context$': '<rootDir>/lib/attachments/__mocks__/empty.ts',
     '^react-native-gesture-handler$': '<rootDir>/lib/attachments/__mocks__/empty.ts',
@@ -38,5 +38,8 @@ module.exports = {
     '^react-native-purchases$': '<rootDir>/lib/attachments/__mocks__/empty.ts',
     '^posthog-react-native$': '<rootDir>/lib/attachments/__mocks__/empty.ts',
     '^@react-native-community/netinfo$': '<rootDir>/lib/attachments/__mocks__/netinfo.ts',
+    '^react-native-webview$': '<rootDir>/lib/attachments/__mocks__/empty.ts',
+    '^expo-print$': '<rootDir>/lib/attachments/__mocks__/expo-print.ts',
+    '^xlsx$': '<rootDir>/lib/attachments/__mocks__/empty.ts',
   },
 };

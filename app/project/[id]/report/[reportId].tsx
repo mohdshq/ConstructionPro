@@ -245,19 +245,25 @@ export default function ReportViewerScreen() {
 
             if (error) throw error;
 
-            // Get public URL
-            const { data: { publicUrl } } = supabase.storage.from('pdfs').getPublicUrl(fileName);
+            // Generate 7-day signed URL (604800 seconds)
+            const { data: signedData, error: signError } = await supabase.storage.from('pdfs').createSignedUrl(fileName, 604800);
+
+            if (signError) throw signError;
+            if (!signedData?.signedUrl) throw new Error('Could not generate signed URL for PDF.');
+
+            const signedUrl = signedData.signedUrl;
 
             const canShare = await Sharing.isAvailableAsync();
             if (canShare) {
-                await Sharing.shareAsync(publicUrl, { dialogTitle: 'Share Daily Report Link' });
+                await Sharing.shareAsync(signedUrl, { dialogTitle: 'Share Daily Report Link' });
             } else {
-                Alert.alert('Success', `Cloud Link generated: ${publicUrl}`);
+                Alert.alert('Success', `Cloud Link generated: ${signedUrl}`);
             }
 
-        } catch (error) {
+        } catch (error: any) {
             console.error(error);
-            Alert.alert('Error', 'Failed to generate Cloud Link.');
+            const errorMessage = error?.message || (typeof error === 'string' ? error : 'Failed to generate Cloud Link.');
+            Alert.alert('Error', `Failed to generate Cloud Link: ${errorMessage}`);
         } finally {
             setIsGenerating(false);
         }

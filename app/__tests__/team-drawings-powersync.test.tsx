@@ -9,6 +9,7 @@ import { useAuthStore } from '../../store/useAuthStore';
 import { usePowerSyncMembers } from '../../lib/powersync/useMembers';
 import { usePowerSyncFolders } from '../../lib/powersync/useFolders';
 import { usePowerSyncDrawings } from '../../lib/powersync/useDrawings';
+import { useStatus } from '@powersync/react';
 
 const mockBack = jest.fn();
 const mockPush = jest.fn();
@@ -21,6 +22,11 @@ jest.mock('expo-router', () => ({
 
 jest.mock('../../components/BackButton', () => () => null);
 jest.mock('../../components/UserAvatar', () => () => null);
+
+jest.mock('@powersync/react', () => ({
+  useStatus: jest.fn(() => ({ hasSynced: true, connected: true })),
+  useQuery: jest.fn(() => ({ data: [] })),
+}));
 
 jest.mock('../../lib/powersync/useProjects', () => ({
   usePowerSyncProject: jest.fn(),
@@ -87,6 +93,7 @@ describe('TeamScreen & DrawingsBrowserScreen PowerSync Resolution & Explicit Sta
   beforeEach(() => {
     jest.clearAllMocks();
     useAuthStore.setState({ user: { id: 'viewer-id' } as any });
+    (useStatus as jest.Mock).mockReturnValue({ hasSynced: true, connected: true });
   });
 
   describe('TeamScreen (app/project/[id]/team.tsx)', () => {
@@ -96,13 +103,28 @@ describe('TeamScreen & DrawingsBrowserScreen PowerSync Resolution & Explicit Sta
         isLoading: true,
       });
 
-      const { getByText, container } = await render(<TeamScreen />);
+      const { getByText, queryByText, container } = await render(<TeamScreen />);
 
       expect(getByText('Loading team...')).toBeTruthy();
+      expect(queryByText('Project Not Found')).toBeNull();
       expect(container.children.length).toBeGreaterThan(0);
     });
 
-    it('(b) renders full team screen and non-empty output when project exists', async () => {
+    it('(b) renders loading state (not Project Not Found) when hasSynced is false and query resolved empty', async () => {
+      (useStatus as jest.Mock).mockReturnValue({ hasSynced: false, connected: true });
+      (usePowerSyncProject as jest.Mock).mockReturnValue({
+        data: null,
+        isLoading: false,
+      });
+
+      const { getByText, queryByText, container } = await render(<TeamScreen />);
+
+      expect(getByText('Loading team...')).toBeTruthy();
+      expect(queryByText('Project Not Found')).toBeNull();
+      expect(container.children.length).toBeGreaterThan(0);
+    });
+
+    it('(c) renders full team screen and non-empty output when project exists', async () => {
       (usePowerSyncProject as jest.Mock).mockReturnValue({
         data: mockProject,
         isLoading: false,
@@ -114,16 +136,18 @@ describe('TeamScreen & DrawingsBrowserScreen PowerSync Resolution & Explicit Sta
       expect(container.children.length).toBeGreaterThan(0);
     });
 
-    it('(c) renders Project Not Found view and non-empty output when query resolves empty', async () => {
+    it('(d) renders Project Not Found view only once hasSynced is true and project is null', async () => {
+      (useStatus as jest.Mock).mockReturnValue({ hasSynced: true, connected: true });
       (usePowerSyncProject as jest.Mock).mockReturnValue({
         data: null,
         isLoading: false,
       });
 
-      const { getAllByText, getByText, container } = await render(<TeamScreen />);
+      const { getAllByText, getByText, queryByText, container } = await render(<TeamScreen />);
 
       expect(getAllByText('Project Not Found').length).toBeGreaterThanOrEqual(1);
       expect(getByText('Go Back')).toBeTruthy();
+      expect(queryByText('Loading team...')).toBeNull();
       expect(container.children.length).toBeGreaterThan(0);
     });
   });
@@ -135,13 +159,28 @@ describe('TeamScreen & DrawingsBrowserScreen PowerSync Resolution & Explicit Sta
         isLoading: true,
       });
 
-      const { getByText, container } = await render(<DrawingsBrowserScreen />);
+      const { getByText, queryByText, container } = await render(<DrawingsBrowserScreen />);
 
       expect(getByText('Loading drawings...')).toBeTruthy();
+      expect(queryByText('Project Not Found')).toBeNull();
       expect(container.children.length).toBeGreaterThan(0);
     });
 
-    it('(b) renders drawings screen and non-empty output when project exists', async () => {
+    it('(b) renders loading state (not Project Not Found) when hasSynced is false and query resolved empty', async () => {
+      (useStatus as jest.Mock).mockReturnValue({ hasSynced: false, connected: true });
+      (usePowerSyncProject as jest.Mock).mockReturnValue({
+        data: null,
+        isLoading: false,
+      });
+
+      const { getByText, queryByText, container } = await render(<DrawingsBrowserScreen />);
+
+      expect(getByText('Loading drawings...')).toBeTruthy();
+      expect(queryByText('Project Not Found')).toBeNull();
+      expect(container.children.length).toBeGreaterThan(0);
+    });
+
+    it('(c) renders drawings screen and non-empty output when project exists', async () => {
       (usePowerSyncProject as jest.Mock).mockReturnValue({
         data: mockProject,
         isLoading: false,
@@ -153,16 +192,18 @@ describe('TeamScreen & DrawingsBrowserScreen PowerSync Resolution & Explicit Sta
       expect(container.children.length).toBeGreaterThan(0);
     });
 
-    it('(c) renders Project Not Found view and non-empty output when query resolves empty', async () => {
+    it('(d) renders Project Not Found view only once hasSynced is true and project is null', async () => {
+      (useStatus as jest.Mock).mockReturnValue({ hasSynced: true, connected: true });
       (usePowerSyncProject as jest.Mock).mockReturnValue({
         data: null,
         isLoading: false,
       });
 
-      const { getAllByText, getByText, container } = await render(<DrawingsBrowserScreen />);
+      const { getAllByText, getByText, queryByText, container } = await render(<DrawingsBrowserScreen />);
 
       expect(getAllByText('Project Not Found').length).toBeGreaterThanOrEqual(1);
       expect(getByText('Go Back')).toBeTruthy();
+      expect(queryByText('Loading drawings...')).toBeNull();
       expect(container.children.length).toBeGreaterThan(0);
     });
 

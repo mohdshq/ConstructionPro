@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, SafeAreaView, Platform, Alert, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, SafeAreaView, Platform, Alert, RefreshControl, ActivityIndicator } from 'react-native';
 import { ArrowLeft, MapPin, Calendar, Clock, FileText, CheckSquare, ShieldAlert, Plus, FolderOpen, DollarSign, Briefcase, Pencil, Trash2, Zap, Users, Activity, Calculator, Eye, EyeOff } from "lucide-react-native";
 import BackButton from "../../components/BackButton";
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
@@ -9,6 +9,7 @@ import { useProjectsStore, Project, Report } from '../../store/projectsStore';
 import { usePowerSyncReports } from '../../lib/powersync/useReports';
 import { usePowerSyncProject } from '../../lib/powersync/useProjects';
 import { usePowerSyncMembers } from '../../lib/powersync/useMembers';
+import { useStatus } from '@powersync/react';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useThemeColors } from '../../store/useThemeColors';
 import { useStore } from '../../store/useStore';
@@ -150,6 +151,8 @@ export default function ProjectDashboardScreen() {
     const { getProject, deleteProject, getReportsForProject, deleteReport, updateReport, initialSync } = useProjectsStore();
     const { colors } = useThemeColors();
     const currentUserId = useAuthStore(state => state.user?.id);
+    const status = useStatus();
+    const hasSynced = status?.hasSynced ?? false;
 
     // Live PowerSync query for the project
     const { data: powerSyncProject, isLoading: isProjectLoading } = usePowerSyncProject(id as string);
@@ -182,13 +185,49 @@ export default function ProjectDashboardScreen() {
     }, [initialSync]);
 
     useEffect(() => {
-        // Only redirect back after the query has settled (not loading) and project is definitely missing
-        if (!isProjectLoading && !project && id) {
+        // Only redirect back after initial sync has completed and the query has settled (not loading) and project is definitely missing
+        if (hasSynced && !isProjectLoading && !project && id) {
             router.back();
         }
-    }, [isProjectLoading, project, id, router]);
+    }, [hasSynced, isProjectLoading, project, id, router]);
 
-    if (!project) return null;
+    if ((!hasSynced || isProjectLoading) && !project) {
+        return (
+            <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
+                <Stack.Screen options={{ headerShown: false }} />
+                <View style={[styles.header, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
+                    <BackButton style={{ position: "absolute", left: 20, zIndex: 20, bottom: 8 }} />
+                    <Text style={[styles.headerTitle, { color: colors.text }]}>Project</Text>
+                </View>
+                <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                    <ActivityIndicator size="large" color={colors.primary || '#2563EB'} />
+                    <Text style={{ marginTop: 12, fontSize: 15, color: colors.textMuted }}>Loading project...</Text>
+                </View>
+            </SafeAreaView>
+        );
+    }
+
+    if (!project) {
+        return (
+            <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
+                <Stack.Screen options={{ headerShown: false }} />
+                <View style={[styles.header, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
+                    <BackButton style={{ position: "absolute", left: 20, zIndex: 20, bottom: 8 }} />
+                    <Text style={[styles.headerTitle, { color: colors.text }]}>Project Not Found</Text>
+                </View>
+                <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 32 }}>
+                    <Text style={{ fontSize: 18, fontWeight: '600', color: colors.text, marginBottom: 8 }}>Project Not Found</Text>
+                    <Text style={{ fontSize: 14, color: colors.textMuted, textAlign: 'center', marginBottom: 24 }}>The requested project could not be found or you do not have access.</Text>
+                    <TouchableOpacity
+                        style={{ backgroundColor: colors.primary || '#2563EB', paddingHorizontal: 20, paddingVertical: 12, borderRadius: 8 }}
+                        onPress={() => router.back()}
+                    >
+                        <Text style={{ color: '#FFFFFF', fontWeight: '600', fontSize: 15 }}>Go Back</Text>
+                    </TouchableOpacity>
+                </View>
+            </SafeAreaView>
+        );
+    }
 
     const handleDelete = () => {
         if (Platform.OS === 'web') {

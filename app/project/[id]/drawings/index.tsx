@@ -11,6 +11,7 @@ import { usePowerSyncFolders } from '../../../../lib/powersync/useFolders';
 import { usePowerSyncDrawings } from '../../../../lib/powersync/useDrawings';
 import { usePowerSyncMembers } from '../../../../lib/powersync/useMembers';
 import { usePowerSyncProject } from '@/lib/powersync/useProjects';
+import { useStatus } from '@powersync/react';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { getSignedUrl } from '../../../../lib/supabaseSync';
@@ -32,6 +33,8 @@ export default function DrawingsBrowserScreen() {
     const folders = usePowerSyncFolders(id);
     const drawings = usePowerSyncDrawings(id);
     const members = usePowerSyncMembers(id);
+    const status = useStatus();
+    const hasSynced = status?.hasSynced ?? false;
     const { data: powerSyncProject, isLoading } = usePowerSyncProject(id);
     const project = powerSyncProject || getProject(id);
 
@@ -77,7 +80,7 @@ export default function DrawingsBrowserScreen() {
         currentFolderId ? folders.find(f => f.id === currentFolderId) : null,
     [currentFolderId, folders]);
 
-    if (isLoading && !project) {
+    if ((!hasSynced || isLoading) && !project) {
         return (
             <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
                 <Stack.Screen options={{ headerShown: false }} />
