@@ -38,7 +38,20 @@ const TouchableOpacity = mockComponent('TouchableOpacity');
 const ActivityIndicator = mockComponent('ActivityIndicator');
 const ScrollView = mockComponent('ScrollView');
 const SafeAreaView = mockComponent('SafeAreaView');
-const FlatList = mockComponent('FlatList');
+const FlatList = React.forwardRef(({ data, renderItem, ListEmptyComponent, ListHeaderComponent, ListFooterComponent, ...props }: any, ref: any) => {
+  return React.createElement(
+    'FlatList',
+    { ...props, ref },
+    ListHeaderComponent ? (typeof ListHeaderComponent === 'function' ? React.createElement(ListHeaderComponent) : ListHeaderComponent) : null,
+    data && data.length > 0
+      ? data.map((item: any, index: number) =>
+          renderItem ? React.createElement(React.Fragment, { key: item.id || index }, renderItem({ item, index })) : null
+        )
+      : (ListEmptyComponent ? (typeof ListEmptyComponent === 'function' ? React.createElement(ListEmptyComponent) : ListEmptyComponent) : null),
+    ListFooterComponent ? (typeof ListFooterComponent === 'function' ? React.createElement(ListFooterComponent) : ListFooterComponent) : null
+  );
+});
+FlatList.displayName = 'FlatList';
 const RefreshControl = mockComponent('RefreshControl');
 
 const Touchable = {

@@ -164,8 +164,11 @@ export default function ProjectDashboardScreen() {
 
     const currentMember = members.find(m => m.userId === currentUserId);
     const isOwnerOrManager = useMemo(() => {
-        if (!project) return false;
-        return project.userId === currentUserId || project.memberRole === 'owner' || project.memberRole === 'manager' || currentMember?.role === 'owner' || currentMember?.role === 'manager';
+        if (!currentUserId || !project) return false;
+        const isDirectOwner = Boolean(project.userId && project.userId === currentUserId);
+        const hasManagerMemberRole = project.memberRole === 'owner' || project.memberRole === 'manager';
+        const hasManagerCurrentMember = currentMember?.role === 'owner' || currentMember?.role === 'manager';
+        return isDirectOwner || hasManagerMemberRole || hasManagerCurrentMember;
     }, [project, currentUserId, currentMember]);
 
     const [refreshing, setRefreshing] = useState(false);

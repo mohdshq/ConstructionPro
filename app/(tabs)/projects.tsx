@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, SafeAreaView, Platform, Dimensions, Alert, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, SafeAreaView, Platform, Dimensions, Alert, RefreshControl, ActivityIndicator } from 'react-native';
 import { MapPin, Calendar, FolderOpen, Plus, User, FileText, Pencil, Trash2 } from 'lucide-react-native';
 import Animated, { FadeInDown, FadeIn } from 'react-native-reanimated';
 import { useRouter } from 'expo-router';
@@ -10,6 +10,7 @@ import { useStore } from '../../store/useStore';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useMemo, useCallback, useState } from 'react';
 import ConnectionBadge from '../../components/ConnectionBadge';
+import { useStatus } from '@powersync/react';
 
 const { width } = Dimensions.get('window');
 
@@ -17,6 +18,8 @@ export default function ProjectsScreen() {
     const router = useRouter();
     const { reports, deleteProject, initialSync, isSyncing } = useProjectsStore();
     const { data: projects = [] } = usePowerSyncProjects();
+    const status = useStatus();
+    const hasSynced = status?.hasSynced ?? false;
     const { isPremium } = useStore();
     const { colors, isDark } = useThemeColors();
     const [refreshing, setRefreshing] = useState(false);
@@ -131,7 +134,13 @@ export default function ProjectsScreen() {
 
     const renderProjectCard = ({ item, index }: { item: Project & { displayStatus: string }, index: number }) => {
         const projectReports = reports.filter(r => r.projectId === item.id);
-        const isManager = item.userId === currentUserId || item.memberRole === 'owner' || item.memberRole === 'manager';
+        const isManager = Boolean(
+            currentUserId && (
+                (item.userId && item.userId === currentUserId) ||
+                item.memberRole === 'owner' ||
+                item.memberRole === 'manager'
+            )
+        );
 
         return (
             <Animated.View entering={FadeInDown.delay(index * 100).springify()}>
@@ -229,21 +238,28 @@ export default function ProjectsScreen() {
                 </View>
 
                 {sortedProjects.length === 0 ? (
-                    <Animated.View entering={FadeIn.duration(500)} style={styles.emptyState}>
-                        <View style={[styles.emptyIconCircle, { backgroundColor: colors.inputBackground }]}>
-                            <FolderOpen size={48} color={colors.textMuted} />
+                    !hasSynced ? (
+                        <View style={styles.loadingState}>
+                            <ActivityIndicator size="large" color={colors.primary || '#2563EB'} />
+                            <Text style={[styles.loadingText, { color: colors.textMuted }]}>Syncing projects...</Text>
                         </View>
-                        <Text style={[styles.emptyTitle, { color: colors.text }]}>No Projects Yet</Text>
-                        <Text style={[styles.emptySubtitle, { color: colors.textMuted }]}>Create a new project workspace to manage site reports and photos.</Text>
+                    ) : (
+                        <Animated.View entering={FadeIn.duration(500)} style={styles.emptyState}>
+                            <View style={[styles.emptyIconCircle, { backgroundColor: colors.inputBackground }]}>
+                                <FolderOpen size={48} color={colors.textMuted} />
+                            </View>
+                            <Text style={[styles.emptyTitle, { color: colors.text }]}>No Projects Yet</Text>
+                            <Text style={[styles.emptySubtitle, { color: colors.textMuted }]}>Create a new project workspace to manage site reports and photos.</Text>
 
-                        <TouchableOpacity
-                            style={styles.emptyButton}
-                            onPress={handleCreateProject}
-                            activeOpacity={0.8}
-                        >
-                            <Text style={styles.emptyButtonText}>Create First Project</Text>
-                        </TouchableOpacity>
-                    </Animated.View>
+                            <TouchableOpacity
+                                style={styles.emptyButton}
+                                onPress={handleCreateProject}
+                                activeOpacity={0.8}
+                            >
+                                <Text style={styles.emptyButtonText}>Create First Project</Text>
+                            </TouchableOpacity>
+                        </Animated.View>
+                    )
                 ) : (
                     <FlatList
                         data={sortedProjects}
@@ -427,5 +443,17 @@ const styles = StyleSheet.create({
         color: '#FFFFFF',
         fontSize: 16,
         fontWeight: '600',
+    },
+    loadingState: {
+        flex: 1,
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingHorizontal: 40,
+        marginTop: 60,
+    },
+    loadingText: {
+        fontSize: 15,
+        fontWeight: '500',
+        marginTop: 12,
     },
 });

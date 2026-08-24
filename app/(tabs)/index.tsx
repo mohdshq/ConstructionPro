@@ -6,7 +6,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { router } from 'expo-router';
 import { useStore } from '../../store/useStore';
 import { useProjectsStore } from '../../store/projectsStore';
-import { useQuery } from '@powersync/react-native';
+import { useQuery, useStatus } from '@powersync/react-native';
 import { powersync } from '../../lib/powersync/system';
 import { useThemeColors } from '../../store/useThemeColors';
 import { useAuthStore } from '../../store/useAuthStore';
@@ -73,6 +73,9 @@ export default function HomeScreen() {
     month: 'long',
     day: 'numeric',
   });
+
+  const status = useStatus();
+  const hasSynced = status?.hasSynced ?? false;
 
   const { data: activeRows } = useQuery<{ c: number }>(
     `SELECT COUNT(*) AS c FROM projects WHERE status != 'completed'`
@@ -205,7 +208,7 @@ export default function HomeScreen() {
           <TouchableOpacity activeOpacity={0.8} style={styles.statTouch} onPress={() => router.push('/projects')}>
             <View style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
               <Layers color="#2563EB" size={24} />
-              <Text style={[styles.statValue, { color: colors.text }]}>{activeProjectsCount}</Text>
+              <Text style={[styles.statValue, { color: colors.text }]}>{hasSynced ? activeProjectsCount : '-'}</Text>
               <Text style={[styles.statLabel, { color: colors.textMuted }]}>Active Projects</Text>
             </View>
           </TouchableOpacity>
@@ -214,7 +217,7 @@ export default function HomeScreen() {
           <TouchableOpacity activeOpacity={0.8} style={styles.statTouch} onPress={() => router.push('/projects')}>
             <View style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
               <FileText color="#F59E0B" size={24} />
-              <Text style={[styles.statValue, { color: colors.text }]}>{totalReportsCount}</Text>
+              <Text style={[styles.statValue, { color: colors.text }]}>{hasSynced ? totalReportsCount : '-'}</Text>
               <Text style={[styles.statLabel, { color: colors.textMuted }]}>Total Reports</Text>
             </View>
           </TouchableOpacity>
