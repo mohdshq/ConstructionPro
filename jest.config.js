@@ -1,7 +1,17 @@
 module.exports = {
   preset: 'ts-jest',
   testEnvironment: 'node',
-  testMatch: ['**/__tests__/**/*.test.ts'],
+  testMatch: ['**/__tests__/**/*.test.[jt]s?(x)'],
+  transform: {
+    '^.+\\.(ts|tsx)$': [
+      'ts-jest',
+      {
+        tsconfig: {
+          jsx: 'react-jsx',
+        },
+      },
+    ],
+  },
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/$1',
     '^react-native$': '<rootDir>/lib/attachments/__mocks__/react-native.ts',
@@ -15,5 +25,7 @@ module.exports = {
     '^@powersync/react-native$': '<rootDir>/lib/attachments/__mocks__/powersync-react-native.ts',
     '^@sentry/react-native$': '<rootDir>/lib/attachments/__mocks__/sentry-react-native.ts',
     '^uuid$': '<rootDir>/lib/attachments/__mocks__/uuid.ts',
+    '^test-renderer$': '<rootDir>/lib/attachments/__mocks__/test-renderer.ts',
+    '^lucide-react-native$': '<rootDir>/lib/attachments/__mocks__/lucide-react-native.ts',
   },
 };

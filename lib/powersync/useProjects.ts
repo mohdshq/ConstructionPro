@@ -35,7 +35,7 @@ function parseProjectRow(row: any): Project {
 // Aliases map snake_case SQLite columns to the camelCase Project shape
 // the UI already expects. Live query: auto-updates when local SQLite changes.
 export function usePowerSyncProjects() {
-  const currentUserId = useAuthStore.getState().user?.id || '';
+  const currentUserId = useAuthStore((state) => state.user?.id) ?? '';
   const result = useQuery<any>(`
     SELECT
       p.id,
@@ -74,7 +74,7 @@ export function usePowerSyncProjects() {
 }
 
 export function usePowerSyncProject(projectId?: string) {
-  const currentUserId = useAuthStore.getState().user?.id || '';
+  const currentUserId = useAuthStore((state) => state.user?.id) ?? '';
   const result = useQuery<any>(`
     SELECT
       p.id,
