@@ -32,9 +32,10 @@ interface ReportCardItemProps {
     checkReportLimit: () => boolean;
     handleDeleteReport: (id: string) => void;
     router: any;
+    canManage: boolean;
 }
 
-const ReportCardItem = ({ item, index, project, colors, updateReport, checkReportLimit, handleDeleteReport, router }: ReportCardItemProps) => {
+const ReportCardItem = ({ item, index, project, colors, updateReport, checkReportLimit, handleDeleteReport, router, canManage }: ReportCardItemProps) => {
     const cat = REPORT_CATEGORIES.find(c => c.id === item.type);
     const swipeableRef = useRef<Swipeable>(null);
     if (!cat) return null;
@@ -68,7 +69,7 @@ const ReportCardItem = ({ item, index, project, colors, updateReport, checkRepor
     };
 
     const renderRightActions = () => {
-        if (!isDaily) return null;
+        if (!isDaily || !canManage) return null;
         return (
             <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.background, paddingRight: 10, paddingLeft: 10 }}>
                 <TouchableOpacity onPress={() => toggleReportVisibility('manpowerDetail')} style={{ padding: 10, alignItems: 'center' }}>
@@ -106,29 +107,33 @@ const ReportCardItem = ({ item, index, project, colors, updateReport, checkRepor
                     {item.status.toUpperCase()}
                 </Text>
             </View>
-            <TouchableOpacity
-                style={[styles.actionIconSm, { backgroundColor: colors.background }]}
-                onPress={(e) => { 
-                    e.stopPropagation(); 
-                    if (checkReportLimit()) {
-                        router.push(`/project/${project.id}/report/create?type=${item.type}&duplicateId=${item.id}` as any); 
-                    }
-                }}
-            >
-                <Plus size={16} color="#2563EB" />
-            </TouchableOpacity>
-            <TouchableOpacity
-                style={[styles.actionIconSm, { backgroundColor: colors.background }]}
-                onPress={(e) => { e.stopPropagation(); router.push(`/project/${project.id}/report/create?type=${item.type}&editId=${item.id}` as any); }}
-            >
-                <Pencil size={16} color={colors.textMuted} />
-            </TouchableOpacity>
-            <TouchableOpacity
-                style={styles.deleteReportIcon}
-                onPress={(e) => { e.stopPropagation(); handleDeleteReport(item.id); }}
-            >
-                <Trash2 size={16} color="#EF4444" />
-            </TouchableOpacity>
+            {canManage && (
+                <>
+                    <TouchableOpacity
+                        style={[styles.actionIconSm, { backgroundColor: colors.background }]}
+                        onPress={(e) => { 
+                            e.stopPropagation(); 
+                            if (checkReportLimit()) {
+                                router.push(`/project/${project.id}/report/create?type=${item.type}&duplicateId=${item.id}` as any); 
+                            }
+                        }}
+                    >
+                        <Plus size={16} color="#2563EB" />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                        style={[styles.actionIconSm, { backgroundColor: colors.background }]}
+                        onPress={(e) => { e.stopPropagation(); router.push(`/project/${project.id}/report/create?type=${item.type}&editId=${item.id}` as any); }}
+                    >
+                        <Pencil size={16} color={colors.textMuted} />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                        style={styles.deleteReportIcon}
+                        onPress={(e) => { e.stopPropagation(); handleDeleteReport(item.id); }}
+                    >
+                        <Trash2 size={16} color="#EF4444" />
+                    </TouchableOpacity>
+                </>
+            )}
         </TouchableOpacity>
     );
 
@@ -478,8 +483,17 @@ export default function ProjectDashboardScreen() {
                     {REPORT_CATEGORIES.map((cat, index) => (
                         <Animated.View key={cat.id} entering={FadeIn.delay(index * 100)} style={{ width: '48%', marginBottom: 16 }}>
                             <TouchableOpacity
-                                style={[styles.categoryCard, { backgroundColor: colors.card, borderColor: cat.bg }]}
+                                style={[
+                                    styles.categoryCard, 
+                                    { 
+                                        backgroundColor: colors.card, 
+                                        borderColor: cat.bg,
+                                        opacity: isOwnerOrManager ? 1 : 0.6,
+                                    }
+                                ]}
+                                disabled={!isOwnerOrManager}
                                 onPress={() => {
+                                    if (!isOwnerOrManager) return;
                                     if (checkReportLimit()) {
                                         if (cat.route === 'quick-log') {
                                             router.push({ pathname: '/quick-log', params: { projectId: project.id } } as any);
@@ -490,15 +504,17 @@ export default function ProjectDashboardScreen() {
                                         }
                                     }
                                 }}
-                                activeOpacity={0.7}
+                                activeOpacity={isOwnerOrManager ? 0.7 : 1}
                             >
                                 <View style={styles.categoryHeader}>
                                     <View style={[styles.categoryIconCircle, { backgroundColor: cat.bg }]}>
                                         {cat.icon}
                                     </View>
-                                    <View style={styles.addReportButton}>
-                                        <Plus size={16} color="#2563EB" />
-                                    </View>
+                                    {isOwnerOrManager && (
+                                        <View style={styles.addReportButton}>
+                                            <Plus size={16} color="#2563EB" />
+                                        </View>
+                                    )}
                                 </View>
                                 <Text style={[styles.categoryTitle, { color: colors.text }]}>{cat.title}</Text>
                                 <Text style={[styles.categoryDesc, { color: colors.textMuted }]}>{cat.desc}</Text>
@@ -532,6 +548,7 @@ export default function ProjectDashboardScreen() {
                                 checkReportLimit={checkReportLimit} 
                                 handleDeleteReport={handleDeleteReport} 
                                 router={router} 
+                                canManage={isOwnerOrManager}
                             />
                         ))}
                     </View>
