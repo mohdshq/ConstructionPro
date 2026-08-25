@@ -1,5 +1,5 @@
 import { DarkTheme, ThemeProvider } from '@react-navigation/native';
-import { Stack, useRouter, useSegments } from 'expo-router';
+import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef, useState } from 'react';
 import { Platform, View, ActivityIndicator, AppState } from 'react-native';
@@ -34,17 +34,11 @@ Sentry.init({
   sendDefaultPii: false
 });
 
-export const unstable_settings = {
-  anchor: '(tabs)',
-};
-
 function RootLayout() {
   const colorScheme = useColorScheme();
   const { setIsPremium } = useStore();
   
   const { isInitialized, session, offlineUser, authMode, initialize } = useAuthStore();
-  const segments = useSegments();
-  const router = useRouter();
 
   // Track hydration of persisted Zustand stores
   const [isStoreHydrated, setIsStoreHydrated] = useState(() => {
@@ -52,7 +46,6 @@ function RootLayout() {
   });
 
   const syncedUserIdRef = useRef<string | null>(null);
-  const lastNavigatedTargetRef = useRef<string | null>(null);
 
   // Register for push notifications
   usePushNotifications();
@@ -86,30 +79,6 @@ function RootLayout() {
       unsubStore();
     };
   }, []);
-
-  // 3. Navigation / Auth gate — runs only when auth state or route segments change
-  useEffect(() => {
-    if (!isInitialized) return;
-
-    const inAuthGroup = segments[0] === '(auth)';
-    const isAuthenticated = authMode !== 'signed-out';
-
-    let target: string | null = null;
-    if (!isAuthenticated && !inAuthGroup) {
-      target = '/(auth)/login';
-    } else if (isAuthenticated && inAuthGroup) {
-      target = '/(tabs)';
-    }
-
-    if (target) {
-      if (lastNavigatedTargetRef.current !== target) {
-        lastNavigatedTargetRef.current = target;
-        router.replace(target as any);
-      }
-    } else {
-      lastNavigatedTargetRef.current = null;
-    }
-  }, [authMode, isInitialized, segments]);
 
   // 4. NetInfo listener for offline-grace session refresh upon reconnect
   useEffect(() => {
@@ -266,7 +235,7 @@ function RootLayout() {
     };
   }, []);
 
-  if (!isInitialized) {
+  if (!isInitialized || !isStoreHydrated) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#0F172A' }}>
         <ActivityIndicator size="large" color="#2563EB" />
@@ -277,15 +246,42 @@ function RootLayout() {
   const analyticsEnabled = !__DEV__ || process.env.EXPO_PUBLIC_POSTHOG_FORCE_ENABLE === 'true';
   const posthogKey = process.env.EXPO_PUBLIC_POSTHOG_KEY;
 
+  const isAuthenticated = authMode !== 'signed-out';
+
   const appContent = (
     <PowerSyncContext.Provider value={powersync as any}>
       <ThemeProvider value={DarkTheme}>
         <SafeAreaProvider>
           <Stack screenOptions={{ headerShown: false }}>
-            <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-            <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
-            <Stack.Screen name="ai-wizard" options={{ presentation: 'fullScreenModal', headerShown: false }} />
+            <Stack.Protected guard={!isAuthenticated}>
+              <Stack.Screen name="(auth)" />
+            </Stack.Protected>
+            <Stack.Protected guard={isAuthenticated}>
+              <Stack.Screen name="(tabs)" />
+              <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
+              <Stack.Screen name="ai-wizard" options={{ presentation: 'fullScreenModal', headerShown: false }} />
+              <Stack.Screen name="project" />
+              <Stack.Screen name="settings" />
+              <Stack.Screen name="daily-report" />
+              <Stack.Screen name="quick-log" />
+              <Stack.Screen name="saved-calculations" />
+              <Stack.Screen name="converter" />
+              <Stack.Screen name="asphalt-calculator" />
+              <Stack.Screen name="block-calculator" />
+              <Stack.Screen name="concrete-calculator" />
+              <Stack.Screen name="duct-calculator" />
+              <Stack.Screen name="dynamic-calculator" />
+              <Stack.Screen name="hvac-calculator" />
+              <Stack.Screen name="labor-calculator" />
+              <Stack.Screen name="ohms-calculator" />
+              <Stack.Screen name="pipe-calculator" />
+              <Stack.Screen name="pour-calculator" />
+              <Stack.Screen name="rebar-calculator" />
+              <Stack.Screen name="soil-calculator" />
+              <Stack.Screen name="stair-calculator" />
+              <Stack.Screen name="tile-calculator" />
+              <Stack.Screen name="voltage-calculator" />
+            </Stack.Protected>
           </Stack>
           <OfflineBanner />
           <OfflineGraceBanner />

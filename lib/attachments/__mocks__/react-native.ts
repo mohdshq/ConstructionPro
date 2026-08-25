@@ -60,6 +60,8 @@ const FlatList = React.forwardRef(({ data, renderItem, ListEmptyComponent, ListH
 });
 FlatList.displayName = 'FlatList';
 const RefreshControl = mockComponent('RefreshControl');
+const KeyboardAvoidingView = mockComponent('KeyboardAvoidingView');
+const useColorScheme = jest.fn(() => 'dark');
 
 const Touchable = {
   Mixin: {},
@@ -84,6 +86,8 @@ module.exports = {
   Modal,
   FlatList,
   RefreshControl,
+  KeyboardAvoidingView,
+  useColorScheme,
   default: {
     Platform,
     Alert,
@@ -103,5 +107,7 @@ module.exports = {
     Modal,
     FlatList,
     RefreshControl,
+    KeyboardAvoidingView,
+    useColorScheme,
   },
 };

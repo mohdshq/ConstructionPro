@@ -51,7 +51,11 @@ module.exports = {
       },
       get container() {
         if (!root) return null;
-        return enhanceInstance(root.root, root);
+        try {
+          return enhanceInstance(root.root, root);
+        } catch (e) {
+          return null;
+        }
       },
     };
   },
