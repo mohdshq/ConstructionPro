@@ -3,6 +3,8 @@ import { render, act, fireEvent, waitFor } from '@testing-library/react-native';
 import { Alert } from 'react-native';
 import ReportViewerScreen from '../project/[id]/report/[reportId]';
 import { usePowerSyncReport } from '../../lib/powersync/useReports';
+import { usePowerSyncProject } from '../../lib/powersync/useProjects';
+import { useStatus } from '@powersync/react';
 import { useProjectsStore } from '../../store/projectsStore';
 import { supabase } from '../../lib/supabase';
 import * as Print from 'expo-print';
@@ -16,8 +18,16 @@ jest.mock('expo-router', () => ({
 
 jest.mock('../../components/BackButton', () => () => null);
 
+jest.mock('@powersync/react', () => ({
+  useStatus: jest.fn(() => ({ hasSynced: true, connected: true })),
+}));
+
 jest.mock('../../lib/powersync/useReports', () => ({
   usePowerSyncReport: jest.fn(),
+}));
+
+jest.mock('../../lib/powersync/useProjects', () => ({
+  usePowerSyncProject: jest.fn(),
 }));
 
 jest.mock('../../store/projectsStore', () => ({
@@ -73,7 +83,7 @@ jest.mock('../../lib/supabase', () => ({
   },
 }));
 
-describe('ReportViewerScreen Cloud Link Generation', () => {
+describe('ReportViewerScreen Cloud Link Generation & Cold-Cache Gating', () => {
   const mockProject = {
     id: 'proj-123',
     name: 'Project Alpha',
@@ -95,9 +105,10 @@ describe('ReportViewerScreen Cloud Link Generation', () => {
   beforeEach(() => {
     jest.clearAllMocks();
 
+    (useStatus as jest.Mock).mockReturnValue({ hasSynced: true, connected: true });
     (usePowerSyncReport as jest.Mock).mockReturnValue(mockReport);
+    (usePowerSyncProject as jest.Mock).mockReturnValue({ data: mockProject });
     (useProjectsStore as unknown as jest.Mock).mockReturnValue({
-      getProject: jest.fn(() => mockProject),
       updateReport: jest.fn(),
     });
 
@@ -124,125 +135,151 @@ describe('ReportViewerScreen Cloud Link Generation', () => {
     });
   });
 
-  it('calls createSignedUrl with 604800s expiration (not getPublicUrl) and shares the signed URL', async () => {
-    const { getByText, container } = await render(<ReportViewerScreen />);
+  describe('Cold-Cache & Initial Sync Gating', () => {
+    it('renders loading spinner and "Loading report..." when hasSynced is false and report or project is missing', async () => {
+      (useStatus as jest.Mock).mockReturnValue({ hasSynced: false, connected: false });
+      (usePowerSyncReport as jest.Mock).mockReturnValue(undefined);
+      (usePowerSyncProject as jest.Mock).mockReturnValue({ data: null });
 
-    // Find share button containing Share2 icon
-    const shareIcon = container.find(
-      (node: any) => node.type === 'Icon' && node.props?.name === 'Share2'
-    );
-    expect(shareIcon).toBeTruthy();
+      const { getByText, queryByText } = await render(<ReportViewerScreen />);
 
-    let shareTouch = shareIcon.parent;
-    while (shareTouch && typeof shareTouch.props?.onPress !== 'function') {
-      shareTouch = shareTouch.parent;
-    }
-
-    await act(async () => {
-      fireEvent.press(shareTouch);
+      expect(getByText('Loading report...')).toBeTruthy();
+      expect(queryByText('Report Not Found')).toBeNull();
     });
 
-    // Click "Share Cloud Link"
-    const cloudLinkOption = getByText('Share Cloud Link');
-    await act(async () => {
-      fireEvent.press(cloudLinkOption);
-    });
+    it('renders "Report Not Found" only when hasSynced is true and report is missing', async () => {
+      (useStatus as jest.Mock).mockReturnValue({ hasSynced: true, connected: true });
+      (usePowerSyncReport as jest.Mock).mockReturnValue(undefined);
+      (usePowerSyncProject as jest.Mock).mockReturnValue({ data: null });
 
-    await waitFor(() => {
-      // Must call storage on 'pdfs' bucket
-      expect(supabase.storage.from).toHaveBeenCalledWith('pdfs');
-      expect(mockUpload).toHaveBeenCalledWith(
-        expect.stringMatching(/^proj-123\/report_report-123_\d+\.pdf$/),
-        expect.anything(),
-        expect.objectContaining({ contentType: 'application/pdf', upsert: true })
-      );
+      const { getByText, queryByText } = await render(<ReportViewerScreen />);
 
-      // Must call createSignedUrl with 7 days (604800 seconds)
-      expect(mockCreateSignedUrl).toHaveBeenCalledWith(
-        expect.stringMatching(/^proj-123\/report_report-123_\d+\.pdf$/),
-        604800
-      );
-
-      // Must NOT call getPublicUrl
-      expect(mockGetPublicUrl).not.toHaveBeenCalled();
-
-      // Must share the generated signed URL
-      expect(Sharing.shareAsync).toHaveBeenCalledWith(
-        'https://supabase.co/storage/v1/object/sign/pdfs/proj-123/report_123.pdf?token=abc',
-        expect.objectContaining({ dialogTitle: 'Share Daily Report Link' })
-      );
+      expect(getByText('Report Not Found')).toBeTruthy();
+      expect(queryByText('Loading report...')).toBeNull();
     });
   });
 
-  it('surfaces the actual Supabase RLS/storage error message in the Alert dialog on upload failure', async () => {
-    const mockAlert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+  describe('Cloud Link Generation', () => {
+    it('calls createSignedUrl with 604800s expiration (not getPublicUrl) and shares the signed URL', async () => {
+      const { getByText, container } = await render(<ReportViewerScreen />);
 
-    mockUpload.mockResolvedValue({
-      data: null,
-      error: { message: 'new row violates row-level security policy for table "objects"' },
-    });
-
-    const { getByText, container } = await render(<ReportViewerScreen />);
-
-    const shareIcon = container.find(
-      (node: any) => node.type === 'Icon' && node.props?.name === 'Share2'
-    );
-    let shareTouch = shareIcon.parent;
-    while (shareTouch && typeof shareTouch.props?.onPress !== 'function') {
-      shareTouch = shareTouch.parent;
-    }
-
-    await act(async () => {
-      fireEvent.press(shareTouch);
-    });
-
-    // Click "Share Cloud Link"
-    const cloudLinkOption = getByText('Share Cloud Link');
-    await act(async () => {
-      fireEvent.press(cloudLinkOption);
-    });
-
-    await waitFor(() => {
-      expect(mockAlert).toHaveBeenCalledWith(
-        'Error',
-        expect.stringContaining('new row violates row-level security policy for table "objects"')
+      // Find share button containing Share2 icon
+      const shareIcon = container.find(
+        (node: any) => node.type === 'Icon' && node.props?.name === 'Share2'
       );
+      expect(shareIcon).toBeTruthy();
+
+      let shareTouch = shareIcon.parent;
+      while (shareTouch && typeof shareTouch.props?.onPress !== 'function') {
+        shareTouch = shareTouch.parent;
+      }
+
+      await act(async () => {
+        fireEvent.press(shareTouch);
+      });
+
+      // Click "Share Cloud Link"
+      const cloudLinkOption = getByText('Share Cloud Link');
+      await act(async () => {
+        fireEvent.press(cloudLinkOption);
+      });
+
+      await waitFor(() => {
+        // Must call storage on 'pdfs' bucket
+        expect(supabase.storage.from).toHaveBeenCalledWith('pdfs');
+        expect(mockUpload).toHaveBeenCalledWith(
+          expect.stringMatching(/^proj-123\/report_report-123_\d+\.pdf$/),
+          expect.anything(),
+          expect.objectContaining({ contentType: 'application/pdf', upsert: true })
+        );
+
+        // Must call createSignedUrl with 7 days (604800 seconds)
+        expect(mockCreateSignedUrl).toHaveBeenCalledWith(
+          expect.stringMatching(/^proj-123\/report_report-123_\d+\.pdf$/),
+          604800
+        );
+
+        // Must NOT call getPublicUrl
+        expect(mockGetPublicUrl).not.toHaveBeenCalled();
+
+        // Must share the generated signed URL
+        expect(Sharing.shareAsync).toHaveBeenCalledWith(
+          'https://supabase.co/storage/v1/object/sign/pdfs/proj-123/report_123.pdf?token=abc',
+          expect.objectContaining({ dialogTitle: 'Share Daily Report Link' })
+        );
+      });
     });
-  });
 
-  it('surfaces the error message in the Alert dialog when createSignedUrl fails', async () => {
-    const mockAlert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    it('surfaces the actual Supabase RLS/storage error message in the Alert dialog on upload failure', async () => {
+      const mockAlert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
 
-    mockCreateSignedUrl.mockResolvedValue({
-      data: null,
-      error: { message: 'Object not found in pdfs storage' },
-    });
+      mockUpload.mockResolvedValue({
+        data: null,
+        error: { message: 'new row violates row-level security policy for table "objects"' },
+      });
 
-    const { getByText, container } = await render(<ReportViewerScreen />);
+      const { getByText, container } = await render(<ReportViewerScreen />);
 
-    const shareIcon = container.find(
-      (node: any) => node.type === 'Icon' && node.props?.name === 'Share2'
-    );
-    let shareTouch = shareIcon.parent;
-    while (shareTouch && typeof shareTouch.props?.onPress !== 'function') {
-      shareTouch = shareTouch.parent;
-    }
-
-    await act(async () => {
-      fireEvent.press(shareTouch);
-    });
-
-    // Click "Share Cloud Link"
-    const cloudLinkOption = getByText('Share Cloud Link');
-    await act(async () => {
-      fireEvent.press(cloudLinkOption);
-    });
-
-    await waitFor(() => {
-      expect(mockAlert).toHaveBeenCalledWith(
-        'Error',
-        expect.stringContaining('Object not found in pdfs storage')
+      const shareIcon = container.find(
+        (node: any) => node.type === 'Icon' && node.props?.name === 'Share2'
       );
+      let shareTouch = shareIcon.parent;
+      while (shareTouch && typeof shareTouch.props?.onPress !== 'function') {
+        shareTouch = shareTouch.parent;
+      }
+
+      await act(async () => {
+        fireEvent.press(shareTouch);
+      });
+
+      // Click "Share Cloud Link"
+      const cloudLinkOption = getByText('Share Cloud Link');
+      await act(async () => {
+        fireEvent.press(cloudLinkOption);
+      });
+
+      await waitFor(() => {
+        expect(mockAlert).toHaveBeenCalledWith(
+          'Error',
+          expect.stringContaining('new row violates row-level security policy for table "objects"')
+        );
+      });
+    });
+
+    it('surfaces the error message in the Alert dialog when createSignedUrl fails', async () => {
+      const mockAlert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+
+      mockCreateSignedUrl.mockResolvedValue({
+        data: null,
+        error: { message: 'Object not found in pdfs storage' },
+      });
+
+      const { getByText, container } = await render(<ReportViewerScreen />);
+
+      const shareIcon = container.find(
+        (node: any) => node.type === 'Icon' && node.props?.name === 'Share2'
+      );
+      let shareTouch = shareIcon.parent;
+      while (shareTouch && typeof shareTouch.props?.onPress !== 'function') {
+        shareTouch = shareTouch.parent;
+      }
+
+      await act(async () => {
+        fireEvent.press(shareTouch);
+      });
+
+      // Click "Share Cloud Link"
+      const cloudLinkOption = getByText('Share Cloud Link');
+      await act(async () => {
+        fireEvent.press(cloudLinkOption);
+      });
+
+      await waitFor(() => {
+        expect(mockAlert).toHaveBeenCalledWith(
+          'Error',
+          expect.stringContaining('Object not found in pdfs storage')
+        );
+      });
     });
   });
 });
