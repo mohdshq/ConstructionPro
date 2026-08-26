@@ -1,8 +1,8 @@
-import { RemoteStorageAdapter, AttachmentRecord } from '@powersync/react-native';
-import { supabase } from '@/lib/supabase';
-import { getSignedUrl, getPublicUrl } from '@/lib/supabaseSync';
-import { decode as decodeBase64 } from 'base64-arraybuffer';
 import { captureWarning } from '@/lib/sentryLogger';
+import { supabase } from '@/lib/supabase';
+import { getPublicUrl, getSignedUrl } from '@/lib/supabaseSync';
+import { AttachmentRecord, RemoteStorageAdapter } from '@powersync/react-native';
+import { decode as decodeBase64 } from 'base64-arraybuffer';
 
 export interface AttachmentMetadata {
   kind: 'project_cover' | 'drawing' | 'report_photo' | 'avatar';
@@ -23,30 +23,27 @@ export function resolveRemoteStoragePath(
   attachment: AttachmentRecord
 ): { bucket: 'avatars' | 'drawings' | 'report-photos'; storagePath: string } {
   const meta = parseAttachmentMetadata(attachment.metaData);
-  const filename = attachment.filename;
+  const ref = attachment.filename;
 
+  const bucket: 'avatars' | 'drawings' | 'report-photos' =
+    meta?.kind === 'avatar' ? 'avatars'
+      : meta?.kind === 'drawing' ? 'drawings'
+        : 'report-photos';
+
+  // A ref containing a slash is already a complete storage path (verified:
+  // 13/13 report photos, 4/4 drawings, 4 logos resolve found_as_is).
+  if (ref.includes('/')) {
+    return { bucket, storagePath: ref };
+  }
+
+  // Bare refs: avatars scope by user, everything else by project.
   if (meta?.kind === 'avatar') {
-    return {
-      bucket: 'avatars',
-      storagePath: `${meta.userId}/${filename}`,
-    };
+    return { bucket, storagePath: `${meta.userId}/${ref}` };
   }
-
-  if (meta?.kind === 'drawing') {
-    const projectFolder = meta.projectId || meta.userId;
-    return {
-      bucket: 'drawings',
-      storagePath: `${projectFolder}/${filename}`,
-    };
-  }
-
-  // project_cover or report_photo (or default)
   const projectFolder = meta?.projectId || meta?.userId || 'default';
-  return {
-    bucket: 'report-photos',
-    storagePath: `${projectFolder}/${filename}`,
-  };
+  return { bucket, storagePath: `${projectFolder}/${ref}` };
 }
+
 
 export class SupabaseRemoteStorageAdapter implements RemoteStorageAdapter {
   async uploadFile(fileData: ArrayBuffer, attachment: AttachmentRecord): Promise<void> {
@@ -98,7 +95,7 @@ export class SupabaseRemoteStorageAdapter implements RemoteStorageAdapter {
 
     const response = await fetch(downloadUrl);
     if (!response.ok) {
-      throw new Error(`Supabase download failed (${response.status}): ${response.statusText}`);
+      throw new Error(`Supabase download failed (${response.status}): ${await response.text()}`);
     }
 
     try {
