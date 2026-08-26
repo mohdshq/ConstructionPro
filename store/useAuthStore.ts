@@ -155,9 +155,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         let timeoutId: ReturnType<typeof setTimeout> | null = null;
         try {
             // Race getSession() against a 4000ms timeout
-            let winner: 'getSession' | 'timeout' = 'getSession';
             const sessionPromise = supabase.auth.getSession().then(({ data }) => {
-                winner = 'getSession';
                 return data?.session ?? null;
             }).catch((err) => {
                 console.warn('[Auth] getSession failed:', err);
@@ -165,14 +163,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             });
             const timeoutPromise = new Promise<null>((resolve) => {
                 timeoutId = setTimeout(() => {
-                    winner = 'timeout';
                     resolve(null);
                 }, 4000);
             });
 
             const session = await Promise.race([sessionPromise, timeoutPromise]);
             if (timeoutId) clearTimeout(timeoutId);
-            console.log(`[AUTH-TRACE] initialize() race won by: ${winner} at ${new Date().toISOString()}`);
 
             if (session?.user) {
                 set({
@@ -226,7 +222,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             const { data: { subscription } } = supabase.auth.onAuthStateChange(
                 async (event, session) => {
                     const { isExplicitSignOut } = get();
-                    console.log(`[AUTH-TRACE] onAuthStateChange event=${event} isExplicitSignOut=${isExplicitSignOut} at ${new Date().toISOString()}`);
                     if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
                         if (session?.user) {
                             set({
@@ -299,7 +294,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     signOut: async () => {
         set({ isExplicitSignOut: true });
         try {
-            console.log(`[AUTH-TRACE] signOut() starting before state update at ${new Date().toISOString()}`);
             await clearLastSession();
             set({
                 session: null,
@@ -308,9 +302,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
                 profile: null,
                 authMode: 'signed-out',
             });
-            console.log(`[AUTH-TRACE] signOut() state set to signed-out at ${new Date().toISOString()}`);
             await supabase.auth.signOut();
-            console.log(`[AUTH-TRACE] signOut() supabase.auth.signOut() resolved at ${new Date().toISOString()}`);
         } catch (error) {
             console.error('Error signing out:', error);
         } finally {
