@@ -2,46 +2,47 @@
 
 > [!IMPORTANT]
 > **Manual Configuration Required**: These settings are configured directly in the Supabase and PowerSync web dashboards and are **not captured in source control migrations**. If the Supabase project is ever recreated, cloned, or if a separate staging project is provisioned, these settings **must be verified and re-applied manually**.
+>
+> **Last Verified**: 2026-08-26 (Instance `6a26a0380ef84ed6719ff419`)
 
 ---
 
 ## 1. Supabase Auth Settings (Authentication -> Settings)
 
 ### JWT Expiry Limit
-- **Setting**: `3600` seconds (1 hour — default).
+- **Setting / Observed**: `3600` seconds (1 hour — default).
 - **Rationale**: Do not increase JWT expiry. Raising the access token lifespan increases the security blast radius if a token is compromised. With the **B9 Offline-Grace Architecture** implemented in the client app, field engineers can work offline seamlessly for up to 30 days without needing an artificially long JWT expiry.
 
 ### Time-box User Sessions
-- **Setting**: **Disabled** (unchecked).
+- **Setting / Observed**: **Disabled** (unchecked).
 - **Rationale**: Time-boxing unconditionally revokes user refresh tokens after a hard cutoff regardless of user activity. Enabling this would terminate active field sessions abruptly in the middle of ongoing projects.
 
 ### Inactivity Timeout
-- **Setting**: **Disabled** (unchecked).
+- **Setting / Observed**: **Disabled** (unchecked).
 - **Rationale**: Any inactivity timeout shorter than a field team's offline stretch (e.g. working on remote basement sites or tunnels over a multi-day inspection without connectivity) will cause the auth server to invalidate the session on reconnect, destroying offline session resumption and defeating offline-grace mode.
 
 ### Single Session Per User
-- **Setting**: **Disabled** (unchecked).
+- **Setting / Observed**: **Disabled** (unchecked).
 - **Rationale**: Site engineers routinely use a mobile phone for quick photo snagging while simultaneously using a tablet (iPad) for drawing markups and detailed PDF inspections under the same account. Single session enforcement would sign out one device whenever the other is used.
 
 ### Confirm Email (Release Blocker B2)
-- **Setting**: **Enabled**.
-- **Rationale**: Prevents unauthorized registration and prevents arbitrary account takeover by requiring verified ownership of the email address prior to first sign-in.
+- **Setting / Observed**: **On** (checked / enabled — verified 2026-08-26).
+- **Rationale**: Prevents unauthorized registration and prevents arbitrary account takeover by requiring verified ownership of the email address prior to first sign-in. `app/(auth)/register.tsx` handles the null-session signup response by presenting "Please check your email to verify your account" and returning to login via `router.dismissTo('/(auth)/login')`.
 
 ### Detect and Revoke Potentially Compromised Refresh Tokens (Release Blocker B10)
-- **Setting**: **Enabled**.
+- **Setting / Observed**: **On** (enabled).
 - **Rationale**: Critical auth security protection against token replay / theft attacks. With `processLock` configured in `lib/supabase.ts`, concurrent in-process token refresh calls are serialized, making this protection completely safe from false-positive session revocations.
 
 ---
 
-## 2. PowerSync Dashboard Settings
+## 2. PowerSync Dashboard Settings (Instance `6a26a0380ef84ed6719ff419`)
 
-### Development Tokens (Release Blocker B1)
-- **Setting**: **Disabled** in production (enable only temporarily during local diagnostic setup).
-- **Rationale**: When Development Tokens are enabled, token signature verification is bypassed, allowing arbitrary client connections and exposing multi-tenant data. Production builds must strictly validate Supabase JWKS tokens (`aud: "authenticated"`).
-
-### Client Auth / JWKS Configuration
-- **JWKS URI**: `https://<supabase-project-ref>.supabase.co/auth/v1/.well-known/jwks.json` (ECC P-256 signing keys).
-- **JWT Audience**: Must include `authenticated` (Supabase signs user JWTs with `aud: "authenticated"`).
+### Client Authentication & Token Mode (Release Blocker B1)
+- **Development Tokens**: **Off** (unchecked — deployed state verified 2026-08-26).
+- **Use Supabase Auth**: **On** (with Legacy JWT secret present).
+- **JWKS URI**: `https://nalbazjndjozdksulbwx.supabase.co/auth/v1/.well-known/jwks.json` (ECC P-256 keys).
+- **JWT Audience**: `authenticated` (matches Supabase JWT `aud` claim).
+- **Rationale**: When Development Tokens are disabled, PowerSync strictly validates Supabase-issued user JWTs against the Supabase JWKS endpoint. Client code in `lib/powersync/Connector.ts` transmits `session.access_token` with audience `authenticated`.
 
 ---
 
