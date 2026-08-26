@@ -7,7 +7,6 @@ import { File } from 'expo-file-system';
 import Purchases from 'react-native-purchases';
 import Animated, { FadeIn, FadeInDown, useSharedValue, useAnimatedStyle, withRepeat, withTiming, withSequence } from 'react-native-reanimated';
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { router } from 'expo-router';
 import { useStore, ThemeType, UnitSystem } from '../store/useStore';
 import { useThemeColors } from '../store/useThemeColors';
 import { useAuthStore } from '../store/useAuthStore';
@@ -74,8 +73,10 @@ export default function SettingsScreen() {
 
     const handleSignOut = () => {
         const doSignOut = async () => {
+            // Navigation is handled declaratively by Stack.Protected in
+            // app/_layout.tsx once authMode flips to 'signed-out'. Navigating
+            // imperatively here mounts a duplicate login screen.
             await signOut();
-            router.replace('/(auth)/login' as any);
         };
 
         if (Platform.OS === 'web') {
