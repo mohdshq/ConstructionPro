@@ -6,7 +6,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, Platform, SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { WebView } from 'react-native-webview';
 import BackButton from "../../../../components/BackButton";
-import { getSignedUrl } from '../../../../lib/supabaseSync';
+import { resolveMediaUri } from '@/lib/attachments/resolveMediaUri';
 import { useProjectsStore } from '../../../../store/projectsStore';
 import { useThemeColors } from '../../../../store/useThemeColors';
 
@@ -24,9 +24,15 @@ export default function DrawingViewerScreen() {
     const [errorMsg, setErrorMsg] = useState<string | null>(null);
     const [signedUrl, setSignedUrl] = useState<string | null>(null);
     const [localFileUri, setLocalFileUri] = useState<string | null>(null);
+    const [isSharing, setIsSharing] = useState(false);
+    const [isConverting, setIsConverting] = useState(false);
+    const [convertedUrl, setConvertedUrl] = useState<string | null>(null);
 
     const [cloudViewerUrl, setCloudViewerUrl] = useState<string | null>(null);
     const [isUploadingCloud, setIsUploadingCloud] = useState(false);
+
+    const isCad = drawing?.type === 'cad' || drawing?.name?.toLowerCase().match(/\.(dwg|dxf)$/);
+    const isOffice = drawing?.type === 'word' || drawing?.type === 'excel' || drawing?.name?.toLowerCase().match(/\.(doc|docx|xls|xlsx)$/);
 
     const handleLoadCloud = async (viewerType: 'cad' | 'office') => {
         if (!drawing) return;
@@ -81,34 +87,34 @@ export default function DrawingViewerScreen() {
         const loadFile = async () => {
             setIsLoading(true);
             try {
-                let resolved: string | null = null;
-                if (drawing.uri.startsWith('file:') || drawing.uri.startsWith('http')) {
-                    resolved = drawing.uri;
-                } else {
-                    const res = await getSignedUrl('drawings', drawing.uri);
-                    if (res.ok) {
-                        resolved = res.url;
-                    } else if (res.reason === 'offline') {
-                        setErrorMsg('Offline — cannot load drawing from cloud.');
-                        setIsLoading(false);
-                        return;
-                    } else {
-                        setErrorMsg('Could not load file from storage.');
-                        setIsLoading(false);
-                        return;
-                    }
+                const resolved = await resolveMediaUri(drawing.uri, {
+                    bucket: 'drawings',
+                    projectId: project?.id,
+                });
+
+                if (!resolved) {
+                    setErrorMsg('Could not load file from storage.');
+                    setIsLoading(false);
+                    return;
                 }
-                if (!resolved) { setErrorMsg('Could not load file from storage.'); setIsLoading(false); return; }
                 setSignedUrl(resolved);
 
                 const needsLocal = Platform.OS !== 'web';
-                if (needsLocal && !resolved.startsWith('file:')) {
-                    const target = FileSystem.cacheDirectory + (drawing.name || `dl_${drawing.id}`);
-                    const dl = await FileSystem.downloadAsync(resolved, target);
-                    setLocalFileUri(dl.uri);
-                    if (Platform.OS === 'android' && drawing.type === 'pdf') {
-                        const b64 = await FileSystem.readAsStringAsync(dl.uri, { encoding: 'base64' });
-                        setBase64Data(b64);
+                if (needsLocal) {
+                    if (resolved.startsWith('file:')) {
+                        setLocalFileUri(resolved);
+                        if (Platform.OS === 'android' && drawing.type === 'pdf') {
+                            const b64 = await FileSystem.readAsStringAsync(resolved, { encoding: 'base64' });
+                            setBase64Data(b64);
+                        }
+                    } else {
+                        const target = FileSystem.cacheDirectory + (drawing.name || `dl_${drawing.id}`);
+                        const dl = await FileSystem.downloadAsync(resolved, target);
+                        setLocalFileUri(dl.uri);
+                        if (Platform.OS === 'android' && drawing.type === 'pdf') {
+                            const b64 = await FileSystem.readAsStringAsync(dl.uri, { encoding: 'base64' });
+                            setBase64Data(b64);
+                        }
                     }
                 }
             } catch (error) {
@@ -120,7 +126,7 @@ export default function DrawingViewerScreen() {
         };
 
         loadFile();
-    }, [drawing]);
+    }, [drawing, project?.id]);
 
     if (!project || !drawing) {
         return (

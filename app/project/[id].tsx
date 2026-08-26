@@ -1,12 +1,16 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, SafeAreaView, Platform, Alert, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, SafeAreaView, Platform, Alert, RefreshControl, ActivityIndicator } from 'react-native';
 import { ArrowLeft, MapPin, Calendar, Clock, FileText, CheckSquare, ShieldAlert, Plus, FolderOpen, DollarSign, Briefcase, Pencil, Trash2, Zap, Users, Activity, Calculator, Eye, EyeOff } from "lucide-react-native";
 import BackButton from "../../components/BackButton";
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { Image } from 'react-native';
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import Animated, { FadeInDown, FadeIn } from 'react-native-reanimated';
 import { useProjectsStore, Project, Report } from '../../store/projectsStore';
 import { usePowerSyncReports } from '../../lib/powersync/useReports';
+import { usePowerSyncProject } from '../../lib/powersync/useProjects';
+import { usePowerSyncMembers } from '../../lib/powersync/useMembers';
+import { useStatus } from '@powersync/react';
+import { useAuthStore } from '../../store/useAuthStore';
 import { useThemeColors } from '../../store/useThemeColors';
 import { useStore } from '../../store/useStore';
 import ProjectImage from '../../components/ProjectImage';
@@ -28,9 +32,10 @@ interface ReportCardItemProps {
     checkReportLimit: () => boolean;
     handleDeleteReport: (id: string) => void;
     router: any;
+    canManage: boolean;
 }
 
-const ReportCardItem = ({ item, index, project, colors, updateReport, checkReportLimit, handleDeleteReport, router }: ReportCardItemProps) => {
+const ReportCardItem = ({ item, index, project, colors, updateReport, checkReportLimit, handleDeleteReport, router, canManage }: ReportCardItemProps) => {
     const cat = REPORT_CATEGORIES.find(c => c.id === item.type);
     const swipeableRef = useRef<Swipeable>(null);
     if (!cat) return null;
@@ -64,7 +69,7 @@ const ReportCardItem = ({ item, index, project, colors, updateReport, checkRepor
     };
 
     const renderRightActions = () => {
-        if (!isDaily) return null;
+        if (!isDaily || !canManage) return null;
         return (
             <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.background, paddingRight: 10, paddingLeft: 10 }}>
                 <TouchableOpacity onPress={() => toggleReportVisibility('manpowerDetail')} style={{ padding: 10, alignItems: 'center' }}>
@@ -102,29 +107,33 @@ const ReportCardItem = ({ item, index, project, colors, updateReport, checkRepor
                     {item.status.toUpperCase()}
                 </Text>
             </View>
-            <TouchableOpacity
-                style={[styles.actionIconSm, { backgroundColor: colors.background }]}
-                onPress={(e) => { 
-                    e.stopPropagation(); 
-                    if (checkReportLimit()) {
-                        router.push(`/project/${project.id}/report/create?type=${item.type}&duplicateId=${item.id}` as any); 
-                    }
-                }}
-            >
-                <Plus size={16} color="#2563EB" />
-            </TouchableOpacity>
-            <TouchableOpacity
-                style={[styles.actionIconSm, { backgroundColor: colors.background }]}
-                onPress={(e) => { e.stopPropagation(); router.push(`/project/${project.id}/report/create?type=${item.type}&editId=${item.id}` as any); }}
-            >
-                <Pencil size={16} color={colors.textMuted} />
-            </TouchableOpacity>
-            <TouchableOpacity
-                style={styles.deleteReportIcon}
-                onPress={(e) => { e.stopPropagation(); handleDeleteReport(item.id); }}
-            >
-                <Trash2 size={16} color="#EF4444" />
-            </TouchableOpacity>
+            {canManage && (
+                <>
+                    <TouchableOpacity
+                        style={[styles.actionIconSm, { backgroundColor: colors.background }]}
+                        onPress={(e) => { 
+                            e.stopPropagation(); 
+                            if (checkReportLimit()) {
+                                router.push(`/project/${project.id}/report/create?type=${item.type}&duplicateId=${item.id}` as any); 
+                            }
+                        }}
+                    >
+                        <Plus size={16} color="#2563EB" />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                        style={[styles.actionIconSm, { backgroundColor: colors.background }]}
+                        onPress={(e) => { e.stopPropagation(); router.push(`/project/${project.id}/report/create?type=${item.type}&editId=${item.id}` as any); }}
+                    >
+                        <Pencil size={16} color={colors.textMuted} />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                        style={styles.deleteReportIcon}
+                        onPress={(e) => { e.stopPropagation(); handleDeleteReport(item.id); }}
+                    >
+                        <Trash2 size={16} color="#EF4444" />
+                    </TouchableOpacity>
+                </>
+            )}
         </TouchableOpacity>
     );
 
@@ -146,12 +155,30 @@ export default function ProjectDashboardScreen() {
     const router = useRouter();
     const { getProject, deleteProject, getReportsForProject, deleteReport, updateReport, initialSync } = useProjectsStore();
     const { colors } = useThemeColors();
+    const currentUserId = useAuthStore(state => state.user?.id);
+    const status = useStatus();
+    const hasSynced = status?.hasSynced ?? false;
+
+    // Live PowerSync query for the project
+    const { data: powerSyncProject, isLoading: isProjectLoading } = usePowerSyncProject(id as string);
+    const members = usePowerSyncMembers(id as string);
 
     // Make reports reactive to instantly show newly created ones
     const reports = usePowerSyncReports(id as string);
     const { isPremium } = useStore();
 
-    const [project, setProject] = useState<Project | null>(null);
+    // Prefer live PowerSync data, falling back to zustand store if available
+    const project = powerSyncProject || getProject(id);
+
+    const currentMember = members.find(m => m.userId === currentUserId);
+    const isOwnerOrManager = useMemo(() => {
+        if (!currentUserId || !project) return false;
+        const isDirectOwner = Boolean(project.userId && project.userId === currentUserId);
+        const hasManagerMemberRole = project.memberRole === 'owner' || project.memberRole === 'manager';
+        const hasManagerCurrentMember = currentMember?.role === 'owner' || currentMember?.role === 'manager';
+        return isDirectOwner || hasManagerMemberRole || hasManagerCurrentMember;
+    }, [project, currentUserId, currentMember]);
+
     const [refreshing, setRefreshing] = useState(false);
 
     const onRefresh = useCallback(async () => {
@@ -163,17 +190,49 @@ export default function ProjectDashboardScreen() {
     }, [initialSync]);
 
     useEffect(() => {
-        if (id) {
-            const p = getProject(id);
-            if (p) {
-                setProject(p);
-            } else {
-                router.back();
-            }
+        // Only redirect back after initial sync has completed and the query has settled (not loading) and project is definitely missing
+        if (hasSynced && !isProjectLoading && !project && id) {
+            router.back();
         }
-    }, [id, getProject]);
+    }, [hasSynced, isProjectLoading, project, id, router]);
 
-    if (!project) return null;
+    if ((!hasSynced || isProjectLoading) && !project) {
+        return (
+            <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
+                <Stack.Screen options={{ headerShown: false }} />
+                <View style={[styles.header, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
+                    <BackButton style={{ position: "absolute", left: 20, zIndex: 20, bottom: 8 }} />
+                    <Text style={[styles.headerTitle, { color: colors.text }]}>Project</Text>
+                </View>
+                <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                    <ActivityIndicator size="large" color={colors.primary || '#2563EB'} />
+                    <Text style={{ marginTop: 12, fontSize: 15, color: colors.textMuted }}>Loading project...</Text>
+                </View>
+            </SafeAreaView>
+        );
+    }
+
+    if (!project) {
+        return (
+            <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
+                <Stack.Screen options={{ headerShown: false }} />
+                <View style={[styles.header, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
+                    <BackButton style={{ position: "absolute", left: 20, zIndex: 20, bottom: 8 }} />
+                    <Text style={[styles.headerTitle, { color: colors.text }]}>Project Not Found</Text>
+                </View>
+                <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 32 }}>
+                    <Text style={{ fontSize: 18, fontWeight: '600', color: colors.text, marginBottom: 8 }}>Project Not Found</Text>
+                    <Text style={{ fontSize: 14, color: colors.textMuted, textAlign: 'center', marginBottom: 24 }}>The requested project could not be found or you do not have access.</Text>
+                    <TouchableOpacity
+                        style={{ backgroundColor: colors.primary || '#2563EB', paddingHorizontal: 20, paddingVertical: 12, borderRadius: 8 }}
+                        onPress={() => router.back()}
+                    >
+                        <Text style={{ color: '#FFFFFF', fontWeight: '600', fontSize: 15 }}>Go Back</Text>
+                    </TouchableOpacity>
+                </View>
+            </SafeAreaView>
+        );
+    }
 
     const handleDelete = () => {
         if (Platform.OS === 'web') {
@@ -267,14 +326,16 @@ export default function ProjectDashboardScreen() {
             <View style={[styles.header, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
                 <BackButton style={{ position: "absolute", left: 20, zIndex: 20, bottom: 8 }} />
                 <Text style={[styles.headerTitle, { color: colors.text }]} numberOfLines={1}>{project.name}</Text>
-                <View style={styles.headerActions}>
-                    <TouchableOpacity onPress={() => router.push(`/project/create?id=${project.id}` as any)} style={[styles.actionIcon, { backgroundColor: colors.card }]}>
-                        <Pencil size={20} color={colors.textMuted} />
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={handleDelete} style={[styles.actionIcon, styles.actionIconDelete]}>
-                        <Trash2 size={20} color="#EF4444" />
-                    </TouchableOpacity>
-                </View>
+                {isOwnerOrManager && (
+                    <View style={styles.headerActions}>
+                        <TouchableOpacity onPress={() => router.push(`/project/create?id=${project.id}` as any)} style={[styles.actionIcon, { backgroundColor: colors.card }]}>
+                            <Pencil size={20} color={colors.textMuted} />
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={handleDelete} style={[styles.actionIcon, styles.actionIconDelete]}>
+                            <Trash2 size={20} color="#EF4444" />
+                        </TouchableOpacity>
+                    </View>
+                )}
             </View>
 
             <ScrollView 
@@ -285,7 +346,7 @@ export default function ProjectDashboardScreen() {
                 {/* Hero Section */}
                 <View style={[styles.heroSection, { backgroundColor: colors.card }]}>
                     {project.photoUri ? (
-                        <ProjectImage photoUri={project.photoUri} style={styles.heroImage} resizeMode="cover" />
+                        <ProjectImage photoUri={project.photoUri} projectId={id} style={styles.heroImage} resizeMode="cover" />
                     ) : (
                         <View style={[styles.heroPlaceholder, { backgroundColor: colors.card }]}>
                             <FolderOpen size={48} color={colors.textMuted} />
@@ -422,8 +483,17 @@ export default function ProjectDashboardScreen() {
                     {REPORT_CATEGORIES.map((cat, index) => (
                         <Animated.View key={cat.id} entering={FadeIn.delay(index * 100)} style={{ width: '48%', marginBottom: 16 }}>
                             <TouchableOpacity
-                                style={[styles.categoryCard, { backgroundColor: colors.card, borderColor: cat.bg }]}
+                                style={[
+                                    styles.categoryCard, 
+                                    { 
+                                        backgroundColor: colors.card, 
+                                        borderColor: cat.bg,
+                                        opacity: isOwnerOrManager ? 1 : 0.6,
+                                    }
+                                ]}
+                                disabled={!isOwnerOrManager}
                                 onPress={() => {
+                                    if (!isOwnerOrManager) return;
                                     if (checkReportLimit()) {
                                         if (cat.route === 'quick-log') {
                                             router.push({ pathname: '/quick-log', params: { projectId: project.id } } as any);
@@ -434,15 +504,17 @@ export default function ProjectDashboardScreen() {
                                         }
                                     }
                                 }}
-                                activeOpacity={0.7}
+                                activeOpacity={isOwnerOrManager ? 0.7 : 1}
                             >
                                 <View style={styles.categoryHeader}>
                                     <View style={[styles.categoryIconCircle, { backgroundColor: cat.bg }]}>
                                         {cat.icon}
                                     </View>
-                                    <View style={styles.addReportButton}>
-                                        <Plus size={16} color="#2563EB" />
-                                    </View>
+                                    {isOwnerOrManager && (
+                                        <View style={styles.addReportButton}>
+                                            <Plus size={16} color="#2563EB" />
+                                        </View>
+                                    )}
                                 </View>
                                 <Text style={[styles.categoryTitle, { color: colors.text }]}>{cat.title}</Text>
                                 <Text style={[styles.categoryDesc, { color: colors.textMuted }]}>{cat.desc}</Text>
@@ -476,6 +548,7 @@ export default function ProjectDashboardScreen() {
                                 checkReportLimit={checkReportLimit} 
                                 handleDeleteReport={handleDeleteReport} 
                                 router={router} 
+                                canManage={isOwnerOrManager}
                             />
                         ))}
                     </View>

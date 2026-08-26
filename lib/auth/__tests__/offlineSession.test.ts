@@ -35,7 +35,7 @@ import {
   OFFLINE_GRACE_MS,
   OfflineSessionRecord,
 } from '../offlineSession';
-import { useAuthStore } from '../../../store/useAuthStore';
+import { useAuthStore, __resetAuthInitForTests } from '../../../store/useAuthStore';
 import { supabase } from '../../supabase';
 
 // Mock supabase client
@@ -61,6 +61,7 @@ jest.mock('../../supabaseSync', () => ({
 describe('offlineSession & B9 Offline Grace Authentication', () => {
   beforeEach(async () => {
     jest.clearAllMocks();
+    __resetAuthInitForTests();
     await AsyncStorage.clear();
     // Reset store state
     useAuthStore.setState({

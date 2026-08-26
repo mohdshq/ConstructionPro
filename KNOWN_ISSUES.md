@@ -14,7 +14,8 @@
 | B1 | PowerSync **development tokens still ON** | Infra | Token verification effectively bypassed; entire multi-tenant DB exposed. Disable in PowerSync dashboard. |
 | B2 | Supabase **email confirmation disabled** | Auth | Anyone can register as anyone. Re-enable before first real signup. |
 | ~~B3~~ | **[CLOSED / NOT-A-BUG]** `initialSync` overwriting entities | Sync | Audit revealed UI reads from PowerSync SQLite (`useQuery`), ignoring Zustand store. `initialSync` only mutated orphaned Zustand arrays without touching SQLite. Removed from startup; see `docs/powersync_investigation_report.md`. |
-| B4 | **Binary file uploads bypass PowerSync queue** | Sync | Binary file uploads (photos, avatars, drawing files) bypass the PowerSync queue and are silently lost when created offline. (Database row creates flush correctly via PowerSync CRUD queue). |
+| ~~B4~~ | **[FIXED]** Binary file uploads bypass PowerSync queue | Sync | Binary file uploads previously bypassed the PowerSync queue and were lost when captured offline. Fixed via PowerSync AttachmentQueue + local-only attachments table. |
+
 | B5 | `setupPowerSync()` **not wired into app startup** | Sync | Sync layer may not initialise deterministically. |
 | B6 | Photos stored as **base64 in `ProjectSnag.photos: string[]`** | Data/Perf | +33% size on every image, flowing through SQLite rows, sync payloads and report HTML. Will OOM the PDF WebView on large inspections. Migrate to PowerSync attachments + file URIs. |
 | B7 | `xlsx@0.18.5` — prototype pollution + ReDoS, **no npm fix exists** | Security | Abandoned on npm (fixed only in SheetJS-hosted 0.19.3+). Migrate or remove. |
@@ -31,7 +32,11 @@
 | H3 | **`fetchUserProjects` filters by `user_id` only** — a user added via `project_members` never sees the shared project, yet `fetchUserActivities` / `fetchUserCalculations` *do* resolve through `project_members`. Sharing is half-wired. Resolved by Phase 7. | Sync/Team |
 | H4 | `insertCalculation(calculation: any)` — untyped parameter | Sync |
 | H5 | No Arabic / RTL despite `expo-localization` being installed | i18n |
-| H6 | Web target configured (`output: "static"`) but untested; RevenueCat throws in browser | Web |
+| H8 | **Pending local attachment loss during user switch / reset (`clearPowerSyncForNewUser`)** | Sync/Attachments | When a user signs out or switches accounts with unsynced local attachments, `clearPowerSyncForNewUser` wipes the local attachment queue and PowerSync SQLite database. If a referencing database row (e.g. `projects.photo_url` or `reports`) synced to Supabase Postgres before the binary uploaded, the row retains a reference to a nonexistent storage object (observed on project "Castle"). UI handles missing storage objects gracefully; users are prompted with an explicit warning during sign-out. |
+| H9 | **Cleanup of superseded legacy `userId/*` cover objects** | Storage/Maintenance | Five project covers were backfilled from `report-photos/{userId}/project_cover_*.jpg` to `report-photos/{projectId}/project_cover_*.jpg`. The original objects were preserved for safety. Follow-up cleanup task: delete the 5 original `cdbff53b-6290-45ff-8966-dcbdc0b29273/project_cover_*.jpg` objects from `report-photos` storage once device acceptance confirms all project-scoped covers render cleanly across devices. |
+
+
+
 
 ## Structural debt (not bugs — planned migrations)
 
@@ -197,8 +202,20 @@ Detailed investigation report located at `docs/powersync_investigation_report.md
   5. **Explicit Sign-Out Gate**: Sign-out transitions occur only on explicit user action (`isExplicitSignOut = true`) or an auth-server credential rejection (HTTP 400 `invalid_grant` / revoked refresh token) — never on a network error.
   6. **UI Adjustments**: Added persistent dismissible `OfflineGraceBanner` ("Offline — signed in as {email}. Changes will sync when you reconnect.") and hid server-dependent UI (paywall, subscription flows) in `offline-grace` mode.
 
-### ✅ RESOLVED (FIXED) — B10: Missing auth lock allows concurrent refresh
-- **Symptom / Vulnerability**: Without an auth lock, concurrent asynchronous callers (such as PowerSync's backend connector `fetchCredentials()`, background workers, or parallel API requests) invoking `getSession()` or token auto-refresh simultaneously would send concurrent refresh requests with the same refresh token. Supabase Auth's security feature "Detect and revoke potentially compromised refresh tokens" interprets two concurrent exchanges of the same refresh token as token reuse by an attacker, revoking the user's refresh token family server-side and forcefully signing the user out.
+### ✅ RESOLVED (FIXED) — B4: Binary file uploads bypass PowerSync queue
+- **Symptom / Vulnerability**: Prior to this fix, binary file uploads (project cover photos, daily/snagging report photos, architectural drawing documents, and user avatars) used ad-hoc HTTP/REST uploads (`FileSystem.uploadAsync` or Supabase Storage SDK) directly from UI screens. When a field engineer created or edited entities offline, the database row was written to SQLite and synced via PowerSync CRUD queue, but the binary file upload failed immediately, permanently leaving orphaned references (or local-only `file://` URIs) in the database and causing data loss for other collaborators on the project.
+- **Architecture & Fix (built on `@powersync/common@1.57.2` / `@powersync/react-native@1.35.9`)**:
+  1. **Attachment Table Schema (`lib/powersync/AppSchema.ts`)**: Registered `attachments: new AttachmentTable()` with default options (resolves table name to `attachments`, internal view to `powersync_attachments_attachments`).
+  2. **Local Storage Adapter (`lib/attachments/localStorage.ts`)**: Implemented `ExpoFileSystemLocalStorageAdapter` backed by `File`, `Directory`, and `Paths` from `expo-file-system` (SDK 54), strictly rooting local attachments under `${Paths.document}/attachments` (never cache directory, preventing OS purge). Slices byte buffers safely with `Uint8Array.prototype.subarray`/`slice` to avoid pooled ArrayBuffer offset issues.
+  3. **Remote Storage Adapter (`lib/attachments/remoteStorage.ts`)**: Implemented `SupabaseRemoteStorageAdapter` with project-scoped remote paths (`${projectId}/${attachment.filename}`) for `drawings` and `report-photos`, and user-scoped paths (`${userId}/${attachment.filename}`) for `avatars`. Uploads use `POST` with `x-upsert: true` and explicit `Content-Type` headers. `deleteFile` is strictly idempotent (404/not-found handled as success). `downloadFile` fallback handles base64 decode safely using `base64-arraybuffer.decode()`.
+  4. **Watch Query with FROM-Clause Sanitization (`lib/attachments/watchAttachments.ts`)**: Exported `ATTACHMENT_WATCH_QUERY` watching `projects.photo_url`, `profiles.avatar_url`, `drawings.storage_path`, and `reports.template_data` (photos). Sanitizes `json_each` argument directly in the `FROM` clause (`CASE WHEN json_valid(template_data) THEN CASE WHEN json_type(template_data, '$.photos') = 'array' THEN json_extract(template_data, '$.photos') ELSE '[]' END ELSE '[]' END`) with CTE `report_photos_raw`, eliminating SQLite abort errors on corrupt/legacy JSON.
+  5. **Attachment Queue Singleton & Error Handler (`lib/attachments/attachmentQueue.ts`)**: Initialized singleton `AttachmentQueue` with `attachmentErrorHandler` returning `true` for all errors to prevent archive/restore churn loops on network errors or transient 403s.
+  6. **Media Resolver & Classification (`lib/attachments/resolveMediaUri.ts`)**: Implemented `classifyMediaSource` with strict regex `/^[^/\\]+\.[A-Za-z0-9]{1,10}$/` and `{`, `[` guards. Priority resolution checks local disk first for instant offline rendering, falling back to cached signed/public URLs with a 3000s TTL.
+  7. **Startup Reconciliation & Lifecycle (`lib/powersync/lifecycle.ts`, `cleanupStagedAttachments.ts`)**: Sweeps and removes unreferenced `QUEUED_UPLOAD` attachments on startup. Integrated `attachmentQueue.startSync()`, table resolution assertions, and non-destructive `teardownPowerSync` that preserves pending offline attachments across sign-out.
+  8. **Storage RLS Policies (`supabase/migrations/20260819120000_b4_collaborative_storage_policies.sql`)**: Configured collaborative project-membership RLS policies for `SELECT`, `INSERT`, `UPDATE`, and `DELETE` on `drawings` and `report-photos` buckets using SECURITY DEFINER STABLE helper `public.can_access_project(p_id text)`, while preserving legacy user-scoped policies.
+  9. **Sync-Ordering Race & Indefinite Retry Semantics**: Project-scoped uploads (`${projectId}/${filename}`) require the `projects` row to reach Postgres and trigger `handle_new_project()` before storage RLS can authorize the upload. Because PowerSync's AttachmentQueue and CRUD upload queues operate independently, HTTP 403 Forbidden errors are expected on initial reconnect after creating projects offline. These transient 403s are logged with a clear diagnostic warning and automatically resolve on the next 30-second attachment queue tick once the CRUD queue flushes the project row. Note: if a project row were to permanently fail to sync (e.g. schema violation), its associated attachments will remain in `QUEUED_UPLOAD` state and retry indefinitely until resolved.
+- **Coverage**: 6 dedicated test suites in `lib/attachments/__tests__/` (14 assertions including SQLite JSON1 resilience against 9 malformed fixtures, cross-device path parity, classification predicate parity, local resolution priority, remote idempotency, and lifecycle sign-out preservation). All 21 test suites in the repository pass.
+
 - **Fix**:
   1. **`processLock` in `lib/supabase.ts`**: Configured `lock: processLock` from `@supabase/supabase-js` in the client's `auth` options. This serializes all internal token acquisitions and refresh requests across the process.
   2. **AppState Auto-Refresh Lifecycle in `app/_layout.tsx`**: Added an `AppState` event listener (registered once at mount, removed on unmount) backed by pure helper `handleAppStateAuthRefresh` (`lib/auth/appStateAutoRefresh.ts`). When the app enters `'active'`, it resumes auto-refresh via `supabase.auth.startAutoRefresh()` if authenticated (`'online'` or `'offline-grace'`), or stops it if `'signed-out'` (guaranteeing any lingering timer is halted). Any transition to non-active states (`'background'`, `'inactive'`, `'unknown'`) halts auto-refresh via `supabase.auth.stopAutoRefresh()`.
@@ -326,3 +343,149 @@ release — planned improvements.
   - **Decoupled Photo Gate ahead of S9 (S11a)**: `validateLogo` was split into `isEmbeddableImage` (header logos, base64-only) and `isRenderablePhoto` (snag photos in `renderSnagCard`, accepts `data:image`, `http://`, `https://`, and `file://` URIs). The old combined gate would have silently rendered "No Context Photo" for every snag once S9 moves photos off base64 to local file URIs or remote URLs. `isRenderablePhoto` must NOT be narrowed back to a base64-only check.
 - **Key Takeaway / Verification rule**: The WebView preview cannot detect print-engine pagination and clipping bugs. All future report template changes MUST be verified by opening the generated PDF, not just inspecting the WebView preview.
 
+# B4-attachment-queue session — 2026-08-26
+
+Branch `fix/b4-attachment-queue`. Verified on iOS Simulator dev build.
+
+## ✅ RESOLVED — Viewers had CRUD access to daily reports
+Two independent causes:
+- **Client** (`128ec95`): `ReportCardItem` rendered edit/delete unconditionally.
+  Added `canManage` prop gating all row actions and creation entry points.
+- **Server** (`8b0d8a4`): policy `"Users can manage reports for their projects"`
+  was `cmd=ALL` gated on `is_project_member()`, granting INSERT/UPDATE/DELETE to
+  every member including viewers. Replaced with four role-aware policies:
+  SELECT for members via `can_access_project`, INSERT/UPDATE/DELETE via
+  `can_manage_project`. Migration
+  `supabase/migrations/20260824150000_reports_role_aware_rls.sql`.
+- Verified: `pg_policies` shows exactly 4 rows on `public.reports`, no `cmd=ALL`,
+  UPDATE `with_check` identical to `qual`.
+- Note: `user_id = auth.uid()` deliberately NOT added to the INSERT check — the
+  app stamps the project owner as `user_id`, so it would break manager inserts.
+- Note: `Connector.ts` drops RLS 42501 errors to avoid head-of-line blocking, so
+  server RLS alone produces silent local divergence. Both the UI gate and the
+  server policy are required; neither is redundant.
+
+## ✅ RESOLVED — Two login screens after sign-out
+Two independent causes, both required fixing:
+- **Router** (`8f8bb04`): `app/_layout.tsx` declared
+  `<Stack.Screen name="project" />`, which matches no route. All twelve
+  `project/*` routes therefore sat OUTSIDE `Stack.Protected`, survived sign-out,
+  and were reachable by swipe-back — an auth bypass, not just a cosmetic bug.
+  Replaced with the twelve real nested route names.
+- **Imperative nav** (`2e5f920`): `app/settings.tsx` called
+  `router.replace('/(auth)/login')` after `signOut()`, mounting a second login
+  on top of the one the declarative guard had already rendered.
+- Verified 2026-08-26 on simulator dev build: one `SIGNED_OUT` event, sign-out
+  completes in ~440ms, one login screen, swipe-back reveals nothing.
+- Regression test added asserting `app/settings.tsx` contains no imperative
+  navigation to auth routes, and that `'project'` is absent from rendered
+  screen names (`39bfa03`).
+
+### New invariant — DO NOT REGRESS
+11. **Auth navigation is declarative only.** `Stack.Protected` in
+    `app/_layout.tsx` owns all auth-state navigation. Never call
+    `router.replace`/`push` to an auth route after `signOut()` — it mounts a
+    duplicate login screen. Route names in the guard must be the real nested
+    paths (`project/[id]`, not `project`); a name matching no route silently
+    places every child route outside the guard.
+
+## Diagnostic findings — do not re-investigate
+
+- **Simulator log noise**: `hapticpatternlibrary.plist`, `CVPixelBufferCreate`,
+  WebKit warnings. Missing simulator runtime files, triggered by keyboard input.
+  Not present on device. Not actionable.
+- **Duplicate `onAuthStateChange` listeners** observed mid-session were Fast
+  Refresh ghosts — old module instances retaining live subscriptions across
+  reloads. NOT a production defect; a cold start shows exactly one listener.
+  The `initialize()` memo guard (`ec6b829`) is still correct and retained,
+  along with `__resetAuthInitForTests()` as its test seam.
+- **`JWT issued at future`** on simulator = host clock skew, not code. Erase
+  simulator content/settings. While present, all profile-dependent behaviour is
+  unreliable — do not trust permission testing on that instance.
+- **`ERR_FILE_PERMISSION` (shareAsync)** and **`Network request failed`**: never
+  reproduced as a user-facing failure. Noise.
+
+## Verified storage path conventions
+Established by querying `storage.objects` directly, not inferred:
+- A ref containing `/` is already a complete storage path — use VERBATIM.
+  (13/13 prefixed report photos, 4/4 drawings, 4 logos resolve as-is.)
+- A bare ref in `report-photos` resolves under `project_id` (3/3 photos,
+  5/5 covers). Covers also exist under `user_id` as the pre-H9 duplicates.
+- A bare `avatar_url` resolves under the profile id.
+- `user_id` is NEVER the correct prefix for a bare report photo.
+Implemented in `resolveRemoteStoragePath` (`19a049e`), which previously
+prefixed unconditionally and produced double-prefixed keys like
+`report-photos/{projectId}/{userId}/{projectId}/file.jpg`.
+The verbatim branch is currently UNREACHABLE because of the watch-query
+filters below; it becomes live when those filters are dropped.
+
+## OPEN — A1: "Loading media" spinner hangs forever on legacy projects
+Related to the existing Notes entry ("logos stored as storage paths will not
+render until re-picked — no migration by design"). That design decision is
+accepted; the defect is that the UI **hangs on a spinner** instead of showing a
+placeholder.
+
+Mechanism: `ATTACHMENT_WATCH_QUERY` (`lib/attachments/watchAttachments.ts`)
+reads only `$.photos` from `reports.template_data` — `$.logos` is never
+selected. All four branches additionally filter `NOT LIKE '%/%'` (lines 30, 53,
+69, 85), and every logo ref is slash-prefixed, so logos are excluded twice.
+No attachment record is ever created, so anything awaiting one waits forever.
+
+Measured: 71 logo refs, 15 distinct, 4 present in `report-photos`, 11 absent
+(consistent with "not re-picked yet", per the Notes entry).
+
+Minimal fix (preferred): gate the media UI on a resolved/failed state rather
+than on presence of an attachment record, and render a placeholder. This closes
+the hang without expanding the queue.
+
+Full fix, strictly in this order:
+1. A2 (terminal-failure handling) FIRST. Adding a logos branch before it would
+   admit 13 permanently-unresolvable objects (11 logos + 2 covers) into an
+   indefinite retry loop — see the B4 note on indefinite `QUEUED_UPLOAD` retry.
+2. Then add a `logos` branch, drop the `NOT LIKE '%/%'` exclusions, carry the
+   full ref, and sanitise `filename` (`replace(ref,'/','_')`) so local file
+   naming survives the slash.
+
+## OPEN — A2: Queue retries permanently-missing objects indefinitely
+`attachmentErrorHandler` returns `true` for all errors (deliberate, to avoid
+archive/restore churn), so a 404 is indistinguishable from a transient failure.
+Supabase Storage returns **HTTP 400 with a `statusCode: "404"` body** for a
+missing object, which is why these surface as 400s.
+Prerequisite for A1. Needs a bounded attempt count or explicit
+missing-object detection before the logos branch lands.
+
+## OPEN — A3: Three dangling storage references
+Rows pointing at objects absent from every bucket under every candidate prefix:
+- `profiles.avatar_url` = `cd2d21bc-afcb-4467-8cd2-d9bec8fcd720.jpg`
+  (user `cdbff53b-6290-45ff-8966-dcbdc0b29273`) — the sole recurring
+  `Supabase download failed (400)` in the logs.
+- `projects.photo_url` for projects `00d63259-b1ad-4d95-ae57-9943cfa984e5`
+  and `ec605ff8-df86-4b0b-b6b5-249402e9a14b` (both slash-prefixed).
+Likely instances of H8 (pending local attachment loss during user switch).
+Decide per row: re-upload, or null the column and let the placeholder path
+handle it.
+
+## OPEN — A4: Component files inside `app/` are routable
+`app/project/[id]/report/components/ManpowerSection.tsx` and
+`PickerDropdown.tsx` are treated as routes by expo-router (they appear in the
+router's own route list). Move outside `app/` (e.g. `components/report/`).
+Isolated change; do not bundle with other work.
+
+## OPEN — A5: Physical device cannot run current code
+The ConstructionPro build on the test iPhone is a standalone build with its JS
+bundled in: it ignores Metro, has no dev menu, and goes straight to login.
+Expo Go is not an option (native `@powersync/op-sqlite` — "Base module not
+found"). Any device observation is stale until a new dev build is installed.
+The "2 login screens / swipe reveals main page" seen on device on 2026-08-26
+was pre-fix code and is NOT evidence against the fixes above.
+Note: `npx expo start --dev-client --localhost` is simulator-only; a device
+needs LAN or `--tunnel`. See the existing "Dev environment" entry.
+
+## OPEN — A6: Storage hardening not executed
+- `pdfs` bucket: switch to `createSignedUrl`; lock buckets to private.
+- End-to-end storage policy audit not run.
+- PowerSync schema validation not run.
+- Gate screens on `hasSynced` to prevent stale-state black screens.
+- H9 cleanup (delete 5 superseded `userId/*` cover duplicates) still pending;
+  our audit confirms the project-scoped copies exist, so it is safe to proceed
+  once device acceptance is possible (blocked by A5).

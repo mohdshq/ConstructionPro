@@ -1,4 +1,4 @@
-import { column, Schema, Table } from '@powersync/react-native';
+import { column, Schema, Table, AttachmentTable } from '@powersync/react-native';
 
 const profiles = new Table({
   full_name: column.text, avatar_url: column.text, company: column.text,
@@ -49,5 +49,6 @@ const snags = new Table({
 
 export const AppSchema = new Schema({
   profiles, projects, reports, drawings, drawing_folders, calculations, project_members, activities, snags,
+  attachments: new AttachmentTable(),
 });
 export type Database = (typeof AppSchema)['types'];

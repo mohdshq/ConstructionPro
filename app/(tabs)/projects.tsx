@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, SafeAreaView, Platform, Dimensions, Alert, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, SafeAreaView, Platform, Dimensions, Alert, RefreshControl, ActivityIndicator } from 'react-native';
 import { MapPin, Calendar, FolderOpen, Plus, User, FileText, Pencil, Trash2 } from 'lucide-react-native';
 import Animated, { FadeInDown, FadeIn } from 'react-native-reanimated';
 import { useRouter } from 'expo-router';
@@ -7,8 +7,10 @@ import { useProjectsStore, Project } from '../../store/projectsStore';
 import { usePowerSyncProjects } from '@/lib/powersync/useProjects';
 import { useThemeColors } from '../../store/useThemeColors';
 import { useStore } from '../../store/useStore';
+import { useAuthStore } from '../../store/useAuthStore';
 import { useMemo, useCallback, useState } from 'react';
 import ConnectionBadge from '../../components/ConnectionBadge';
+import { useStatus } from '@powersync/react';
 
 const { width } = Dimensions.get('window');
 
@@ -16,9 +18,12 @@ export default function ProjectsScreen() {
     const router = useRouter();
     const { reports, deleteProject, initialSync, isSyncing } = useProjectsStore();
     const { data: projects = [] } = usePowerSyncProjects();
+    const status = useStatus();
+    const hasSynced = status?.hasSynced ?? false;
     const { isPremium } = useStore();
     const { colors, isDark } = useThemeColors();
     const [refreshing, setRefreshing] = useState(false);
+    const currentUserId = useAuthStore(state => state.user?.id);
 
     const onRefresh = useCallback(async () => {
         setRefreshing(true);
@@ -129,6 +134,13 @@ export default function ProjectsScreen() {
 
     const renderProjectCard = ({ item, index }: { item: Project & { displayStatus: string }, index: number }) => {
         const projectReports = reports.filter(r => r.projectId === item.id);
+        const isManager = Boolean(
+            currentUserId && (
+                (item.userId && item.userId === currentUserId) ||
+                item.memberRole === 'owner' ||
+                item.memberRole === 'manager'
+            )
+        );
 
         return (
             <Animated.View entering={FadeInDown.delay(index * 100).springify()}>
@@ -139,7 +151,7 @@ export default function ProjectsScreen() {
                 >
                     {/* Project Image Banner */}
                     {item.photoUri ? (
-                        <ProjectImage photoUri={item.photoUri} style={styles.cardImage} />
+                        <ProjectImage photoUri={item.photoUri} projectId={item.id} style={styles.cardImage} />
                     ) : (
                         <View style={[styles.cardImagePlaceholder, { backgroundColor: isDark ? colors.background : '#F8FAFC' }]}>
                             <FolderOpen size={32} color={colors.textMuted} />
@@ -157,18 +169,22 @@ export default function ProjectsScreen() {
                                         {item.displayStatus.toUpperCase()}
                                     </Text>
                                 </View>
-                                <TouchableOpacity
-                                    onPress={() => router.push(`/project/create?id=${item.id}` as any)}
-                                    style={[styles.actionIconButton, { backgroundColor: colors.inputBackground }]}
-                                >
-                                    <Pencil size={18} color={colors.textMuted} />
-                                </TouchableOpacity>
-                                <TouchableOpacity
-                                    onPress={() => handleDeleteProject(item.id, item.name)}
-                                    style={[styles.actionIconButton, { backgroundColor: isDark ? '#7F1D1D' : '#FEE2E2' }]}
-                                >
-                                    <Trash2 size={18} color={isDark ? '#FCA5A5' : "#EF4444"} />
-                                </TouchableOpacity>
+                                {isManager && (
+                                    <>
+                                        <TouchableOpacity
+                                            onPress={() => router.push(`/project/create?id=${item.id}` as any)}
+                                            style={[styles.actionIconButton, { backgroundColor: colors.inputBackground }]}
+                                        >
+                                            <Pencil size={18} color={colors.textMuted} />
+                                        </TouchableOpacity>
+                                        <TouchableOpacity
+                                            onPress={() => handleDeleteProject(item.id, item.name)}
+                                            style={[styles.actionIconButton, { backgroundColor: isDark ? '#7F1D1D' : '#FEE2E2' }]}
+                                        >
+                                            <Trash2 size={18} color={isDark ? '#FCA5A5' : "#EF4444"} />
+                                        </TouchableOpacity>
+                                    </>
+                                )}
                             </View>
                         </View>
 
@@ -222,21 +238,28 @@ export default function ProjectsScreen() {
                 </View>
 
                 {sortedProjects.length === 0 ? (
-                    <Animated.View entering={FadeIn.duration(500)} style={styles.emptyState}>
-                        <View style={[styles.emptyIconCircle, { backgroundColor: colors.inputBackground }]}>
-                            <FolderOpen size={48} color={colors.textMuted} />
+                    !hasSynced ? (
+                        <View style={styles.loadingState}>
+                            <ActivityIndicator size="large" color={colors.primary || '#2563EB'} />
+                            <Text style={[styles.loadingText, { color: colors.textMuted }]}>Syncing projects...</Text>
                         </View>
-                        <Text style={[styles.emptyTitle, { color: colors.text }]}>No Projects Yet</Text>
-                        <Text style={[styles.emptySubtitle, { color: colors.textMuted }]}>Create a new project workspace to manage site reports and photos.</Text>
+                    ) : (
+                        <Animated.View entering={FadeIn.duration(500)} style={styles.emptyState}>
+                            <View style={[styles.emptyIconCircle, { backgroundColor: colors.inputBackground }]}>
+                                <FolderOpen size={48} color={colors.textMuted} />
+                            </View>
+                            <Text style={[styles.emptyTitle, { color: colors.text }]}>No Projects Yet</Text>
+                            <Text style={[styles.emptySubtitle, { color: colors.textMuted }]}>Create a new project workspace to manage site reports and photos.</Text>
 
-                        <TouchableOpacity
-                            style={styles.emptyButton}
-                            onPress={handleCreateProject}
-                            activeOpacity={0.8}
-                        >
-                            <Text style={styles.emptyButtonText}>Create First Project</Text>
-                        </TouchableOpacity>
-                    </Animated.View>
+                            <TouchableOpacity
+                                style={styles.emptyButton}
+                                onPress={handleCreateProject}
+                                activeOpacity={0.8}
+                            >
+                                <Text style={styles.emptyButtonText}>Create First Project</Text>
+                            </TouchableOpacity>
+                        </Animated.View>
+                    )
                 ) : (
                     <FlatList
                         data={sortedProjects}
@@ -420,5 +443,17 @@ const styles = StyleSheet.create({
         color: '#FFFFFF',
         fontSize: 16,
         fontWeight: '600',
+    },
+    loadingState: {
+        flex: 1,
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingHorizontal: 40,
+        marginTop: 60,
+    },
+    loadingText: {
+        fontSize: 15,
+        fontWeight: '500',
+        marginTop: 12,
     },
 });

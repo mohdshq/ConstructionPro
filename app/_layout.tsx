@@ -1,30 +1,30 @@
+import NetInfo from '@react-native-community/netinfo';
 import { DarkTheme, ThemeProvider } from '@react-navigation/native';
-import { Stack, useRouter, useSegments } from 'expo-router';
+import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef, useState } from 'react';
-import { Platform, View, ActivityIndicator, AppState } from 'react-native';
+import { ActivityIndicator, AppState, Platform, View } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import Purchases from 'react-native-purchases';
 import 'react-native-reanimated';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import NetInfo from '@react-native-community/netinfo';
 
-import { useColorScheme } from '@/hooks/use-color-scheme';
-import { useStore } from '@/store/useStore';
-import { useAuthStore } from '@/store/useAuthStore';
-import { usePushNotifications } from '@/lib/usePushNotifications';
-import { useEnrichmentWorker } from '@/lib/ai/useEnrichmentWorker';
-import * as Sentry from '@sentry/react-native';
-import { PostHogProvider } from 'posthog-react-native';
 import { OfflineBanner } from '@/components/OfflineBanner';
 import { OfflineGraceBanner } from '@/components/OfflineGraceBanner';
-import { PowerSyncContext } from '@powersync/react';
-import { powersync } from '@/lib/powersync/system';
-import { setupPowerSync, teardownPowerSync, clearPowerSyncForNewUser } from '@/lib/powersync/lifecycle';
-import { supabase } from '@/lib/supabase';
-import { saveLastSession, isAuthServerRejection } from '@/lib/auth/offlineSession';
+import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useEnrichmentWorker } from '@/lib/ai/useEnrichmentWorker';
 import { handleAppStateAuthRefresh } from '@/lib/auth/appStateAutoRefresh';
+import { isAuthServerRejection, saveLastSession } from '@/lib/auth/offlineSession';
+import { clearPowerSyncForNewUser, setupPowerSync, teardownPowerSync } from '@/lib/powersync/lifecycle';
+import { powersync } from '@/lib/powersync/system';
+import { supabase } from '@/lib/supabase';
+import { usePushNotifications } from '@/lib/usePushNotifications';
+import { useAuthStore } from '@/store/useAuthStore';
+import { useStore } from '@/store/useStore';
+import { PowerSyncContext } from '@powersync/react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Sentry from '@sentry/react-native';
+import { PostHogProvider } from 'posthog-react-native';
 
 Sentry.init({
   dsn: process.env.EXPO_PUBLIC_SENTRY_DSN,
@@ -34,17 +34,11 @@ Sentry.init({
   sendDefaultPii: false
 });
 
-export const unstable_settings = {
-  anchor: '(tabs)',
-};
-
 function RootLayout() {
   const colorScheme = useColorScheme();
   const { setIsPremium } = useStore();
-  
+
   const { isInitialized, session, offlineUser, authMode, initialize } = useAuthStore();
-  const segments = useSegments();
-  const router = useRouter();
 
   // Track hydration of persisted Zustand stores
   const [isStoreHydrated, setIsStoreHydrated] = useState(() => {
@@ -85,22 +79,6 @@ function RootLayout() {
       unsubStore();
     };
   }, []);
-
-  // 3. Navigation / Auth gate — runs only when auth state or route segments change
-  useEffect(() => {
-    if (!isInitialized) return;
-
-    const inAuthGroup = segments[0] === '(auth)';
-    const isAuthenticated = authMode !== 'signed-out';
-
-    if (!isAuthenticated && !inAuthGroup) {
-      // Redirect to the login page
-      router.replace('/(auth)/login');
-    } else if (isAuthenticated && inAuthGroup) {
-      // Redirect away from the login page
-      router.replace('/(tabs)');
-    }
-  }, [authMode, isInitialized, segments]);
 
   // 4. NetInfo listener for offline-grace session refresh upon reconnect
   useEffect(() => {
@@ -165,7 +143,7 @@ function RootLayout() {
 
       const initPowerSync = async () => {
         const lastUserId = await AsyncStorage.getItem('last_powersync_user');
-        
+
         const proceedWithSetup = async () => {
           await AsyncStorage.setItem('last_powersync_user', currentUserId);
           if (authMode === 'online') {
@@ -228,14 +206,14 @@ function RootLayout() {
         }
 
         Purchases.configure({ apiKey });
-        
+
         // Initial check — updates persisted value if entitlement changed
         const customerInfo = await Purchases.getCustomerInfo();
         setIsPremium(typeof customerInfo.entitlements.active['premium'] !== "undefined");
-        
+
         // Listen for future updates (purchase, expiry, restore)
         Purchases.addCustomerInfoUpdateListener((info) => {
-            setIsPremium(typeof info.entitlements.active['premium'] !== "undefined");
+          setIsPremium(typeof info.entitlements.active['premium'] !== "undefined");
         });
       } catch (e) {
         console.error("Error initializing RevenueCat:", e);
@@ -257,7 +235,7 @@ function RootLayout() {
     };
   }, []);
 
-  if (!isInitialized) {
+  if (!isInitialized || !isStoreHydrated) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#0F172A' }}>
         <ActivityIndicator size="large" color="#2563EB" />
@@ -268,15 +246,53 @@ function RootLayout() {
   const analyticsEnabled = !__DEV__ || process.env.EXPO_PUBLIC_POSTHOG_FORCE_ENABLE === 'true';
   const posthogKey = process.env.EXPO_PUBLIC_POSTHOG_KEY;
 
+  const isAuthenticated = authMode !== 'signed-out';
+
   const appContent = (
-    <PowerSyncContext.Provider value={powersync}>
+    <PowerSyncContext.Provider value={powersync as any}>
       <ThemeProvider value={DarkTheme}>
         <SafeAreaProvider>
           <Stack screenOptions={{ headerShown: false }}>
-            <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-            <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
-            <Stack.Screen name="ai-wizard" options={{ presentation: 'fullScreenModal', headerShown: false }} />
+            <Stack.Protected guard={!isAuthenticated}>
+              <Stack.Screen name="(auth)" />
+            </Stack.Protected>
+            <Stack.Protected guard={isAuthenticated}>
+              <Stack.Screen name="(tabs)" />
+              <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
+              <Stack.Screen name="ai-wizard" options={{ presentation: 'fullScreenModal', headerShown: false }} />
+              <Stack.Screen name="project/[id]" />
+              <Stack.Screen name="project/create" />
+              <Stack.Screen name="project/[id]/activity" />
+              <Stack.Screen name="project/[id]/team" />
+              <Stack.Screen name="project/[id]/drawings/index" />
+              <Stack.Screen name="project/[id]/drawings/[drawingId]" />
+              <Stack.Screen name="project/[id]/report/create" />
+              <Stack.Screen name="project/[id]/report/[reportId]" />
+              <Stack.Screen name="project/[id]/snags/index" />
+              <Stack.Screen name="project/[id]/snags/create" />
+              <Stack.Screen name="project/[id]/snags/report" />
+              <Stack.Screen name="project/[id]/snags/[snagId]" />
+              <Stack.Screen name="settings" />
+              <Stack.Screen name="daily-report" />
+              <Stack.Screen name="quick-log" />
+              <Stack.Screen name="saved-calculations" />
+              <Stack.Screen name="converter" />
+              <Stack.Screen name="asphalt-calculator" />
+              <Stack.Screen name="block-calculator" />
+              <Stack.Screen name="concrete-calculator" />
+              <Stack.Screen name="duct-calculator" />
+              <Stack.Screen name="dynamic-calculator" />
+              <Stack.Screen name="hvac-calculator" />
+              <Stack.Screen name="labor-calculator" />
+              <Stack.Screen name="ohms-calculator" />
+              <Stack.Screen name="pipe-calculator" />
+              <Stack.Screen name="pour-calculator" />
+              <Stack.Screen name="rebar-calculator" />
+              <Stack.Screen name="soil-calculator" />
+              <Stack.Screen name="stair-calculator" />
+              <Stack.Screen name="tile-calculator" />
+              <Stack.Screen name="voltage-calculator" />
+            </Stack.Protected>
           </Stack>
           <OfflineBanner />
           <OfflineGraceBanner />
@@ -289,7 +305,7 @@ function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       {(analyticsEnabled && posthogKey) ? (
-        <PostHogProvider 
+        <PostHogProvider
           apiKey={posthogKey}
           options={{ host: process.env.EXPO_PUBLIC_POSTHOG_HOST }}
         >

@@ -43,9 +43,21 @@ interface AuthState {
     setProfile: (profile: Profile | null) => void;
     setAuthMode: (authMode: AuthMode) => void;
     initialize: () => Promise<void>;
+    _initializeOnce: () => Promise<void>;
     signOut: () => Promise<void>;
     refreshProfile: () => Promise<void>;
     updateProfile: (updates: Partial<Pick<Profile, 'full_name' | 'avatar_url' | 'company' | 'role'>>) => Promise<void>;
+}
+
+let authSubscription: { unsubscribe: () => void } | null = null;
+let initializePromise: Promise<void> | null = null;
+
+export function __resetAuthInitForTests() {
+    initializePromise = null;
+    if (authSubscription) {
+        authSubscription.unsubscribe();
+        authSubscription = null;
+    }
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
@@ -131,15 +143,28 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     },
 
     initialize: async () => {
+        if (initializePromise) return initializePromise;
+        initializePromise = get()._initializeOnce().catch((e) => {
+            initializePromise = null;
+            throw e;
+        });
+        return initializePromise;
+    },
+
+    _initializeOnce: async () => {
         let timeoutId: ReturnType<typeof setTimeout> | null = null;
         try {
             // Race getSession() against a 4000ms timeout
-            const sessionPromise = supabase.auth.getSession().then(({ data }) => data?.session ?? null).catch((err) => {
+            const sessionPromise = supabase.auth.getSession().then(({ data }) => {
+                return data?.session ?? null;
+            }).catch((err) => {
                 console.warn('[Auth] getSession failed:', err);
                 return null;
             });
             const timeoutPromise = new Promise<null>((resolve) => {
-                timeoutId = setTimeout(() => resolve(null), 4000);
+                timeoutId = setTimeout(() => {
+                    resolve(null);
+                }, 4000);
             });
 
             const session = await Promise.race([sessionPromise, timeoutPromise]);
@@ -190,37 +215,44 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             }
 
             // Listen for auth changes
-            supabase.auth.onAuthStateChange(async (event, session) => {
-                if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-                    if (session?.user) {
-                        set({
-                            session,
-                            user: session.user,
-                            offlineUser: null,
-                            authMode: 'online',
-                        });
-                        await saveLastSession(session);
-                        get().refreshProfile();
-                    }
-                } else if (event === 'SIGNED_OUT') {
+            if (authSubscription) {
+                authSubscription.unsubscribe();
+                authSubscription = null;
+            }
+            const { data: { subscription } } = supabase.auth.onAuthStateChange(
+                async (event, session) => {
                     const { isExplicitSignOut } = get();
-                    if (isExplicitSignOut) {
-                        set({
-                            session: null,
-                            user: null,
-                            offlineUser: null,
-                            profile: null,
-                            authMode: 'signed-out',
-                        });
-                        await clearLastSession();
-                    }
-                } else if (event === 'USER_UPDATED') {
-                    if (session?.user) {
-                        set({ session, user: session.user });
-                        await saveLastSession(session);
+                    if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+                        if (session?.user) {
+                            set({
+                                session,
+                                user: session.user,
+                                offlineUser: null,
+                                authMode: 'online',
+                            });
+                            await saveLastSession(session);
+                            get().refreshProfile();
+                        }
+                    } else if (event === 'SIGNED_OUT') {
+                        if (isExplicitSignOut) {
+                            set({
+                                session: null,
+                                user: null,
+                                offlineUser: null,
+                                profile: null,
+                                authMode: 'signed-out',
+                            });
+                            await clearLastSession();
+                        }
+                    } else if (event === 'USER_UPDATED') {
+                        if (session?.user) {
+                            set({ session, user: session.user });
+                            await saveLastSession(session);
+                        }
                     }
                 }
-            });
+            );
+            authSubscription = subscription;
         } catch (error) {
             console.error('Error initializing auth:', error);
             const lastSession = await readLastSession();

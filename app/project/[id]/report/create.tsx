@@ -1,21 +1,23 @@
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
+import { File } from 'expo-file-system';
 import * as Haptics from 'expo-haptics';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ArrowLeft, Camera, ChevronDown, Eye, EyeOff, Plus, Save, Trash2, Sparkles } from "lucide-react-native";
 import BackButton from "../../../../components/BackButton";
 import { createElement, useEffect, useState, useRef } from 'react';
-import { KeyboardAvoidingView, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, ActivityIndicator, Alert } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { usePowerSyncReport } from '../../../../lib/powersync/useReports';
 import { DailyReportData, ReportType, useProjectsStore } from '../../../../store/projectsStore';
 import { useThemeColors } from '../../../../store/useThemeColors';
 import { useStore } from '../../../../store/useStore';
 import { useAuthStore } from '../../../../store/useAuthStore';
-import { uploadPhoto } from '../../../../lib/supabaseSync';
 import { supabase } from '../../../../lib/supabase';
-import { ActivityIndicator } from 'react-native';
+import { attachmentQueue } from '@/lib/attachments/attachmentQueue';
+import { classifyMediaSource } from '@/lib/attachments/resolveMediaUri';
 import ManpowerSection from './components/ManpowerSection';
 import PickerDropdown from './components/PickerDropdown';
 import { DELAY_CAUSES } from '../../../../lib/units/delayCauses';
@@ -280,12 +282,26 @@ export default function CreateReportScreen() {
             mediaTypes: ['images'],
             allowsMultipleSelection: true,
             aspect: [4, 3],
-            quality: 0.7,
+            quality: 0.8,
         });
 
         if (!result.canceled && result.assets && result.assets.length > 0) {
-            const newUris = result.assets.map(a => a.uri);
-            setFormData({ ...formData, photos: [...(formData.photos || []), ...newUris] });
+            const processedUris: string[] = [];
+            for (const a of result.assets) {
+                const w = a.width || 0;
+                const h = a.height || 0;
+                const maxDim = Math.max(w, h);
+                const actions = (maxDim > 1920)
+                    ? [{ resize: (w >= h) ? { width: 1920 } : { height: 1920 } }]
+                    : [];
+                const manipulated = await ImageManipulator.manipulateAsync(
+                    a.uri,
+                    actions,
+                    { format: ImageManipulator.SaveFormat.JPEG, compress: 0.8 }
+                );
+                processedUris.push(manipulated.uri);
+            }
+            setFormData({ ...formData, photos: [...(formData.photos || []), ...processedUris] });
         }
     };
 
@@ -298,13 +314,12 @@ export default function CreateReportScreen() {
 
         setIsSaving(true);
         try {
-            // Upload photos to Supabase Storage (replace local URIs with storage paths)
+            // Queue photos to Supabase Storage via AttachmentQueue
             let finalFormData = { ...formData };
 
             if (userId && finalFormData.photos && finalFormData.photos.length > 0) {
                 const uploadedPhotos: any[] = [];
                 for (const photoItem of finalFormData.photos) {
-                    // Photos can be strings or {uri, caption} objects
                     const photoUri = typeof photoItem === 'string' ? photoItem : photoItem?.uri;
                     const caption = typeof photoItem === 'string' ? '' : (photoItem?.caption || '');
 
@@ -313,22 +328,53 @@ export default function CreateReportScreen() {
                         continue;
                     }
 
-                    // Skip already-uploaded paths (storage paths don't start with file:// or content://)
-                    if (!photoUri.startsWith('file://') && !photoUri.startsWith('content://') && !photoUri.startsWith('data:') && !photoUri.startsWith('/')) {
+                    const mediaKind = classifyMediaSource(photoUri);
+
+                    // Skip already-queued/remote attachment references or legacy paths
+                    if (mediaKind === 'attachment_ref' || mediaKind === 'legacy_path') {
                         uploadedPhotos.push(caption ? { uri: photoUri, caption } : photoUri);
                         continue;
                     }
-                    try {
-                        const storagePath = await uploadPhoto(
-                            'report-photos',
-                            userId,
-                            photoUri,
-                            { projectId: id, prefix: type }
-                        );
-                        uploadedPhotos.push(caption ? { uri: storagePath, caption } : storagePath);
-                    } catch (uploadError) {
-                        console.error('Failed to upload photo:', uploadError);
-                        // Keep original as fallback
+
+                    // Direct URI: normalize to JPEG, guard size (10MB), and save to AttachmentQueue
+                    if (mediaKind === 'direct_uri') {
+                        try {
+                            const manipulated = await ImageManipulator.manipulateAsync(
+                                photoUri,
+                                [],
+                                { format: ImageManipulator.SaveFormat.JPEG, compress: 0.8 }
+                            );
+
+                            const f = new File(manipulated.uri);
+                            const size = f.size ?? 0;
+                            if (size > 10 * 1024 * 1024) {
+                                console.warn('[Report] Photo exceeds 10MB limit, skipping:', photoUri);
+                                continue;
+                            }
+
+                            const attId = await attachmentQueue.generateAttachmentId();
+                            const bytes = await f.bytes();
+                            const arrayBuffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+
+                            const attachment = await attachmentQueue.saveFile({
+                                id: attId,
+                                data: arrayBuffer,
+                                fileExtension: 'jpg',
+                                mediaType: 'image/jpeg',
+                                metaData: JSON.stringify({
+                                    kind: 'report_photo',
+                                    userId,
+                                    projectId: id,
+                                    reportId: editId || duplicateId || undefined,
+                                }),
+                            });
+
+                            uploadedPhotos.push(caption ? { uri: attachment.filename, caption } : attachment.filename);
+                        } catch (e: any) {
+                            console.warn('Failed to queue report photo:', e);
+                            uploadedPhotos.push(photoItem);
+                        }
+                    } else {
                         uploadedPhotos.push(photoItem);
                     }
                 }

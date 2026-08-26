@@ -2,6 +2,7 @@ import {
   AbstractPowerSyncDatabase, PowerSyncBackendConnector, UpdateType,
 } from '@powersync/react-native';
 import { supabase } from '@/lib/supabase';
+import { captureWarning } from '@/lib/sentryLogger';
 
 export class Connector implements PowerSyncBackendConnector {
   async fetchCredentials() {
@@ -57,7 +58,34 @@ export class Connector implements PowerSyncBackendConnector {
             result = await table.delete().eq('id', op.id);
             break;
         }
-        if (result?.error) throw result.error;
+        if (result?.error) {
+          const err = result.error;
+          // Only drop on permanent Postgres RLS violations (42501 or explicit RLS policy error).
+          // Do NOT drop on JWT/auth expiry errors like PGRST301; those must throw and retry.
+          const isRlsRejection =
+            err.code === '42501' ||
+            err.message?.toLowerCase().includes('violates row-level security policy');
+
+          if (isRlsRejection) {
+            const warnMsg = `[PowerSync Connector] Permanent RLS authorization rejection — dropping operation to prevent head-of-line blocking: ${JSON.stringify({
+              op: op.op,
+              table: op.table,
+              id: op.id,
+              opData: op.opData,
+              errorCode: err.code,
+              errorMessage: err.message,
+            })}`;
+            captureWarning('PowerSyncConnector', warnMsg, {
+              op: op.op,
+              table: op.table,
+              id: op.id,
+              errorCode: err.code,
+              errorMessage: err.message,
+            });
+            continue;
+          }
+          throw err;
+        }
       }
       await transaction.complete();
     } catch (ex: any) {

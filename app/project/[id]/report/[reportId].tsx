@@ -1,4 +1,4 @@
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as Print from 'expo-print';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import * as Sharing from 'expo-sharing';
@@ -9,26 +9,29 @@ import { ActionSheetIOS, ActivityIndicator, Alert, Modal, Platform, SafeAreaView
 import { WebView } from 'react-native-webview';
 import * as XLSX from 'xlsx';
 import { usePowerSyncReport } from '../../../../lib/powersync/useReports';
+import { usePowerSyncProject } from '../../../../lib/powersync/useProjects';
+import { useStatus } from '@powersync/react';
 import { useProjectsStore } from '../../../../store/projectsStore';
 import { useThemeColors } from '../../../../store/useThemeColors';
 import { generateDailyReportHTML } from '../../../../lib/report/templates/DailyReportHTML';
 import { generateSnaggingHTML } from '../../../../lib/report/templates/SnaggingReportHTML';
 import { generateHSEHTML } from '../../../../lib/report/templates/HSEReportHTML';
 import { generateQuickLogHTML } from '../../../../lib/report/templates/QuickLogHTML';
-import { getSignedUrl } from '../../../../lib/supabaseSync';
+import { resolveMediaUri } from '@/lib/attachments/resolveMediaUri';
 import { supabase } from '../../../../lib/supabase';
 export default function ReportViewerScreen() {
     const { colors } = useThemeColors();
     const { reportId } = useLocalSearchParams<{ reportId: string }>();
     const router = useRouter();
-    const { getProject, updateReport } = useProjectsStore();
+    const { updateReport } = useProjectsStore();
 
     const [isGenerating, setIsGenerating] = useState(false);
     const [isGeneratingAISummary, setIsGeneratingAISummary] = useState(false);
     const [shareModalVisible, setShareModalVisible] = useState(false);
 
     const report = usePowerSyncReport(reportId as string);
-    const project = useMemo(() => report ? getProject(report.projectId) : null, [report, getProject]);
+    const { data: project } = usePowerSyncProject(report?.projectId);
+    const { hasSynced } = useStatus();
     const rawData = useMemo(() => report ? JSON.parse(report.templateData) : null, [report]);
     const [data, setData] = useState<any>(null);
     const [htmlContent, setHtmlContent] = useState<string>('');
@@ -92,15 +95,19 @@ export default function ReportViewerScreen() {
                         let uri = typeof photo === 'string' ? photo : photo.uri;
                         let caption = typeof photo === 'string' ? '' : photo.caption || '';
 
-                        // Resolve Supabase storage paths to signed URLs
-                        if (uri && !uri.startsWith('data:') && !uri.startsWith('file://') && !uri.startsWith('content://') && !uri.startsWith('/') && !uri.startsWith('http')) {
+                        if (uri) {
                             try {
-                                const res = await getSignedUrl('report-photos', uri);
-                                if (res.ok) uri = res.url;
-                            } catch (e) { console.error('Error getting signed URL:', e); }
+                                const resolved = await resolveMediaUri(uri, {
+                                    bucket: 'report-photos',
+                                    projectId: report?.projectId,
+                                });
+                                if (resolved) uri = resolved;
+                            } catch (e) {
+                                console.error('Error resolving photo URI:', e);
+                            }
                         }
 
-                        if (!uri.startsWith('data:') && Platform.OS !== 'web') {
+                        if (uri && !uri.startsWith('data:') && Platform.OS !== 'web') {
                             try {
                                 if (uri.startsWith('http')) {
                                     const byteRes = await fetchWithTimeout(uri, 8000);
@@ -241,19 +248,25 @@ export default function ReportViewerScreen() {
 
             if (error) throw error;
 
-            // Get public URL
-            const { data: { publicUrl } } = supabase.storage.from('pdfs').getPublicUrl(fileName);
+            // Generate 7-day signed URL (604800 seconds)
+            const { data: signedData, error: signError } = await supabase.storage.from('pdfs').createSignedUrl(fileName, 604800);
+
+            if (signError) throw signError;
+            if (!signedData?.signedUrl) throw new Error('Could not generate signed URL for PDF.');
+
+            const signedUrl = signedData.signedUrl;
 
             const canShare = await Sharing.isAvailableAsync();
             if (canShare) {
-                await Sharing.shareAsync(publicUrl, { dialogTitle: 'Share Daily Report Link' });
+                await Sharing.shareAsync(signedUrl, { dialogTitle: 'Share Daily Report Link' });
             } else {
-                Alert.alert('Success', `Cloud Link generated: ${publicUrl}`);
+                Alert.alert('Success', `Cloud Link generated: ${signedUrl}`);
             }
 
-        } catch (error) {
+        } catch (error: any) {
             console.error(error);
-            Alert.alert('Error', 'Failed to generate Cloud Link.');
+            const errorMessage = error?.message || (typeof error === 'string' ? error : 'Failed to generate Cloud Link.');
+            Alert.alert('Error', `Failed to generate Cloud Link: ${errorMessage}`);
         } finally {
             setIsGenerating(false);
         }
@@ -516,6 +529,22 @@ export default function ReportViewerScreen() {
             setIsGeneratingAISummary(false);
         }
     };
+
+    if (!hasSynced && (!report || !project)) {
+        return (
+            <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
+                <Stack.Screen options={{ headerShown: false }} />
+                <View style={[styles.header, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
+                    <BackButton style={{ position: "absolute", left: 20, zIndex: 20, bottom: 8 }} />
+                    <Text style={[styles.headerTitle, { color: colors.text }]}>Report Preview</Text>
+                </View>
+                <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                    <ActivityIndicator size="large" color={colors.primary || '#2563EB'} />
+                    <Text style={{ marginTop: 12, fontSize: 15, color: colors.textMuted }}>Loading report...</Text>
+                </View>
+            </SafeAreaView>
+        );
+    }
 
     if (!report || !project || !rawData) {
         return (

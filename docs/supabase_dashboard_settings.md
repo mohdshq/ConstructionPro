@@ -45,6 +45,81 @@
 
 ---
 
+## 3. Supabase Storage Settings & RLS Policies (Release Blocker B4)
+
+### Buckets Configuration
+- **`avatars`**: **Public** bucket (allows fast CDN reads for profile pictures).
+- **`report-photos`**: **Private** bucket (contains sensitive project cover photos and report inspection photos).
+- **`drawings`**: **Private** bucket (contains project architectural drawings and contract documents).
+
+### Storage RLS Policies
+> [!NOTE]
+> Permissive policies combine with `OR`. Existing legacy user-scoped policies (`(storage.foldername(name))[1] = auth.uid()::text`) are preserved so legacy uploads remain readable, while new project-scoped policies enable shared project collaboration for `drawings` and `report-photos`.
+>
+> Tracked in migration: `supabase/migrations/20260819120000_b4_collaborative_storage_policies.sql`.
+
+```sql
+-- ==============================================================================
+-- B4: Collaborative Storage Policies & Project Access Helper
+-- Buckets: drawings, report-photos
+-- Path Structure: <projectId>/<filename>
+-- ==============================================================================
+
+-- 1. Helper Function: SECURITY DEFINER check for project access
+CREATE OR REPLACE FUNCTION public.can_access_project(p_id text)
+RETURNS boolean
+LANGUAGE sql
+SECURITY DEFINER
+STABLE
+SET search_path = public
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.project_members pm
+    WHERE pm.project_id::text = p_id
+      AND pm.user_id = (SELECT auth.uid())
+  ) OR EXISTS (
+    SELECT 1 FROM public.projects p
+    WHERE p.id::text = p_id
+      AND p.user_id = (SELECT auth.uid())
+  );
+$$;
+
+-- 2. SELECT: Project members and owners can read project media
+CREATE POLICY "Project members can read project media"
+ON storage.objects FOR SELECT TO authenticated
+USING (
+  bucket_id IN ('drawings', 'report-photos')
+  AND public.can_access_project((storage.foldername(name))[1])
+);
+
+-- 3. INSERT: Project members and owners can upload project media
+CREATE POLICY "Project members can upload project media"
+ON storage.objects FOR INSERT TO authenticated
+WITH CHECK (
+  bucket_id IN ('drawings', 'report-photos')
+  AND public.can_access_project((storage.foldername(name))[1])
+);
+
+-- 4. UPDATE: Project members and owners can update/upsert project media
+CREATE POLICY "Project members can update project media"
+ON storage.objects FOR UPDATE TO authenticated
+USING (
+  bucket_id IN ('drawings', 'report-photos')
+  AND public.can_access_project((storage.foldername(name))[1])
+);
+
+-- 5. DELETE: Project members and owners can delete project media
+CREATE POLICY "Project members can delete project media"
+ON storage.objects FOR DELETE TO authenticated
+USING (
+  bucket_id IN ('drawings', 'report-photos')
+  AND public.can_access_project((storage.foldername(name))[1])
+);
+```
+
+
+---
+
 ## Summary Checklist for New Environments
 
 | Service | Setting | Required Value | Purpose |
@@ -55,5 +130,8 @@
 | **Supabase** | Single Session Per User | `Disabled` | Allows simultaneous Phone + Tablet usage |
 | **Supabase** | Confirm Email | `Enabled` | Enforces email verification on signup (B2) |
 | **Supabase** | Detect Compromised Refresh Tokens | `Enabled` | Prevents token reuse attacks; safe via `processLock` (B10) |
+| **Supabase Storage** | `avatars` Bucket | `Public` | Fast CDN access for user avatars |
+| **Supabase Storage** | `drawings` Bucket | `Private` + Project RLS | Collaborative project document access (B4) |
+| **Supabase Storage** | `report-photos` Bucket | `Private` + Project RLS | Collaborative report & cover media access (B4) |
 | **PowerSync** | Dev Tokens | `Disabled` | Enforces secure JWKS token verification (B1) |
 | **PowerSync** | JWT Audience | `authenticated` | Authorizes Supabase auth tokens |

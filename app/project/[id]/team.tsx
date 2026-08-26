@@ -1,15 +1,17 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, SafeAreaView, Platform, Alert, TextInput } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, SafeAreaView, Platform, Alert, TextInput, ActivityIndicator } from 'react-native';
 import { ArrowLeft, UserPlus, Users, Crown, Shield, Eye, MoreVertical } from "lucide-react-native";
 import BackButton from "../../../components/BackButton";
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useProjectsStore } from '../../../store/projectsStore';
 import { useThemeColors } from '../../../store/useThemeColors';
 import { useAuthStore } from '../../../store/useAuthStore';
-import { Image } from 'react-native';
 import { supabase } from '../../../lib/supabase';
 import { usePowerSyncMembers } from '../../../lib/powersync/useMembers';
+import { usePowerSyncProject } from '@/lib/powersync/useProjects';
+import { useStatus } from '@powersync/react';
+import { UserAvatar } from '../../../components/UserAvatar';
 
 interface InviteResponse {
     success: boolean;
@@ -22,17 +24,62 @@ export default function TeamScreen() {
     const router = useRouter();
     const { getProject } = useProjectsStore();
     const { colors } = useThemeColors();
-    const { user } = useAuthStore();
+    const currentUserId = useAuthStore(state => state.user?.id);
+    const status = useStatus();
+    const hasSynced = status?.hasSynced ?? false;
 
-    const project = getProject(id);
+    const { data: powerSyncProject, isLoading } = usePowerSyncProject(id);
+    const project = powerSyncProject || getProject(id);
     const members = usePowerSyncMembers(id);
-    const currentMember = members.find(m => m.userId === user?.id);
-    const isManager = currentMember?.role === 'owner' || currentMember?.role === 'manager';
+    const currentMember = members.find(m => m.userId === currentUserId);
+    const isManager = useMemo(() => {
+        if (!currentUserId || !project) return false;
+        const isDirectOwner = Boolean(project.userId && project.userId === currentUserId);
+        const hasManagerMemberRole = project.memberRole === 'owner' || project.memberRole === 'manager';
+        const hasManagerCurrentMember = currentMember?.role === 'owner' || currentMember?.role === 'manager';
+        return isDirectOwner || hasManagerMemberRole || hasManagerCurrentMember;
+    }, [project, currentUserId, currentMember]);
 
     const [inviteEmail, setInviteEmail] = useState('');
     const [isInviting, setIsInviting] = useState(false);
 
-    if (!project) return null;
+    if ((!hasSynced || isLoading) && !project) {
+        return (
+            <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
+                <Stack.Screen options={{ headerShown: false }} />
+                <View style={[styles.header, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
+                    <BackButton style={{ position: "absolute", left: 20, zIndex: 20, bottom: 8 }} />
+                    <Text style={[styles.headerTitle, { color: colors.text }]}>Team Members</Text>
+                </View>
+                <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                    <ActivityIndicator size="large" color={colors.primary || '#2563EB'} />
+                    <Text style={{ marginTop: 12, fontSize: 15, color: colors.textMuted }}>Loading team...</Text>
+                </View>
+            </SafeAreaView>
+        );
+    }
+
+    if (!project) {
+        return (
+            <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
+                <Stack.Screen options={{ headerShown: false }} />
+                <View style={[styles.header, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
+                    <BackButton style={{ position: "absolute", left: 20, zIndex: 20, bottom: 8 }} />
+                    <Text style={[styles.headerTitle, { color: colors.text }]}>Project Not Found</Text>
+                </View>
+                <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 32 }}>
+                    <Text style={{ fontSize: 18, fontWeight: '600', color: colors.text, marginBottom: 8 }}>Project Not Found</Text>
+                    <Text style={{ fontSize: 14, color: colors.textMuted, textAlign: 'center', marginBottom: 24 }}>The requested project could not be found or you do not have access.</Text>
+                    <TouchableOpacity
+                        style={{ backgroundColor: colors.primary || '#2563EB', paddingHorizontal: 20, paddingVertical: 12, borderRadius: 8 }}
+                        onPress={() => router.back()}
+                    >
+                        <Text style={{ color: '#FFFFFF', fontWeight: '600', fontSize: 15 }}>Go Back</Text>
+                    </TouchableOpacity>
+                </View>
+            </SafeAreaView>
+        );
+    }
 
     const handleInvite = async () => {
         if (!inviteEmail.trim()) return;
@@ -122,15 +169,15 @@ export default function TeamScreen() {
                     {members.map((member, index) => (
                         <Animated.View entering={FadeInDown.delay(100 + index * 50).springify()} key={member.id}>
                             <View style={[styles.memberCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                                {member.profile?.avatar_url ? (
-                                    <Image source={{ uri: member.profile.avatar_url }} style={styles.avatar} />
-                                ) : (
-                                    <View style={[styles.avatarPlaceholder, { backgroundColor: colors.border }]}>
-                                        <Text style={[styles.avatarText, { color: colors.text }]}>
-                                            {(member.profile?.full_name || 'U').charAt(0).toUpperCase()}
-                                        </Text>
-                                    </View>
-                                )}
+                                <UserAvatar
+                                    avatarUrl={member.profile?.avatar_url}
+                                    userId={member.userId}
+                                    name={member.profile?.full_name}
+                                    size={48}
+                                    style={styles.avatar}
+                                    placeholderStyle={[styles.avatarPlaceholder, { backgroundColor: colors.border }]}
+                                    placeholderTextStyle={[styles.avatarText, { color: colors.text }]}
+                                />
                                 
                                 <View style={styles.memberInfo}>
                                     <Text style={[styles.memberName, { color: colors.text }]}>

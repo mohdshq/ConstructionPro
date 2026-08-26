@@ -70,7 +70,7 @@ export default function ForgotPasswordScreen() {
                         </Text>
                         <TouchableOpacity 
                             style={[styles.resetButton, { backgroundColor: colors.primary, marginTop: 24 }]}
-                            onPress={() => router.replace('/(auth)/login')}
+                            onPress={() => router.dismissTo('/(auth)/login')}
                         >
                             <Text style={styles.resetButtonText}>Return to Login</Text>
                         </TouchableOpacity>
