@@ -343,3 +343,149 @@ release — planned improvements.
   - **Decoupled Photo Gate ahead of S9 (S11a)**: `validateLogo` was split into `isEmbeddableImage` (header logos, base64-only) and `isRenderablePhoto` (snag photos in `renderSnagCard`, accepts `data:image`, `http://`, `https://`, and `file://` URIs). The old combined gate would have silently rendered "No Context Photo" for every snag once S9 moves photos off base64 to local file URIs or remote URLs. `isRenderablePhoto` must NOT be narrowed back to a base64-only check.
 - **Key Takeaway / Verification rule**: The WebView preview cannot detect print-engine pagination and clipping bugs. All future report template changes MUST be verified by opening the generated PDF, not just inspecting the WebView preview.
 
+# B4-attachment-queue session — 2026-08-26
+
+Branch `fix/b4-attachment-queue`. Verified on iOS Simulator dev build.
+
+## ✅ RESOLVED — Viewers had CRUD access to daily reports
+Two independent causes:
+- **Client** (`128ec95`): `ReportCardItem` rendered edit/delete unconditionally.
+  Added `canManage` prop gating all row actions and creation entry points.
+- **Server** (`8b0d8a4`): policy `"Users can manage reports for their projects"`
+  was `cmd=ALL` gated on `is_project_member()`, granting INSERT/UPDATE/DELETE to
+  every member including viewers. Replaced with four role-aware policies:
+  SELECT for members via `can_access_project`, INSERT/UPDATE/DELETE via
+  `can_manage_project`. Migration
+  `supabase/migrations/20260824150000_reports_role_aware_rls.sql`.
+- Verified: `pg_policies` shows exactly 4 rows on `public.reports`, no `cmd=ALL`,
+  UPDATE `with_check` identical to `qual`.
+- Note: `user_id = auth.uid()` deliberately NOT added to the INSERT check — the
+  app stamps the project owner as `user_id`, so it would break manager inserts.
+- Note: `Connector.ts` drops RLS 42501 errors to avoid head-of-line blocking, so
+  server RLS alone produces silent local divergence. Both the UI gate and the
+  server policy are required; neither is redundant.
+
+## ✅ RESOLVED — Two login screens after sign-out
+Two independent causes, both required fixing:
+- **Router** (`8f8bb04`): `app/_layout.tsx` declared
+  `<Stack.Screen name="project" />`, which matches no route. All twelve
+  `project/*` routes therefore sat OUTSIDE `Stack.Protected`, survived sign-out,
+  and were reachable by swipe-back — an auth bypass, not just a cosmetic bug.
+  Replaced with the twelve real nested route names.
+- **Imperative nav** (`2e5f920`): `app/settings.tsx` called
+  `router.replace('/(auth)/login')` after `signOut()`, mounting a second login
+  on top of the one the declarative guard had already rendered.
+- Verified 2026-08-26 on simulator dev build: one `SIGNED_OUT` event, sign-out
+  completes in ~440ms, one login screen, swipe-back reveals nothing.
+- Regression test added asserting `app/settings.tsx` contains no imperative
+  navigation to auth routes, and that `'project'` is absent from rendered
+  screen names (`39bfa03`).
+
+### New invariant — DO NOT REGRESS
+11. **Auth navigation is declarative only.** `Stack.Protected` in
+    `app/_layout.tsx` owns all auth-state navigation. Never call
+    `router.replace`/`push` to an auth route after `signOut()` — it mounts a
+    duplicate login screen. Route names in the guard must be the real nested
+    paths (`project/[id]`, not `project`); a name matching no route silently
+    places every child route outside the guard.
+
+## Diagnostic findings — do not re-investigate
+
+- **Simulator log noise**: `hapticpatternlibrary.plist`, `CVPixelBufferCreate`,
+  WebKit warnings. Missing simulator runtime files, triggered by keyboard input.
+  Not present on device. Not actionable.
+- **Duplicate `onAuthStateChange` listeners** observed mid-session were Fast
+  Refresh ghosts — old module instances retaining live subscriptions across
+  reloads. NOT a production defect; a cold start shows exactly one listener.
+  The `initialize()` memo guard (`ec6b829`) is still correct and retained,
+  along with `__resetAuthInitForTests()` as its test seam.
+- **`JWT issued at future`** on simulator = host clock skew, not code. Erase
+  simulator content/settings. While present, all profile-dependent behaviour is
+  unreliable — do not trust permission testing on that instance.
+- **`ERR_FILE_PERMISSION` (shareAsync)** and **`Network request failed`**: never
+  reproduced as a user-facing failure. Noise.
+
+## Verified storage path conventions
+Established by querying `storage.objects` directly, not inferred:
+- A ref containing `/` is already a complete storage path — use VERBATIM.
+  (13/13 prefixed report photos, 4/4 drawings, 4 logos resolve as-is.)
+- A bare ref in `report-photos` resolves under `project_id` (3/3 photos,
+  5/5 covers). Covers also exist under `user_id` as the pre-H9 duplicates.
+- A bare `avatar_url` resolves under the profile id.
+- `user_id` is NEVER the correct prefix for a bare report photo.
+Implemented in `resolveRemoteStoragePath` (`19a049e`), which previously
+prefixed unconditionally and produced double-prefixed keys like
+`report-photos/{projectId}/{userId}/{projectId}/file.jpg`.
+The verbatim branch is currently UNREACHABLE because of the watch-query
+filters below; it becomes live when those filters are dropped.
+
+## OPEN — A1: "Loading media" spinner hangs forever on legacy projects
+Related to the existing Notes entry ("logos stored as storage paths will not
+render until re-picked — no migration by design"). That design decision is
+accepted; the defect is that the UI **hangs on a spinner** instead of showing a
+placeholder.
+
+Mechanism: `ATTACHMENT_WATCH_QUERY` (`lib/attachments/watchAttachments.ts`)
+reads only `$.photos` from `reports.template_data` — `$.logos` is never
+selected. All four branches additionally filter `NOT LIKE '%/%'` (lines 30, 53,
+69, 85), and every logo ref is slash-prefixed, so logos are excluded twice.
+No attachment record is ever created, so anything awaiting one waits forever.
+
+Measured: 71 logo refs, 15 distinct, 4 present in `report-photos`, 11 absent
+(consistent with "not re-picked yet", per the Notes entry).
+
+Minimal fix (preferred): gate the media UI on a resolved/failed state rather
+than on presence of an attachment record, and render a placeholder. This closes
+the hang without expanding the queue.
+
+Full fix, strictly in this order:
+1. A2 (terminal-failure handling) FIRST. Adding a logos branch before it would
+   admit 13 permanently-unresolvable objects (11 logos + 2 covers) into an
+   indefinite retry loop — see the B4 note on indefinite `QUEUED_UPLOAD` retry.
+2. Then add a `logos` branch, drop the `NOT LIKE '%/%'` exclusions, carry the
+   full ref, and sanitise `filename` (`replace(ref,'/','_')`) so local file
+   naming survives the slash.
+
+## OPEN — A2: Queue retries permanently-missing objects indefinitely
+`attachmentErrorHandler` returns `true` for all errors (deliberate, to avoid
+archive/restore churn), so a 404 is indistinguishable from a transient failure.
+Supabase Storage returns **HTTP 400 with a `statusCode: "404"` body** for a
+missing object, which is why these surface as 400s.
+Prerequisite for A1. Needs a bounded attempt count or explicit
+missing-object detection before the logos branch lands.
+
+## OPEN — A3: Three dangling storage references
+Rows pointing at objects absent from every bucket under every candidate prefix:
+- `profiles.avatar_url` = `cd2d21bc-afcb-4467-8cd2-d9bec8fcd720.jpg`
+  (user `cdbff53b-6290-45ff-8966-dcbdc0b29273`) — the sole recurring
+  `Supabase download failed (400)` in the logs.
+- `projects.photo_url` for projects `00d63259-b1ad-4d95-ae57-9943cfa984e5`
+  and `ec605ff8-df86-4b0b-b6b5-249402e9a14b` (both slash-prefixed).
+Likely instances of H8 (pending local attachment loss during user switch).
+Decide per row: re-upload, or null the column and let the placeholder path
+handle it.
+
+## OPEN — A4: Component files inside `app/` are routable
+`app/project/[id]/report/components/ManpowerSection.tsx` and
+`PickerDropdown.tsx` are treated as routes by expo-router (they appear in the
+router's own route list). Move outside `app/` (e.g. `components/report/`).
+Isolated change; do not bundle with other work.
+
+## OPEN — A5: Physical device cannot run current code
+The ConstructionPro build on the test iPhone is a standalone build with its JS
+bundled in: it ignores Metro, has no dev menu, and goes straight to login.
+Expo Go is not an option (native `@powersync/op-sqlite` — "Base module not
+found"). Any device observation is stale until a new dev build is installed.
+The "2 login screens / swipe reveals main page" seen on device on 2026-08-26
+was pre-fix code and is NOT evidence against the fixes above.
+Note: `npx expo start --dev-client --localhost` is simulator-only; a device
+needs LAN or `--tunnel`. See the existing "Dev environment" entry.
+
+## OPEN — A6: Storage hardening not executed
+- `pdfs` bucket: switch to `createSignedUrl`; lock buckets to private.
+- End-to-end storage policy audit not run.
+- PowerSync schema validation not run.
+- Gate screens on `hasSynced` to prevent stale-state black screens.
+- H9 cleanup (delete 5 superseded `userId/*` cover duplicates) still pending;
+  our audit confirms the project-scoped copies exist, so it is safe to proceed
+  once device acceptance is possible (blocked by A5).
