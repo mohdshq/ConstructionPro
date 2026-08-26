@@ -52,6 +52,14 @@ interface AuthState {
 let authSubscription: { unsubscribe: () => void } | null = null;
 let initializePromise: Promise<void> | null = null;
 
+export function __resetAuthInitForTests() {
+    initializePromise = null;
+    if (authSubscription) {
+        authSubscription.unsubscribe();
+        authSubscription = null;
+    }
+}
+
 export const useAuthStore = create<AuthState>((set, get) => ({
     session: null,
     user: null,

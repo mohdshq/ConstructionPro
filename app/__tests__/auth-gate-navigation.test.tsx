@@ -6,10 +6,12 @@ import { Alert } from 'react-native';
 import RootLayout from '../_layout';
 import RegisterScreen from '../(auth)/register';
 import ForgotPasswordScreen from '../(auth)/forgot-password';
-import { useAuthStore } from '../../store/useAuthStore';
+import { useAuthStore, __resetAuthInitForTests } from '../../store/useAuthStore';
 import { useStore } from '../../store/useStore';
 import { supabase } from '../../lib/supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import fs from 'fs';
+import path from 'path';
 
 const mockPush = jest.fn();
 const mockReplace = jest.fn();
@@ -118,6 +120,7 @@ jest.mock('../../lib/supabase', () => ({
 describe('Declarative Auth Gate & Navigation (_layout.tsx, register.tsx, forgot-password.tsx)', () => {
   beforeEach(async () => {
     jest.clearAllMocks();
+    __resetAuthInitForTests();
     await AsyncStorage.clear();
     useStore.setState({ isPremium: true });
     jest.spyOn(useStore.persist, 'hasHydrated').mockReturnValue(true);
@@ -145,51 +148,31 @@ describe('Declarative Auth Gate & Navigation (_layout.tsx, register.tsx, forgot-
         fireEvent.changeText(passwordInputs[1], 'Password123!');
       });
 
-      // Find the register submit button TouchableOpacity
-      const createAccountTexts = getAllByText('Create Account');
-      const submitButtonText = createAccountTexts[createAccountTexts.length - 1];
-      let submitTouchable = submitButtonText.parent;
-      while (submitTouchable && typeof submitTouchable.props?.onPress !== 'function') {
-        submitTouchable = submitTouchable.parent;
-      }
-      expect(submitTouchable).toBeTruthy();
+      const createButtons = getAllByText('Create Account');
+      const submitBtn = createButtons[createButtons.length - 1];
 
       await act(async () => {
-        await submitTouchable.props.onPress();
+        fireEvent.press(submitBtn);
       });
 
-      // Assert registration alert is shown
-      await waitFor(() => {
-        expect(mockAlert).toHaveBeenCalledWith(
-          'Registration Successful',
-          'Please check your email to verify your account.',
-          expect.arrayContaining([
-            expect.objectContaining({ text: 'OK' }),
-          ])
-        );
-      });
+      expect(mockAlert).toHaveBeenCalledWith(
+        'Registration Successful',
+        'Please check your email to verify your account.',
+        expect.arrayContaining([expect.objectContaining({ text: 'OK' })])
+      );
 
-      // Extract OK action and execute
       const alertCall = mockAlert.mock.calls[0];
       const buttons = alertCall[2] as any[];
-      const okButton = buttons.find(b => b.text === 'OK');
+      const okButton = buttons.find((b) => b.text === 'OK');
       expect(okButton).toBeDefined();
 
       // Trigger OK action
       okButton.onPress();
 
-      // Assert dismissTo was called instead of push or replace
+      // Assert router.dismissTo('/(auth)/login') is called
       expect(mockDismissTo).toHaveBeenCalledWith('/(auth)/login');
-      expect(mockPush).not.toHaveBeenCalledWith('/(auth)/login');
-      expect(mockReplace).not.toHaveBeenCalledWith('/(auth)/login');
-
-      // Verify stack simulation: pushing register then dismissing to login returns stack depth to 1
-      const stack = ['/(auth)/login', '/(auth)/register'];
-      const target = '/(auth)/login';
-      const targetIndex = stack.indexOf(target);
-      const resultingStack = targetIndex !== -1 ? stack.slice(0, targetIndex + 1) : stack;
-      expect(resultingStack).toEqual(['/(auth)/login']);
-      expect(resultingStack.length).toBe(1);
+      expect(mockPush).not.toHaveBeenCalled();
+      expect(mockReplace).not.toHaveBeenCalled();
     });
 
     it('calls router.dismissTo(/(auth)/login) from forgot password screen', async () => {
@@ -201,37 +184,22 @@ describe('Declarative Auth Gate & Navigation (_layout.tsx, register.tsx, forgot-
       const { getByPlaceholderText, getByText } = await render(<ForgotPasswordScreen />);
 
       await act(async () => {
-        fireEvent.changeText(getByPlaceholderText('name@company.com'), 'user@test.com');
+        fireEvent.changeText(getByPlaceholderText('name@company.com'), 'test@example.com');
       });
 
-      const sendLinkText = getByText('Send Reset Link');
-      let sendLinkTouch = sendLinkText.parent;
-      while (sendLinkTouch && typeof sendLinkTouch.props?.onPress !== 'function') {
-        sendLinkTouch = sendLinkTouch.parent;
-      }
-      expect(sendLinkTouch).toBeTruthy();
-
+      const sendButton = getByText('Send Reset Link');
       await act(async () => {
-        await sendLinkTouch.props.onPress();
+        fireEvent.press(sendButton);
       });
 
-      await waitFor(() => {
-        expect(getByText('Return to Login')).toBeTruthy();
-      });
-
-      const returnLoginText = getByText('Return to Login');
-      let returnLoginTouch = returnLoginText.parent;
-      while (returnLoginTouch && typeof returnLoginTouch.props?.onPress !== 'function') {
-        returnLoginTouch = returnLoginTouch.parent;
-      }
-      expect(returnLoginTouch).toBeTruthy();
-
+      const returnButton = getByText('Return to Login');
       await act(async () => {
-        await returnLoginTouch.props.onPress();
+        fireEvent.press(returnButton);
       });
 
       expect(mockDismissTo).toHaveBeenCalledWith('/(auth)/login');
-      expect(mockReplace).not.toHaveBeenCalledWith('/(auth)/login');
+      expect(mockPush).not.toHaveBeenCalled();
+      expect(mockReplace).not.toHaveBeenCalled();
     });
   });
 
@@ -261,6 +229,7 @@ describe('Declarative Auth Gate & Navigation (_layout.tsx, register.tsx, forgot-
       expect(renderedScreenNames).not.toContain('daily-report');
       expect(renderedScreenNames).not.toContain('quick-log');
       expect(renderedScreenNames).not.toContain('project');
+      expect(renderedScreenNames).not.toContain('project/[id]');
       expect(renderedScreenNames).not.toContain('concrete-calculator');
     });
 
@@ -287,12 +256,28 @@ describe('Declarative Auth Gate & Navigation (_layout.tsx, register.tsx, forgot-
       expect(renderedScreenNames).toContain('(tabs)');
       expect(renderedScreenNames).toContain('modal');
       expect(renderedScreenNames).toContain('ai-wizard');
-      expect(renderedScreenNames).toContain('project');
       expect(renderedScreenNames).toContain('settings');
       expect(renderedScreenNames).toContain('daily-report');
       expect(renderedScreenNames).toContain('quick-log');
       expect(renderedScreenNames).toContain('saved-calculations');
       expect(renderedScreenNames).toContain('converter');
+
+      // Real project subroutes
+      expect(renderedScreenNames).toContain('project/[id]');
+      expect(renderedScreenNames).toContain('project/create');
+      expect(renderedScreenNames).toContain('project/[id]/activity');
+      expect(renderedScreenNames).toContain('project/[id]/team');
+      expect(renderedScreenNames).toContain('project/[id]/drawings/index');
+      expect(renderedScreenNames).toContain('project/[id]/drawings/[drawingId]');
+      expect(renderedScreenNames).toContain('project/[id]/report/create');
+      expect(renderedScreenNames).toContain('project/[id]/report/[reportId]');
+      expect(renderedScreenNames).toContain('project/[id]/snags/index');
+      expect(renderedScreenNames).toContain('project/[id]/snags/create');
+      expect(renderedScreenNames).toContain('project/[id]/snags/report');
+      expect(renderedScreenNames).toContain('project/[id]/snags/[snagId]');
+
+      // 'project' bare route is not in renderedScreenNames
+      expect(renderedScreenNames).not.toContain('project');
 
       // All 15 calculators
       expect(renderedScreenNames).toContain('asphalt-calculator');
@@ -373,6 +358,16 @@ describe('Declarative Auth Gate & Navigation (_layout.tsx, register.tsx, forgot-
       expect(names).toEqual(['(auth)']);
       expect(mockReplace).not.toHaveBeenCalled();
       expect(mockPush).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('(e) Settings sign-out regression test', () => {
+    it('asserts app/settings.tsx contains no imperative router.replace/push to an auth route', () => {
+      const settingsContent = fs.readFileSync(path.resolve(__dirname, '../settings.tsx'), 'utf8');
+
+      // Must not navigate imperatively to login / auth upon sign out
+      expect(settingsContent).not.toMatch(/router\.(replace|push)\s*\(\s*['"`]\/?\(?auth\)?/);
+      expect(settingsContent).not.toMatch(/router\.(replace|push)\s*\(\s*['"`][^'"`]*login/);
     });
   });
 });
