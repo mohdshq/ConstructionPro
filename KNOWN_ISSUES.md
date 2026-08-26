@@ -5,14 +5,14 @@
 > Sections below this index are the detailed historical log — keep them. They
 > contain hard-won debugging context (see especially S7 and S8).
 
-**Last triage**: 2026-08-07
+**Last triage**: 2026-08-26
 
 ## RELEASE BLOCKERS — security & data loss
 
 | # | Issue | Area | Why it blocks |
 |:--|:------|:-----|:--------------|
-| B1 | PowerSync **development tokens still ON** | Infra | Token verification effectively bypassed; entire multi-tenant DB exposed. Disable in PowerSync dashboard. |
-| B2 | Supabase **email confirmation disabled** | Auth | Anyone can register as anyone. Re-enable before first real signup. |
+| ~~B1~~ | **[CLOSED]** PowerSync development tokens disabled | Infra | Verified 2026-08-26 on instance 6a26a0380ef84ed6719ff419. Client Auth shows Development tokens unchecked (deployed state, no pending change). Runtime proof from PowerSync Logs: "Sync stream started", 12 buckets, checkpoint 1897, 339 operations_synced, 29.7 MB data_synced_bytes, authenticated as user cdbff53b via real Supabase JWT. No PSYNC_S2105 audience errors. Code proof: repo-wide grep for dev/temporary tokens and hardcoded JWTs returned zero hits; lib/powersync/Connector.ts fetchCredentials() returns session.access_token only. NOTE: found already disabled -- not changed this session. |
+| ~~B2~~ | **[CLOSED]** Supabase email confirmation enabled | Auth | Enabled in Supabase Auth settings and confirmed checked on 2026-08-26. app/(auth)/register.tsx already handles the null-session signup branch (shows "check your email" and returns to login), so no code change required. |
 | ~~B3~~ | **[CLOSED / NOT-A-BUG]** `initialSync` overwriting entities | Sync | Audit revealed UI reads from PowerSync SQLite (`useQuery`), ignoring Zustand store. `initialSync` only mutated orphaned Zustand arrays without touching SQLite. Removed from startup; see `docs/powersync_investigation_report.md`. |
 | ~~B4~~ | **[FIXED]** Binary file uploads bypass PowerSync queue | Sync | Binary file uploads previously bypassed the PowerSync queue and were lost when captured offline. Fixed via PowerSync AttachmentQueue + local-only attachments table. |
 
@@ -404,6 +404,10 @@ Two independent causes, both required fixing:
   unreliable — do not trust permission testing on that instance.
 - **`ERR_FILE_PERMISSION` (shareAsync)** and **`Network request failed`**: never
   reproduced as a user-facing failure. Noise.
+
+## Environment gotchas (not defects)
+- **PowerSync dashboard log timestamps are UTC**: They will read hours behind local time. This is not clock skew. Real skew presents as a Supabase "JWT issued at future" error and blocks sync entirely.
+- **Simulator clock drift after long suspend**: Extended suspend states on the iOS simulator can produce that Supabase "JWT issued at future" error. Fix by erasing simulator content and settings, not by touching auth configuration.
 
 ## Verified storage path conventions
 Established by querying `storage.objects` directly, not inferred:
