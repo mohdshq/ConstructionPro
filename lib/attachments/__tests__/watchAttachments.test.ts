@@ -45,6 +45,13 @@ describe('ATTACHMENT_WATCH_QUERY against Real SQLite with JSON1', () => {
       project_id TEXT,
       template_data TEXT
     );
+
+    CREATE TABLE snags (
+      id TEXT PRIMARY KEY,
+      user_id TEXT,
+      project_id TEXT,
+      photos TEXT
+    );
   `;
 
   describe('Control Test: Proving Unsanitized Query Throws on Malformed JSON', () => {
@@ -231,6 +238,38 @@ describe('ATTACHMENT_WATCH_QUERY against Real SQLite with JSON1', () => {
       `;
       const results = runSqlite(SCRIPT);
       expect(results.map((r) => r.filename)).toEqual(['att-rep-4.jpg']);
+    });
+  });
+
+  describe('Snag Photos Watch Query Fixtures', () => {
+    it('extracts bare photo references from snags with kind report_photo and correct projectId', () => {
+      const SCRIPT = `
+        ${SCHEMA_SQL}
+        INSERT INTO snags (id, user_id, project_id, photos) VALUES
+          ('snag-1', 'user-1', 'proj-1', '["att-snag-1.jpg", "att-snag-2.jpg"]');
+        ${ATTACHMENT_WATCH_QUERY};
+      `;
+      const results = runSqlite(SCRIPT);
+      expect(results.map((r) => r.filename)).toEqual(['att-snag-1.jpg', 'att-snag-2.jpg']);
+      expect(results[0].id).toBe('att-snag-1');
+      expect(results[0].mediaType).toBe('image/jpeg');
+      expect(results[0].metaData).toEqual({ kind: 'report_photo', userId: 'user-1', projectId: 'proj-1' });
+      expect(results[1].id).toBe('att-snag-2');
+      expect(results[1].metaData).toEqual({ kind: 'report_photo', userId: 'user-1', projectId: 'proj-1' });
+    });
+
+    it('excludes snags photos with data: URIs, file:// URIs, or refs with slashes', () => {
+      const SCRIPT = `
+        ${SCHEMA_SQL}
+        INSERT INTO snags (id, user_id, project_id, photos) VALUES
+          ('snag-2', 'user-1', 'proj-1', '["data:image/jpeg;base64,...", "file:///var/mobile/snag.jpg", "legacy/proj/snag.jpg", "att-snag-valid.jpg"]'),
+          ('snag-3', 'user-1', 'proj-1', NULL),
+          ('snag-4', 'user-1', 'proj-1', '{ broken json');
+        ${ATTACHMENT_WATCH_QUERY};
+      `;
+      const results = runSqlite(SCRIPT);
+      expect(results.map((r) => r.filename)).toEqual(['att-snag-valid.jpg']);
+      expect(results[0].metaData).toEqual({ kind: 'report_photo', userId: 'user-1', projectId: 'proj-1' });
     });
   });
 });

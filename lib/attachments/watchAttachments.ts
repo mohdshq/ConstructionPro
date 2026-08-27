@@ -19,6 +19,25 @@ WITH report_photos_raw AS (
               ELSE '[]' END
        ) je
   WHERE r.template_data IS NOT NULL
+),
+snag_photos_raw AS (
+  SELECT
+    s.user_id,
+    s.project_id,
+    CASE
+      WHEN json_valid(je.value) AND json_extract(je.value, '$.uri') IS NOT NULL
+      THEN json_extract(je.value, '$.uri')
+      ELSE je.value
+    END AS ref
+  FROM snags s,
+       json_each(
+         CASE WHEN json_valid(s.photos)
+              THEN CASE WHEN json_type(s.photos, '$') = 'array'
+                        THEN s.photos
+                        ELSE '[]' END
+              ELSE '[]' END
+       ) je
+  WHERE s.photos IS NOT NULL
 )
 SELECT
   substr(photo_url, 1, instr(photo_url, '.') - 1) AS id,
@@ -81,6 +100,23 @@ SELECT
   'image/jpeg' AS mediaType,
   json_object('kind', 'report_photo', 'userId', user_id, 'projectId', project_id) AS metaData
 FROM report_photos_raw
+WHERE ref IS NOT NULL AND ref != ''
+  AND ref NOT LIKE '%/%'
+  AND ref NOT LIKE 'data:%'
+  AND ref NOT LIKE 'file://%'
+  AND ref NOT LIKE '{%'
+  AND ref NOT LIKE '[%'
+  AND instr(ref, '.') > 1
+
+UNION ALL
+
+-- Snag photos live in the report-photos bucket; kind 'report_photo' is handled by resolveRemoteStoragePath
+SELECT
+  substr(ref, 1, instr(ref, '.') - 1) AS id,
+  ref AS filename,
+  'image/jpeg' AS mediaType,
+  json_object('kind', 'report_photo', 'userId', user_id, 'projectId', project_id) AS metaData
+FROM snag_photos_raw
 WHERE ref IS NOT NULL AND ref != ''
   AND ref NOT LIKE '%/%'
   AND ref NOT LIKE 'data:%'
