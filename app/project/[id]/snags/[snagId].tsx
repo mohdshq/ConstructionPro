@@ -5,6 +5,9 @@ import * as ImagePicker from 'expo-image-picker';
 import { useProjectsStore, ProjectSnag } from '../../../../store/projectsStore';
 import { usePowerSyncSnag } from '../../../../lib/powersync/useSnags';
 import { useThemeColors } from '../../../../store/useThemeColors';
+import { useAuthStore } from '../../../../store/useAuthStore';
+import { attachmentQueue } from '../../../../lib/attachments/attachmentQueue';
+import { classifyMediaSource } from '../../../../lib/attachments/resolveMediaUri';
 import PhotoMarkup from '../../../../components/PhotoMarkup';
 import BackButton from '../../../../components/BackButton';
 import ProjectImage from '../../../../components/ProjectImage';
@@ -22,6 +25,7 @@ export default function EditSnagScreen() {
     const { id, snagId } = useLocalSearchParams<{ id: string, snagId: string }>();
     const { getProject, updateSnag, deleteSnag, addKnownRoom } = useProjectsStore();
     const { colors, isDark } = useThemeColors();
+    const user = useAuthStore(s => s.user);
     
     const project = getProject(id);
     const snag = usePowerSyncSnag(snagId);
@@ -107,10 +111,9 @@ export default function EditSnagScreen() {
                             allowsEditing: true,
                             aspect: [4, 3],
                             quality: 0.6,
-                            base64: true,
                         });
-                        if (!result.canceled && result.assets[0].base64) {
-                            setMarkupPhoto({ uri: `data:image/jpeg;base64,${result.assets[0].base64}`, target });
+                        if (!result.canceled && result.assets[0]?.uri) {
+                            setMarkupPhoto({ uri: result.assets[0].uri, target });
                         }
                     }
                 },
@@ -122,10 +125,9 @@ export default function EditSnagScreen() {
                             allowsEditing: true,
                             aspect: [4, 3],
                             quality: 0.6,
-                            base64: true,
                         });
-                        if (!result.canceled && result.assets[0].base64) {
-                            setMarkupPhoto({ uri: `data:image/jpeg;base64,${result.assets[0].base64}`, target });
+                        if (!result.canceled && result.assets[0]?.uri) {
+                            setMarkupPhoto({ uri: result.assets[0].uri, target });
                         }
                     }
                 },
@@ -135,6 +137,34 @@ export default function EditSnagScreen() {
                 }
             ]
         );
+    };
+
+    const persistSnagPhoto = async (fileUri: string, target: 'context' | 'detail') => {
+        if (classifyMediaSource(fileUri) === 'attachment_ref') {
+            if (target === 'context') setContextPhoto(fileUri);
+            else setDetailPhoto(fileUri);
+            return;
+        }
+        try {
+            const attId = await attachmentQueue.generateAttachmentId();
+            const attachment = await attachmentQueue.saveFile({
+                id: attId,
+                data: fileUri,
+                fileExtension: 'jpg',
+                mediaType: 'image/jpeg',
+                metaData: JSON.stringify({
+                    kind: 'report_photo',
+                    userId: user?.id || 'anonymous',
+                    projectId: id,
+                }),
+            });
+            if (target === 'context') setContextPhoto(attachment.filename);
+            else setDetailPhoto(attachment.filename);
+        } catch (e) {
+            console.warn('[Snags] Failed to queue snag photo attachment:', e);
+            if (target === 'context') setContextPhoto(fileUri);
+            else setDetailPhoto(fileUri);
+        }
     };
 
     const handleSave = async () => {
@@ -373,13 +403,11 @@ export default function EditSnagScreen() {
                     visible={true}
                     imageUri={markupPhoto.uri}
                     onSkip={() => {
-                        if (markupPhoto.target === 'context') setContextPhoto(markupPhoto.uri);
-                        else setDetailPhoto(markupPhoto.uri);
+                        persistSnagPhoto(markupPhoto.uri, markupPhoto.target);
                         setMarkupPhoto(null);
                     }}
-                    onDone={(base64) => {
-                        if (markupPhoto.target === 'context') setContextPhoto(base64);
-                        else setDetailPhoto(base64);
+                    onDone={(fileUri) => {
+                        persistSnagPhoto(fileUri, markupPhoto.target);
                         setMarkupPhoto(null);
                     }}
                 />
