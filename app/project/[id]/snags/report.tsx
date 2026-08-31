@@ -11,6 +11,7 @@ import { useThemeColors } from '../../../../store/useThemeColors';
 import BackButton from '../../../../components/BackButton';
 import PickerDropdown from '../report/components/PickerDropdown';
 import { usePowerSyncSnags } from '../../../../lib/powersync/useSnags';
+import { usePowerSyncProject } from '../../../../lib/powersync/useProjects';
 import { getSnagStatusLabel } from '../../../../lib/units/snagStatus';
 import { generateSnagReportHTML } from '../../../../lib/report/templates/SnagReportHTML';
 import { countUnanalysedSnags } from '../../../../lib/units/snagAiStatus';
@@ -23,7 +24,8 @@ export default function SnagReportScreen() {
     const { getProject } = useProjectsStore();
     const { colors } = useThemeColors();
     
-    const project = getProject(id);
+    const { data: powerSyncProject } = usePowerSyncProject(id);
+    const project = powerSyncProject || getProject(id);
     const snags = usePowerSyncSnags(id);
 
     type ReportStyle = 'detailed' | 'compact' | 'summary';

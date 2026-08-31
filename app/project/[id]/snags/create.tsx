@@ -16,6 +16,7 @@ import { makeSnagRef } from '../../../../lib/units/snagRef';
 import PickerDropdown from '../report/components/PickerDropdown';
 import { ROOM_PRESETS } from '../../../../lib/units/roomPresets';
 import { normalizeName, namesMatch } from '../../../../lib/units/normalizeName';
+import { usePowerSyncProject } from '../../../../lib/powersync/useProjects';
 
 export default function CreateSnagScreen() {
     const router = useRouter();
@@ -24,7 +25,8 @@ export default function CreateSnagScreen() {
     const { colors } = useThemeColors();
     const user = useAuthStore(s => s.user);
     
-    const project = getProject(id);
+    const { data: powerSyncProject } = usePowerSyncProject(id);
+    const project = powerSyncProject || getProject(id);
     const buildings = project?.buildings || [];
 
     const roomOptions = useMemo(() => {

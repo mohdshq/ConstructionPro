@@ -10,6 +10,13 @@ function parseProjectRow(row: any): Project {
     knownCompaniesParsed = [];
   }
 
+  let knownRoomsParsed: string[] = [];
+  try {
+    knownRoomsParsed = JSON.parse(row.knownRooms || '[]');
+  } catch (e) {
+    knownRoomsParsed = [];
+  }
+
   let contractorLogosParsed: string[] = [];
   try {
     contractorLogosParsed = JSON.parse(row.contractorLogos || '[]');
@@ -27,8 +34,10 @@ function parseProjectRow(row: any): Project {
   return {
     ...row,
     knownCompanies: knownCompaniesParsed,
+    knownRooms: knownRoomsParsed,
     contractorLogos: contractorLogosParsed,
     buildings: buildingsParsed,
+    snagCounter: row.snagCounter || 0,
   } as Project;
 }
 
@@ -56,7 +65,9 @@ export function usePowerSyncProjects() {
       p.consultant_logo AS consultantLogo,
       p.main_contractor_name AS mainContractorName,
       p.known_companies AS knownCompanies,
+      p.known_rooms AS knownRooms,
       p.buildings,
+      p.snag_counter AS snagCounter,
       p.created_at AS createdAt,
       p.updated_at AS updatedAt,
       (
@@ -95,7 +106,9 @@ export function usePowerSyncProject(projectId?: string) {
       p.consultant_logo AS consultantLogo,
       p.main_contractor_name AS mainContractorName,
       p.known_companies AS knownCompanies,
+      p.known_rooms AS knownRooms,
       p.buildings,
+      p.snag_counter AS snagCounter,
       p.created_at AS createdAt,
       p.updated_at AS updatedAt,
       (

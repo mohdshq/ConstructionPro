@@ -10,6 +10,7 @@ import { Plus, Camera, FileText } from 'lucide-react-native';
 import { makeUnitCode } from '../../../../lib/units/unitCode';
 import { makeSnagRef } from '../../../../lib/units/snagRef';
 import { usePowerSyncSnags } from '../../../../lib/powersync/useSnags';
+import { usePowerSyncProject } from '../../../../lib/powersync/useProjects';
 import { getSnagStatusBg, getSnagStatusColor, getSnagStatusLabel } from '../../../../lib/units/snagStatus';
 import PickerDropdown from '../report/components/PickerDropdown';
 
@@ -19,7 +20,8 @@ export default function SnagsListScreen() {
     const { getProject } = useProjectsStore();
     const { colors } = useThemeColors();
     
-    const project = getProject(id);
+    const { data: powerSyncProject } = usePowerSyncProject(id);
+    const project = powerSyncProject || getProject(id);
     const snags = usePowerSyncSnags(id);
 
     const [filterBuilding, setFilterBuilding] = useState<string>('All');

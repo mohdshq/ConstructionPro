@@ -11,6 +11,7 @@ import { createElement, useEffect, useState, useRef } from 'react';
 import { KeyboardAvoidingView, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, ActivityIndicator, Alert } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { usePowerSyncReport } from '../../../../lib/powersync/useReports';
+import { usePowerSyncProject } from '../../../../lib/powersync/useProjects';
 import { DailyReportData, ReportType, useProjectsStore } from '../../../../store/projectsStore';
 import { useThemeColors } from '../../../../store/useThemeColors';
 import { useStore } from '../../../../store/useStore';
@@ -31,7 +32,8 @@ export default function CreateReportScreen() {
     const { addReport, updateReport, getProject, getReportsForProject, updateProject } = useProjectsStore();
     const { units } = useStore();
     const isMetric = units === 'metric';
-    const project = getProject(id as string);
+    const { data: powerSyncProject } = usePowerSyncProject(id as string);
+    const project = powerSyncProject || getProject(id as string);
     const existingReport = usePowerSyncReport((editId || duplicateId) as string | undefined);
 
     const [author, setAuthor] = useState('');
