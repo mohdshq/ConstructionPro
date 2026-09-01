@@ -2,7 +2,7 @@ import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, SafeAr
 import { ArrowLeft, Image as ImageIcon, MapPin, Building2, User, FileText, DollarSign, CalendarDays, Briefcase, Hash, Plus, X } from "lucide-react-native";
 import BackButton from "../../components/BackButton";
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { useState, createElement, useEffect } from 'react';
+import { useState, createElement, useEffect, useRef } from 'react';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { File } from 'expo-file-system';
@@ -46,10 +46,11 @@ export default function CreateProjectScreen() {
     const [buildings, setBuildings] = useState<Building[]>([]);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const { user } = useAuthStore();
+    const hydratedProjectIdRef = useRef<string | null>(null);
 
     // Pre-fill if editing
     useEffect(() => {
-        if (id && project) {
+        if (id && project && hydratedProjectIdRef.current !== project.id) {
             setName(project.name);
             setLocation(project.location);
             setClient(project.client);
@@ -66,8 +67,9 @@ export default function CreateProjectScreen() {
             setConsultantLogo(project.consultantLogo || null);
             setContractorLogos(project.contractorLogos || []);
             setBuildings(project.buildings || []);
+            hydratedProjectIdRef.current = project.id;
         }
-    }, [id, project]);
+    }, [id, project?.id]);
 
     const handlePickImage = async () => {
         const result = await ImagePicker.launchImageLibraryAsync({
