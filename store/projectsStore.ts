@@ -1239,7 +1239,7 @@ export const useProjectsStore = create<ProjectsState>()(
                         return newSeq;
                     } catch (error: any) {
                         set({ syncError: error.message });
-                        console.error('Failed to add snag:', error);
+                        console.error('Failed to add snag:', error, error.message);
                         return undefined;
                     }
                 }
