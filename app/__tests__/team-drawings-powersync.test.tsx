@@ -228,7 +228,7 @@ describe('TeamScreen & DrawingsBrowserScreen PowerSync Resolution & Explicit Sta
       expect(renderResult.getByText('Structural Plans')).toBeTruthy();
 
       const getOptionTouch = () => {
-        const icon = renderResult.container.find(
+        const icon = (renderResult.container as any).find(
           (node: any) => node.type === 'Icon' && node.props?.name === 'MoreVertical'
         );
         let curr = icon?.parent;

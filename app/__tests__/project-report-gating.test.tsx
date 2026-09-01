@@ -134,7 +134,7 @@ describe('ProjectDashboardScreen Report Actions & Creation Gating', () => {
 
     // Assert NO edit (Pencil), delete (Trash2), or duplicate controls on the daily report row
     const findIconsNamed = (name: string) =>
-      container.findAll((node: any) => node.type === 'Icon' && node.props?.name === name);
+      (container as any).findAll((node: any) => node.type === 'Icon' && node.props?.name === name);
 
     const pencilIconsViewer = findIconsNamed('Pencil');
     const trashIconsViewer = findIconsNamed('Trash2');
