@@ -2,12 +2,13 @@ import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, SafeAr
 import { ArrowLeft, Image as ImageIcon, MapPin, Building2, User, FileText, DollarSign, CalendarDays, Briefcase, Hash, Plus, X } from "lucide-react-native";
 import BackButton from "../../components/BackButton";
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { useState, createElement, useEffect } from 'react';
+import { useState, createElement, useEffect, useRef } from 'react';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { File } from 'expo-file-system';
 import { Image } from 'expo-image';
 import { useProjectsStore, Building } from '../../store/projectsStore';
+import { usePowerSyncProject, usePowerSyncProjects } from '@/lib/powersync/useProjects';
 import { useThemeColors } from '../../store/useThemeColors';
 import { useAuthStore } from '../../store/useAuthStore';
 import { ActivityIndicator, Alert } from 'react-native';
@@ -21,6 +22,10 @@ export default function CreateProjectScreen() {
     const router = useRouter();
     const { id } = useLocalSearchParams<{ id: string }>();
     const { addProject, updateProject, getProject, projects } = useProjectsStore();
+    const { data: powerSyncProject } = usePowerSyncProject(id);
+    const { data: powerSyncProjects = [] } = usePowerSyncProjects();
+    const allProjects = powerSyncProjects.length > 0 ? powerSyncProjects : projects;
+    const project = powerSyncProject || (id ? getProject(id) : undefined);
     const { colors } = useThemeColors();
 
     const [name, setName] = useState('');
@@ -41,31 +46,30 @@ export default function CreateProjectScreen() {
     const [buildings, setBuildings] = useState<Building[]>([]);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const { user } = useAuthStore();
+    const hydratedProjectIdRef = useRef<string | null>(null);
 
     // Pre-fill if editing
     useEffect(() => {
-        if (id) {
-            const project = getProject(id);
-            if (project) {
-                setName(project.name);
-                setLocation(project.location);
-                setClient(project.client);
-                setDescription(project.description || '');
-                setContractValue(project.contractValue || '');
-                setStartDate(project.startDate || '');
-                setEndDate(project.endDate || '');
-                setProjectManager(project.projectManager || '');
-                setMainContractorName(project.mainContractorName || '');
-                setReferenceNumber(project.referenceNumber || '');
-                setPhotoUri(project.photoUri || null);
-                setInitialPhotoUri(project.photoUri || null);
-                setEmployerLogo(project.employerLogo || null);
-                setConsultantLogo(project.consultantLogo || null);
-                setContractorLogos(project.contractorLogos || []);
-                setBuildings(project.buildings || []);
-            }
+        if (id && project && hydratedProjectIdRef.current !== project.id) {
+            setName(project.name);
+            setLocation(project.location);
+            setClient(project.client);
+            setDescription(project.description || '');
+            setContractValue(project.contractValue || '');
+            setStartDate(project.startDate || '');
+            setEndDate(project.endDate || '');
+            setProjectManager(project.projectManager || '');
+            setMainContractorName(project.mainContractorName || '');
+            setReferenceNumber(project.referenceNumber || '');
+            setPhotoUri(project.photoUri || null);
+            setInitialPhotoUri(project.photoUri || null);
+            setEmployerLogo(project.employerLogo || null);
+            setConsultantLogo(project.consultantLogo || null);
+            setContractorLogos(project.contractorLogos || []);
+            setBuildings(project.buildings || []);
+            hydratedProjectIdRef.current = project.id;
         }
-    }, [id, getProject]);
+    }, [id, project?.id]);
 
     const handlePickImage = async () => {
         const result = await ImagePicker.launchImageLibraryAsync({
@@ -119,10 +123,15 @@ export default function CreateProjectScreen() {
     };
 
     const handleCreate = async () => {
+        if (id && !project) {
+            Alert.alert("Error", "Project details are still loading. Please wait.");
+            return;
+        }
+
         const trimmedName = name.trim();
         if (!trimmedName) return;
 
-        const isDuplicate = projects.some(p => 
+        const isDuplicate = allProjects.some(p => 
             p.id !== id && p.name.toLowerCase() === trimmedName.toLowerCase()
         );
         if (isDuplicate) {
@@ -217,14 +226,14 @@ export default function CreateProjectScreen() {
                     <BackButton style={{ position: "absolute", left: 20, zIndex: 20, bottom: 8 }} />
                     <Text style={[styles.headerTitle, { color: colors.text }]}>{id ? 'Edit Project' : 'New Project'}</Text>
                     <TouchableOpacity
-                        style={[styles.saveButton, (!name.trim() || isSubmitting) && { backgroundColor: colors.border }]}
+                        style={[styles.saveButton, (!name.trim() || isSubmitting || (Boolean(id) && !project)) && { backgroundColor: colors.border }]}
                         onPress={handleCreate}
-                        disabled={!name.trim() || isSubmitting}
+                        disabled={!name.trim() || isSubmitting || (Boolean(id) && !project)}
                     >
                         {isSubmitting ? (
                             <ActivityIndicator size="small" color={colors.textMuted} />
                         ) : (
-                            <Text style={[styles.saveButtonText, !name.trim() && { color: colors.textMuted }]}>{id ? 'Save' : 'Create'}</Text>
+                            <Text style={[styles.saveButtonText, (!name.trim() || (Boolean(id) && !project)) && { color: colors.textMuted }]}>{id ? 'Save' : 'Create'}</Text>
                         )}
                     </TouchableOpacity>
                 </View>

@@ -8,13 +8,16 @@ import * as ImagePicker from 'expo-image-picker';
 import { Audio } from 'expo-av';
 import { Image } from 'expo-image';
 import { useProjectsStore, Project } from '../store/projectsStore';
+import { usePowerSyncProjects } from '@/lib/powersync/useProjects';
 import { useThemeColors } from '../store/useThemeColors';
 import { useStore } from '../store/useStore';
 
 export default function QuickLogScreen() {
     const router = useRouter();
     const params = useLocalSearchParams<{ projectId?: string }>();
-    const { projects, addReport } = useProjectsStore();
+    const { projects: storeProjects, addReport } = useProjectsStore();
+    const { data: powerSyncProjects = [] } = usePowerSyncProjects();
+    const projects = powerSyncProjects.length > 0 ? powerSyncProjects : storeProjects;
     const { colors } = useThemeColors();
     const userName = useStore(state => state.userName);
 

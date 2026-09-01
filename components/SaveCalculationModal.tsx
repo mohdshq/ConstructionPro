@@ -2,6 +2,7 @@ import { FolderOpen, X } from 'lucide-react-native';
 import React, { useState } from 'react';
 import { ActivityIndicator, Alert, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useProjectsStore } from '../store/projectsStore';
+import { usePowerSyncProjects } from '@/lib/powersync/useProjects';
 import { useAuthStore } from '../store/useAuthStore';
 import { useThemeColors } from '../store/useThemeColors';
 
@@ -14,7 +15,9 @@ interface SaveCalculationModalProps {
 
 export default function SaveCalculationModal({ visible, onClose, calculationType, calculationData }: SaveCalculationModalProps) {
     const { colors } = useThemeColors();
-    const { projects, addCalculation } = useProjectsStore();
+    const { projects: storeProjects, addCalculation } = useProjectsStore();
+    const { data: powerSyncProjects = [] } = usePowerSyncProjects();
+    const projects = powerSyncProjects.length > 0 ? powerSyncProjects : storeProjects;
     const { user } = useAuthStore();
     const [isSaving, setIsSaving] = useState(false);
 
