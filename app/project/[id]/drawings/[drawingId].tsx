@@ -7,6 +7,8 @@ import { ActivityIndicator, Alert, Platform, SafeAreaView, StyleSheet, Text, Tou
 import { WebView } from 'react-native-webview';
 import BackButton from "../../../../components/BackButton";
 import { resolveMediaUri } from '@/lib/attachments/resolveMediaUri';
+import { usePowerSyncProject } from '@/lib/powersync/useProjects';
+import { usePowerSyncDrawings } from '@/lib/powersync/useDrawings';
 import { useProjectsStore } from '../../../../store/projectsStore';
 import { useThemeColors } from '../../../../store/useThemeColors';
 
@@ -16,8 +18,11 @@ export default function DrawingViewerScreen() {
     const { getProject, drawings } = useProjectsStore();
     const { colors } = useThemeColors();
 
-    const project = useMemo(() => getProject(id), [id, getProject]);
-    const drawing = useMemo(() => drawings.find(d => d.id === drawingId && d.projectId === id), [drawingId, id, drawings]);
+    const { data: powerSyncProject } = usePowerSyncProject(id);
+    const project = powerSyncProject || getProject(id);
+    const powerSyncDrawings = usePowerSyncDrawings(id);
+    const allDrawings = powerSyncDrawings.length > 0 ? powerSyncDrawings : drawings;
+    const drawing = useMemo(() => allDrawings.find(d => d.id === drawingId && d.projectId === id), [drawingId, id, allDrawings]);
 
     const [isLoading, setIsLoading] = useState(true);
     const [base64Data, setBase64Data] = useState<string | null>(null);

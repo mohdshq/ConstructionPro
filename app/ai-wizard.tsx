@@ -9,6 +9,7 @@ import { ActivityIndicator, Alert, Platform, SafeAreaView, ScrollView, StyleShee
 import Animated, { FadeIn, SlideInRight } from 'react-native-reanimated';
 import { supabase } from '../lib/supabase';
 import { Project, ReportType, useProjectsStore, ProjectSnag } from '../store/projectsStore';
+import { usePowerSyncProjects } from '@/lib/powersync/useProjects';
 import { useStore } from '../store/useStore';
 import { useThemeColors } from '../store/useThemeColors';
 import { persistCapturedSnags, normalizeFloorToInt, patchSnagSuccess, patchSnagFailure } from '../lib/ai/persistSnags';
@@ -36,7 +37,9 @@ async function invokeAIWithTimeout(functionName: string, payload: any, ms = 4500
 export default function AIWizardScreen() {
     const { colors } = useThemeColors();
     const router = useExpoRouter();
-    const { projects } = useProjectsStore();
+    const { projects: storeProjects } = useProjectsStore();
+    const { data: powerSyncProjects = [] } = usePowerSyncProjects();
+    const projects = powerSyncProjects.length > 0 ? powerSyncProjects : storeProjects;
     const { isPremium } = useStore();
     const savingRef = useRef(false);
 

@@ -5,11 +5,14 @@ import { SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } fr
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import BackButton from "../components/BackButton";
 import { usePowerSyncCalculations } from '../lib/powersync/useCalculations';
+import { usePowerSyncProjects } from '../lib/powersync/useProjects';
 import { useProjectsStore } from '../store/projectsStore';
 import { useThemeColors } from '../store/useThemeColors';
 
 export default function SavedCalculationsScreen() {
-    const { getProject } = useProjectsStore();
+    const { getProject, projects: storeProjects } = useProjectsStore();
+    const { data: powerSyncProjects = [] } = usePowerSyncProjects();
+    const allProjects = powerSyncProjects.length > 0 ? powerSyncProjects : storeProjects;
     const { colors } = useThemeColors();
     const router = useRouter();
     const { projectId } = useLocalSearchParams<{ projectId?: string }>();
@@ -50,7 +53,7 @@ export default function SavedCalculationsScreen() {
             <ScrollView style={[styles.container, { backgroundColor: colors.background }]}>
                 <View style={styles.list}>
                     {calculations.map((calc, index) => {
-                        const project = getProject(calc.projectId);
+                        const project = allProjects.find(p => p.id === calc.projectId) || getProject(calc.projectId);
                         return (
                             <Animated.View entering={FadeInDown.delay(index * 50).springify()} key={calc.id}>
                                 <TouchableOpacity
