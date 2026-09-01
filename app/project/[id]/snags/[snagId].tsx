@@ -52,7 +52,7 @@ export default function EditSnagScreen() {
 
     const roomOptions = useMemo(() => {
         const list = [...ROOM_PRESETS];
-        const knownRooms = project?.knownRooms || [];
+        const knownRooms = Array.isArray(project?.knownRooms) ? project.knownRooms : [];
         for (const kr of knownRooms) {
             if (!list.some(p => namesMatch(p, kr))) {
                 list.push(kr);
@@ -91,7 +91,7 @@ export default function EditSnagScreen() {
         return <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}><ActivityIndicator size="large" color={colors.primary} /></View>;
     }
 
-    const building = project.buildings?.find(b => b.id === snag.buildingId);
+    const building = Array.isArray(project.buildings) ? project.buildings.find(b => b.id === snag.buildingId) : undefined;
     const unitCode = snag.legacyCode || makeUnitCode(snag.floor, snag.flat, project, building);
     const snagRef = makeSnagRef(unitCode, snag.seq);
 

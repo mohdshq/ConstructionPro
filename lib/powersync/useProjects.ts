@@ -2,34 +2,26 @@ import type { Project } from '@/store/projectsStore';
 import { useQuery } from '@powersync/react';
 import { useAuthStore } from '@/store/useAuthStore';
 
+function parseJsonArray<T = any>(val: any): T[] {
+  if (Array.isArray(val)) return val;
+  if (typeof val === 'string') {
+    try {
+      const parsed = JSON.parse(val);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
 function parseProjectRow(row: any): Project {
-  let knownCompaniesParsed: string[] = [];
-  try {
-    knownCompaniesParsed = JSON.parse(row.knownCompanies || '[]');
-  } catch (e) {
-    knownCompaniesParsed = [];
-  }
+  if (!row) return row;
 
-  let knownRoomsParsed: string[] = [];
-  try {
-    knownRoomsParsed = JSON.parse(row.knownRooms || '[]');
-  } catch (e) {
-    knownRoomsParsed = [];
-  }
-
-  let contractorLogosParsed: string[] = [];
-  try {
-    contractorLogosParsed = JSON.parse(row.contractorLogos || '[]');
-  } catch (e) {
-    contractorLogosParsed = [];
-  }
-
-  let buildingsParsed: any[] = [];
-  try {
-    buildingsParsed = JSON.parse(row.buildings || '[]');
-  } catch (e) {
-    buildingsParsed = [];
-  }
+  const knownCompaniesParsed = parseJsonArray<string>(row.knownCompanies);
+  const knownRoomsParsed = parseJsonArray<string>(row.knownRooms);
+  const contractorLogosParsed = parseJsonArray<string>(row.contractorLogos);
+  const buildingsParsed = parseJsonArray<any>(row.buildings);
 
   return {
     ...row,

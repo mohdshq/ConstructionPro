@@ -27,11 +27,11 @@ export default function CreateSnagScreen() {
     
     const { data: powerSyncProject } = usePowerSyncProject(id);
     const project = powerSyncProject || getProject(id);
-    const buildings = project?.buildings || [];
+    const buildings = Array.isArray(project?.buildings) ? project.buildings : [];
 
     const roomOptions = useMemo(() => {
         const list = [...ROOM_PRESETS];
-        const knownRooms = project?.knownRooms || [];
+        const knownRooms = Array.isArray(project?.knownRooms) ? project.knownRooms : [];
         for (const kr of knownRooms) {
             if (!list.some(p => namesMatch(p, kr))) {
                 list.push(kr);

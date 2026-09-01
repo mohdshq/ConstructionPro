@@ -91,10 +91,11 @@ export default function CreateReportScreen() {
             const existingReports = getReportsForProject(id);
             const lastDaily = existingReports.find(r => r.type === 'daily');
 
+            const contractorLogos = Array.isArray(project?.contractorLogos) ? project.contractorLogos : [];
             const projectLogos = [
                 project?.employerLogo,
                 project?.consultantLogo,
-                ...(project?.contractorLogos || [])
+                ...contractorLogos
             ].filter(Boolean) as string[];
 
             console.log('[report prefill] logos:', (projectLogos||[]).map(l => (l||'').slice(0,30)));
@@ -661,7 +662,7 @@ export default function CreateReportScreen() {
                     <ManpowerSection
                         rows={formData.manpower || []}
                         onChange={(rows) => setFormData({ ...formData, manpower: rows })}
-                        knownCompanies={project?.knownCompanies || []}
+                        knownCompanies={Array.isArray(project?.knownCompanies) ? project.knownCompanies : []}
                         colors={colors}
                         hiddenSections={formData.hiddenSections || []}
                         onHiddenSectionsChange={(hidden) => setFormData({ ...formData, hiddenSections: hidden })}
