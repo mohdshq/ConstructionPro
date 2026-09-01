@@ -16,11 +16,13 @@
 | ~~B3~~ | **[CLOSED / NOT-A-BUG]** `initialSync` overwriting entities | Sync | Audit revealed UI reads from PowerSync SQLite (`useQuery`), ignoring Zustand store. `initialSync` only mutated orphaned Zustand arrays without touching SQLite. Removed from startup; see `docs/powersync_investigation_report.md`. |
 | ~~B4~~ | **[FIXED]** Binary file uploads bypass PowerSync queue | Sync | Binary file uploads previously bypassed the PowerSync queue and were lost when captured offline. Fixed via PowerSync AttachmentQueue + local-only attachments table. |
 | ~~B5~~ | **[CLOSED / STALE]** setupPowerSync() is wired into app startup | Sync | Verified 2026-08-26 by reading app/_layout.tsx on main. setupPowerSync is imported from @/lib/powersync/lifecycle and invoked in the PowerSync lifecycle effect, gated on isInitialized && isStoreHydrated and keyed per user via syncedUserIdRef. Complementary paths present: teardownPowerSync on authMode === 'signed-out', clearPowerSyncForNewUser on user switch, reconnect via setupPowerSync in the NetInfo offline-grace handler, and Sentry capture with tags { layer: 'powersync', event: 'startup_connect' } on failure. Runtime proof: PowerSync logs show "Sync stream started", 12 buckets, checkpoint 1897, 339 operations_synced for user cdbff53b. Blocker was stale, not fixed this session. |
-| B6 | Photos stored as **base64 in `ProjectSnag.photos: string[]`** | Data/Perf | +33% size on every image, flowing through SQLite rows, sync payloads and report HTML. Will OOM the PDF WebView on large inspections. Migrate to PowerSync attachments + file URIs. |
+| B6 | **[PARTIALLY CLOSED]** Photos stored as base64 in `ProjectSnag.photos: string[]` | Data/Perf | Forward fix shipped in PR #22 (`1887d8e`), verified on a from-scratch simulator: new snag row 88 bytes with bare UUID refs, objects present in `report-photos/<projectId>/`, photos render on cold read with no local cache. Backfill of 64 base64 snags (~26 MB) and 13 reports (~4.37 MB) remains open under issue #21. |
 | B7 | `xlsx@0.18.5` — prototype pollution + ReDoS, **no npm fix exists** | Security | Abandoned on npm (fixed only in SheetJS-hosted 0.19.3+). Migrate or remove. |
 | ~~B8~~ | **[FIXED]** Sign-out teardown wiping offline DB | Sync | `teardownPowerSync()` previously wiped SQLite DB on sign-out destroying pending offline queue. Fixed: teardown only disconnects, warns if queue non-empty; database cleared only when a different user signs in. |
 | ~~B9~~ | **[FIXED]** Cold launch with no network signs user out | Auth | Cold launch >1h offline treated expired access token as signed out. Fixed: 3-state authMode, 30-day offline-grace window backed by AsyncStorage mirror, 4s getSession race, reconnect refresh. |
 | ~~B10~~ | **[FIXED]** Missing auth lock allows concurrent refresh | Auth | Absence of auth lock allowed concurrent `getSession()` / auto-refresh calls to exchange same refresh token, triggering Supabase reuse detection and revoking sessions. Fixed via `processLock` and AppState auto-refresh. |
+| B11 | **[OPEN]** Fresh install loses all project navigation | Navigation/Data | Root cause: screens read projects from the persisted Zustand array, which is empty on a new install because `initialSync` in `store/projectsStore.ts` is documented as deprecated and never called. Fixed for snag/report screens in #22 by reading via `usePowerSyncProject`. Severity: high — a new device could not open any project. Remaining screens with un-migrated `getProject` / `projects` Zustand reads need audit & fix. |
+| B12 | **[OPEN]** Dangling attachment refs cause an infinite 404 retry loop | Attachments/Sync | `onDownloadError` in `lib/attachments/attachmentQueue.ts` correctly returns `false` for a permanent 404, but `createWatchAttachments` re-emits the full item list on every change to `profiles`, `projects`, `reports`, `drawings`, or `snags`, so the dead ref is re-enqueued and re-attempted. Known dead refs: `cd2d21bc-afcb-4467-8cd2-d9bec8fcd720.jpg`, and `project_cover_1781178598183_z5igyh.jpg` / `project_cover_1781675349790_kqir3w.jpg` under `cdbff53b-6290-45ff-8966-dcbdc0b29273/`. |
 
 ## HIGH — correctness
 
@@ -224,6 +226,23 @@ Detailed investigation report located at `docs/powersync_investigation_report.md
 
 ### ✅ RESOLVED — Storage uploads via uriToBlob write 0-byte files (uploadPhoto, uploadAvatar)
 - ✅ RESOLVED (branch fix/upload-blob-zero-bytes): `uploadPhoto` and `uploadAvatar` now use `FileSystem.uploadAsync` with `BINARY_CONTENT` (same fix applied to `uploadDrawingFile` in M6.3b). Verified on iOS: avatar and report-photo uploads write real (non-zero) bytes to their Supabase Storage buckets and render correctly in-app. `uriToBlob` removed from `lib/supabaseSync.ts`.
+
+### ⚠️ PARTIALLY CLOSED — B6: Photos stored as base64 in ProjectSnag.photos: string[]
+- **Forward Fix (PR #22 / commit `1887d8e`)**: Verified on a from-scratch simulator: new snag row is ~88 bytes with bare UUID refs, binary objects uploaded to `report-photos/<projectId>/`, and photos render on cold read with no local cache.
+- **Remaining Open Scope (Issue #21)**: Backfill of 64 legacy base64 snags (~26 MB) and 13 legacy reports (~4.37 MB) to Supabase Storage objects remains open.
+
+### ⚠️ OPEN (BLOCKER) — B11: Fresh install loses all project navigation
+- **Symptom**: On a fresh app install, opening projects, editing projects, or viewing drawings fails or renders empty/missing screens.
+- **Root Cause**: Screens read projects from the persisted Zustand store array (`projects`), which is empty on a clean install because `initialSync` in `store/projectsStore.ts` is deprecated and never called on startup.
+- **Resolution Status**: Snag and report screens (`app/project/[id].tsx`, `snags/index.tsx`, `snags/create.tsx`, `snags/[snagId].tsx`, `snags/report.tsx`, `report/create.tsx`, `team.tsx`, `drawings/index.tsx`) were migrated in #22 to read from PowerSync SQLite via `usePowerSyncProject`. Remaining screens (`app/project/create.tsx` (edit mode), `app/project/[id]/drawings/[drawingId].tsx`, `app/saved-calculations.tsx`, `app/quick-log.tsx`, `app/ai-wizard.tsx`, `components/SaveCalculationModal.tsx`) still read from unpopulated Zustand arrays.
+
+### ⚠️ OPEN (BLOCKER) — B12: Dangling attachment refs cause an infinite 404 retry loop
+- **Symptom**: Repeated `404 / 400` download failure warnings in logs on every sync/data change.
+- **Root Cause**: `onDownloadError` in `lib/attachments/attachmentQueue.ts` correctly returns `false` for a permanent 404 to avoid immediate retry. However, `createWatchAttachments` re-evaluates and re-emits the full item list on every local database change to `profiles`, `projects`, `reports`, `drawings`, or `snags`. Consequently, dead attachment references are re-enqueued into the queue and re-attempted infinitely.
+- **Known Dead References**:
+  - `cd2d21bc-afcb-4467-8cd2-d9bec8fcd720.jpg` (`profiles.avatar_url`)
+  - `project_cover_1781178598183_z5igyh.jpg` (`projects.photo_url` under `cdbff53b-6290-45ff-8966-dcbdc0b29273/`)
+  - `project_cover_1781675349790_kqir3w.jpg` (`projects.photo_url` under `cdbff53b-6290-45ff-8966-dcbdc0b29273/`)
 
 ### expo-file-system legacy API in use
 - The drawing viewer and `uploadDrawingFile` import from `expo-file-system/legacy`
