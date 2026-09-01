@@ -11,6 +11,7 @@ import { createElement, useEffect, useState, useRef } from 'react';
 import { KeyboardAvoidingView, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, ActivityIndicator, Alert } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { usePowerSyncReport } from '../../../../lib/powersync/useReports';
+import { usePowerSyncProject } from '../../../../lib/powersync/useProjects';
 import { DailyReportData, ReportType, useProjectsStore } from '../../../../store/projectsStore';
 import { useThemeColors } from '../../../../store/useThemeColors';
 import { useStore } from '../../../../store/useStore';
@@ -31,7 +32,8 @@ export default function CreateReportScreen() {
     const { addReport, updateReport, getProject, getReportsForProject, updateProject } = useProjectsStore();
     const { units } = useStore();
     const isMetric = units === 'metric';
-    const project = getProject(id as string);
+    const { data: powerSyncProject } = usePowerSyncProject(id as string);
+    const project = powerSyncProject || getProject(id as string);
     const existingReport = usePowerSyncReport((editId || duplicateId) as string | undefined);
 
     const [author, setAuthor] = useState('');
@@ -89,10 +91,11 @@ export default function CreateReportScreen() {
             const existingReports = getReportsForProject(id);
             const lastDaily = existingReports.find(r => r.type === 'daily');
 
+            const contractorLogos = Array.isArray(project?.contractorLogos) ? project.contractorLogos : [];
             const projectLogos = [
                 project?.employerLogo,
                 project?.consultantLogo,
-                ...(project?.contractorLogos || [])
+                ...contractorLogos
             ].filter(Boolean) as string[];
 
             console.log('[report prefill] logos:', (projectLogos||[]).map(l => (l||'').slice(0,30)));
@@ -659,7 +662,7 @@ export default function CreateReportScreen() {
                     <ManpowerSection
                         rows={formData.manpower || []}
                         onChange={(rows) => setFormData({ ...formData, manpower: rows })}
-                        knownCompanies={project?.knownCompanies || []}
+                        knownCompanies={Array.isArray(project?.knownCompanies) ? project.knownCompanies : []}
                         colors={colors}
                         hiddenSections={formData.hiddenSections || []}
                         onHiddenSectionsChange={(hidden) => setFormData({ ...formData, hiddenSections: hidden })}

@@ -164,7 +164,7 @@ describe('ReportViewerScreen Cloud Link Generation & Cold-Cache Gating', () => {
       const { getByText, container } = await render(<ReportViewerScreen />);
 
       // Find share button containing Share2 icon
-      const shareIcon = container.find(
+      const shareIcon = (container as any).find(
         (node: any) => node.type === 'Icon' && node.props?.name === 'Share2'
       );
       expect(shareIcon).toBeTruthy();
@@ -220,7 +220,7 @@ describe('ReportViewerScreen Cloud Link Generation & Cold-Cache Gating', () => {
 
       const { getByText, container } = await render(<ReportViewerScreen />);
 
-      const shareIcon = container.find(
+      const shareIcon = (container as any).find(
         (node: any) => node.type === 'Icon' && node.props?.name === 'Share2'
       );
       let shareTouch = shareIcon.parent;
@@ -256,7 +256,7 @@ describe('ReportViewerScreen Cloud Link Generation & Cold-Cache Gating', () => {
 
       const { getByText, container } = await render(<ReportViewerScreen />);
 
-      const shareIcon = container.find(
+      const shareIcon = (container as any).find(
         (node: any) => node.type === 'Icon' && node.props?.name === 'Share2'
       );
       let shareTouch = shareIcon.parent;

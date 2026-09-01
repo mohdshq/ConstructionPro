@@ -368,7 +368,7 @@ export interface ProjectSnag {
     trade?: string;
     room?: string;
     description: string;
-    photos: string[];   // HARD max 2: [context, detail], base64
+    photos: string[];   // HARD max 2: [context, detail], storage paths
     status: 'open' | 'in_progress' | 'closed';
     legacyCode?: string;
     createdAt: string;
@@ -1176,13 +1176,33 @@ export const useProjectsStore = create<ProjectsState>()(
                 const now = new Date().toISOString();
                 const localId = uuidv4();
 
-                // Get project to get the current counter
-                const project = get().projects.find(p => p.id === snag.projectId);
-                if (!project) {
+                // Read snag_counter directly from PowerSync SQLite, falling back to Zustand project
+                let counter: number | undefined;
+                try {
+                    const row = await powersync.getOptional<{ snag_counter: number | null }>(
+                        `SELECT snag_counter FROM projects WHERE id = ? LIMIT 1`,
+                        [snag.projectId]
+                    );
+                    if (row) {
+                        counter = row.snag_counter ?? 0;
+                    }
+                } catch (err) {
+                    console.warn('Failed to fetch snag_counter from PowerSync SQLite:', err);
+                }
+
+                if (counter === undefined) {
+                    const project = get().projects.find(p => p.id === snag.projectId);
+                    if (project) {
+                        counter = project.snagCounter || 0;
+                    }
+                }
+
+                if (counter === undefined) {
                     console.error('Project not found for snag');
                     return undefined;
                 }
-                const newSeq = (project.snagCounter || 0) + 1;
+
+                const newSeq = counter + 1;
 
                 if (userId) {
                     try {

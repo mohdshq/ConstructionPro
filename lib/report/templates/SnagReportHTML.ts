@@ -231,7 +231,7 @@ export function generateSnagReportHTML(
     if (options.format === 'summary') {
         sortedBuildings.forEach(bId => {
             const floorMap = grouped.get(bId)!;
-            const building = project.buildings?.find(b => b.id === bId);
+            const building = Array.isArray(project.buildings) ? project.buildings.find(b => b.id === bId) : undefined;
             const bName = building ? `${building.code}${building.name ? ` - ${building.name}` : ''}` : (bId === 'unassigned' ? 'Unassigned Building' : bId);
             
             bodyHTML += `<div class="section-heading" style="margin-top: 30px; font-size: 16px;">BUILDING: ${bName}</div>`;
@@ -297,7 +297,7 @@ export function generateSnagReportHTML(
 
         sortedBuildings.forEach(bId => {
             const floorMap = grouped.get(bId)!;
-            const building = project.buildings?.find(b => b.id === bId);
+            const building = Array.isArray(project.buildings) ? project.buildings.find(b => b.id === bId) : undefined;
             const bName = building ? `${building.code}${building.name ? ` - ${building.name}` : ''}` : (bId === 'unassigned' ? 'Unassigned Building' : bId);
             const floors = Array.from(floorMap.keys()).sort((a, b) => a - b);
 

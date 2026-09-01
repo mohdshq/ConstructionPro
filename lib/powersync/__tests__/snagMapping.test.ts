@@ -114,4 +114,51 @@ describe('mapSnagRow', () => {
         expect(result.aiAttempts).toBe(0);
         expect(result.photos).toEqual([]);
     });
+
+    it('maps a row with storage path references in photos', () => {
+        const rawRow = {
+            id: 'snag-storage-paths',
+            project_id: 'proj-789',
+            seq: 4,
+            building_id: 'b-2',
+            floor: 1,
+            flat: 101,
+            area_type: 'unit',
+            severity: 'minor',
+            trade: 'Plumbing',
+            room: 'Bathroom',
+            description: 'Slow drain in sink',
+            photos: JSON.stringify(['att-context-123.jpg', 'att-detail-456.jpg']),
+            status: 'in_progress',
+            legacy_code: 'B-1-101-4',
+            created_at: '2026-08-27T10:00:00Z',
+            ai_status: 'done',
+            ai_attempts: 1,
+            ai_updated_at: '2026-08-27T10:01:00Z',
+        };
+
+        const result = mapSnagRow(rawRow);
+
+        expect(result).toEqual({
+            id: 'snag-storage-paths',
+            projectId: 'proj-789',
+            seq: 4,
+            buildingId: 'b-2',
+            floor: 1,
+            flat: 101,
+            areaType: 'unit',
+            severity: 'minor',
+            trade: 'Plumbing',
+            room: 'Bathroom',
+            description: 'Slow drain in sink',
+            photos: ['att-context-123.jpg', 'att-detail-456.jpg'],
+            status: 'in_progress',
+            legacyCode: 'B-1-101-4',
+            createdAt: '2026-08-27T10:00:00Z',
+            aiStatus: 'done',
+            aiError: undefined,
+            aiAttempts: 1,
+            aiUpdatedAt: '2026-08-27T10:01:00Z',
+        });
+    });
 });

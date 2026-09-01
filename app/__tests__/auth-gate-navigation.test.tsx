@@ -217,7 +217,7 @@ describe('Declarative Auth Gate & Navigation (_layout.tsx, register.tsx, forgot-
       });
 
       const { container } = await render(<RootLayout />);
-      const screenNodes = container.findAll((node: any) => node.type === 'StackScreen');
+      const screenNodes = (container as any).findAll((node: any) => node.type === 'StackScreen');
       const renderedScreenNames = screenNodes.map((n: any) => n.props.name);
 
       // (auth) screen MUST be rendered
@@ -246,7 +246,7 @@ describe('Declarative Auth Gate & Navigation (_layout.tsx, register.tsx, forgot-
       });
 
       const { container } = await render(<RootLayout />);
-      const screenNodes = container.findAll((node: any) => node.type === 'StackScreen');
+      const screenNodes = (container as any).findAll((node: any) => node.type === 'StackScreen');
       const renderedScreenNames = screenNodes.map((n: any) => n.props.name);
 
       // (auth) screen MUST NOT be rendered
@@ -316,7 +316,7 @@ describe('Declarative Auth Gate & Navigation (_layout.tsx, register.tsx, forgot-
 
       const { container, rerender } = await render(<RootLayout />);
 
-      let screenNodes = container.findAll((node: any) => node.type === 'StackScreen');
+      let screenNodes = (container as any).findAll((node: any) => node.type === 'StackScreen');
       let names = screenNodes.map((n: any) => n.props.name);
       expect(names).toEqual(['(auth)']);
       expect(mockReplace).not.toHaveBeenCalled();
@@ -334,7 +334,7 @@ describe('Declarative Auth Gate & Navigation (_layout.tsx, register.tsx, forgot-
         await rerender(<RootLayout />);
       });
 
-      screenNodes = container.findAll((node: any) => node.type === 'StackScreen');
+      screenNodes = (container as any).findAll((node: any) => node.type === 'StackScreen');
       names = screenNodes.map((n: any) => n.props.name);
       expect(names).toContain('(tabs)');
       expect(names).not.toContain('(auth)');
@@ -353,7 +353,7 @@ describe('Declarative Auth Gate & Navigation (_layout.tsx, register.tsx, forgot-
         await rerender(<RootLayout />);
       });
 
-      screenNodes = container.findAll((node: any) => node.type === 'StackScreen');
+      screenNodes = (container as any).findAll((node: any) => node.type === 'StackScreen');
       names = screenNodes.map((n: any) => n.props.name);
       expect(names).toEqual(['(auth)']);
       expect(mockReplace).not.toHaveBeenCalled();

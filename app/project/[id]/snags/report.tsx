@@ -11,6 +11,7 @@ import { useThemeColors } from '../../../../store/useThemeColors';
 import BackButton from '../../../../components/BackButton';
 import PickerDropdown from '../report/components/PickerDropdown';
 import { usePowerSyncSnags } from '../../../../lib/powersync/useSnags';
+import { usePowerSyncProject } from '../../../../lib/powersync/useProjects';
 import { getSnagStatusLabel } from '../../../../lib/units/snagStatus';
 import { generateSnagReportHTML } from '../../../../lib/report/templates/SnagReportHTML';
 import { countUnanalysedSnags } from '../../../../lib/units/snagAiStatus';
@@ -23,7 +24,8 @@ export default function SnagReportScreen() {
     const { getProject } = useProjectsStore();
     const { colors } = useThemeColors();
     
-    const project = getProject(id);
+    const { data: powerSyncProject } = usePowerSyncProject(id);
+    const project = powerSyncProject || getProject(id);
     const snags = usePowerSyncSnags(id);
 
     type ReportStyle = 'detailed' | 'compact' | 'summary';
@@ -42,7 +44,7 @@ export default function SnagReportScreen() {
 
         snags.forEach(s => {
             if (s.buildingId) {
-                const b = project?.buildings?.find(b => b.id === s.buildingId);
+                const b = Array.isArray(project?.buildings) ? project.buildings.find(b => b.id === s.buildingId) : undefined;
                 if (b && b.code) buildings.add(b.code);
             }
             if (s.floor !== undefined && s.floor !== null) floors.add(String(s.floor));
@@ -59,7 +61,7 @@ export default function SnagReportScreen() {
     const filteredSnags = useMemo(() => {
         return snags.filter(s => {
             if (filterBuilding !== 'All') {
-                const b = project?.buildings?.find(b => b.id === s.buildingId);
+                const b = Array.isArray(project?.buildings) ? project.buildings.find(b => b.id === s.buildingId) : undefined;
                 if (!b || b.code !== filterBuilding) return false;
             }
             if (filterFloor !== 'All' && String(s.floor) !== filterFloor) return false;

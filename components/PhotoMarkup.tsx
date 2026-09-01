@@ -23,7 +23,7 @@ export type Annotation = ArrowAnnotation | RectAnnotation | CircleAnnotation | F
 export interface PhotoMarkupProps {
     visible: boolean;
     imageUri: string;
-    onDone: (base64: string) => void;
+    onDone: (fileUri: string) => void;
     onSkip: () => void;
 }
 
@@ -393,9 +393,9 @@ export default function PhotoMarkup({ visible, imageUri, onDone, onSkip }: Photo
                 const result = await captureRef(viewRef as any, {
                     format: 'jpg',
                     quality: 0.8,
-                    result: 'base64'
+                    result: 'tmpfile'
                 });
-                onDone(`data:image/jpeg;base64,${result}`);
+                onDone(result);
             } catch (e) {
                 console.error('Failed to capture view', e);
                 setIsSaving(false);

@@ -19,6 +19,7 @@ interface Props {
 export default function ManpowerSection({ rows, onChange, knownCompanies = [], colors, hiddenSections = [], onHiddenSectionsChange }: Props) {
     const { id } = useLocalSearchParams<{ id: string }>();
     const { addKnownCompany } = useProjectsStore();
+    const safeKnownCompanies: string[] = Array.isArray(knownCompanies) ? knownCompanies : [];
 
     const toggleSection = (key: string) => {
         if (!onHiddenSectionsChange) return;
@@ -99,7 +100,7 @@ export default function ManpowerSection({ rows, onChange, knownCompanies = [], c
         }
 
         const result = await addKnownCompany(id, normalizedNew);
-        if (result === 'exists' && !knownCompanies.some(c => companyNamesMatch(c, newCompany))) {
+        if (result === 'exists' && !safeKnownCompanies.some(c => companyNamesMatch(c, newCompany))) {
             // Note: If they selected a preset, newCompany already matches a known company.
             // If it's a custom typed entry that normalizes to an existing one, show notice.
             // Only show notice if the exact typed string wasn't already in the dropdown list
@@ -189,7 +190,7 @@ export default function ManpowerSection({ rows, onChange, knownCompanies = [], c
                 const displayName = group.company === '' ? 'Unassigned' : group.company;
                 
                 const usedCompanies = new Set(groups.map(g => g.company.toLowerCase()));
-                const availableCompanies = knownCompanies.filter(kc => 
+                const availableCompanies = safeKnownCompanies.filter(kc => 
                     !usedCompanies.has(kc.toLowerCase()) || kc.toLowerCase() === group.company.toLowerCase()
                 );
 
