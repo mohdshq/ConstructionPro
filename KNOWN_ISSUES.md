@@ -23,7 +23,7 @@
 | ~~B10~~ | **[FIXED]** Missing auth lock allows concurrent refresh | Auth | Absence of auth lock allowed concurrent `getSession()` / auto-refresh calls to exchange same refresh token, triggering Supabase reuse detection and revoking sessions. Fixed via `processLock` and AppState auto-refresh. |
 | ~~B11~~ | **[FIXED]** Fresh install loses all project navigation | Navigation/Data | Fixed in PR #22 and PR #24 (`9467819`, `dc75284`). All remaining screens (`app/project/create.tsx`, `app/ai-wizard.tsx`, `app/quick-log.tsx`, `app/saved-calculations.tsx`, `components/SaveCalculationModal.tsx`, `app/project/[id]/drawings/[drawingId].tsx`) now read from PowerSync via `usePowerSyncProjects` / `usePowerSyncProject`. Residual known risk: `powerSyncProjects.length > 0 ? powerSyncProjects : storeProjects` fallback can surface stale "phantom" projects if a user genuinely has 0 projects. |
 | B12 | **[OPEN]** Dangling attachment refs cause an infinite 404 retry loop | Attachments/Sync | `onDownloadError` in `lib/attachments/attachmentQueue.ts` correctly returns `false` for a permanent 404, but `createWatchAttachments` re-emits the full item list on every change to `profiles`, `projects`, `reports`, `drawings`, or `snags`, so the dead ref is re-enqueued and re-attempted. Known dead refs: `cd2d21bc-afcb-4467-8cd2-d9bec8fcd720.jpg`, and `project_cover_1781178598183_z5igyh.jpg` / `project_cover_1781675349790_kqir3w.jpg` under `cdbff53b-6290-45ff-8966-dcbdc0b29273/`. |
-| B13 | **[OPEN]** Report-count paywall wrongly blocks Snagging and Quick Log | Gating/Paywall | On the project detail screen, a free user with 3+ reports taps the "Snagging" or "Quick Log" card and gets blocked by the report-count paywall alert ("Free users can only create up to 3 reports"). Affected users cannot even view existing snags. |
+| ~~B13~~ | **[FIXED]** Report-count paywall wrongly blocks Snagging and Quick Log | Gating/Paywall | Fixed in `app/project/[id].tsx` (branch `fix/b13-snag-paywall-gate`): restructured category card `onPress` so `quick-log` and `snags/create` navigate directly without calling `checkReportLimit()`. Only `report/create` remains report-count gated. |
 
 ## HIGH — correctness
 
@@ -249,11 +249,10 @@ Detailed investigation report located at `docs/powersync_investigation_report.md
   - `project_cover_1781178598183_z5igyh.jpg` (`projects.photo_url` under `cdbff53b-6290-45ff-8966-dcbdc0b29273/`)
   - `project_cover_1781675349790_kqir3w.jpg` (`projects.photo_url` under `cdbff53b-6290-45ff-8966-dcbdc0b29273/`)
 
-### ⚠️ OPEN (BLOCKER) — B13: Report-count paywall wrongly blocks Snagging and Quick Log
-- **Symptom**: On the project detail screen, a free user with 3+ reports taps the "Snagging" card and gets the alert "Premium Required — Free users can only create up to 3 reports." The same happens for "Quick Log". Creating and viewing snags from the AI wizard works fine, so the feature itself is not gated.
-- **Root Cause**: In `app/project/[id].tsx`, the category card `onPress` handler (~line 496) wraps all route branches in `if (checkReportLimit())`. `checkReportLimit()` (defined ~line 277) only checks `reports.length >= 3` and is therefore semantically correct only for the `report/create` branch. The `snags/create` branch (~line 501, which redirects to the snags list) and the `quick-log` branch (~line 499) are unrelated to report count but inherit the gate. Note the gate blocks navigation, so affected users cannot even view existing snags.
-- **Scope**: Snagging card and Quick Log card on the project detail screen. Snags reached via the AI wizard are unaffected.
-- **Proposed Fix (not applied)**: Move the `snags/create` and `quick-log` redirects above the `checkReportLimit()` call so the gate applies only to the `report/create` branch. No change to `checkReportLimit()` itself.
+### ✅ RESOLVED (BLOCKER) — B13: Report-count paywall wrongly blocks Snagging and Quick Log
+- **Symptom**: On the project detail screen, a free user with 3+ reports tapped the "Snagging" card and got the alert "Premium Required — Free users can only create up to 3 reports." The same happened for "Quick Log".
+- **Root Cause**: In `app/project/[id].tsx`, the category card `onPress` handler wrapped all route branches in `if (checkReportLimit())`. `checkReportLimit()` only checks `reports.length >= 3` and is semantically correct only for the `report/create` branch.
+- **Resolution**: Restructured `app/project/[id].tsx` category card `onPress` (branch `fix/b13-snag-paywall-gate`) so `cat.route === 'quick-log'` and `cat.route === 'snags/create'` navigate without invoking `checkReportLimit()`. Only the `report/create` branch invokes `checkReportLimit()`. Verified via `app/__tests__/b13-snag-paywall-gate.test.tsx`.
 
 ### expo-file-system legacy API in use
 - The drawing viewer and `uploadDrawingFile` import from `expo-file-system/legacy`
