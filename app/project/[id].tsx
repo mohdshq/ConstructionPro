@@ -494,14 +494,12 @@ export default function ProjectDashboardScreen() {
                                 disabled={!isOwnerOrManager}
                                 onPress={() => {
                                     if (!isOwnerOrManager) return;
-                                    if (checkReportLimit()) {
-                                        if (cat.route === 'quick-log') {
-                                            router.push({ pathname: '/quick-log', params: { projectId: project.id } } as any);
-                                        } else if (cat.route === 'snags/create') {
-                                            router.push(`/project/${project.id}/snags` as any);
-                                        } else {
-                                            router.push(`/project/${project.id}/report/create?type=${cat.route}` as any);
-                                        }
+                                    if (cat.route === 'quick-log') {
+                                        router.push({ pathname: '/quick-log', params: { projectId: project.id } } as any);
+                                    } else if (cat.route === 'snags/create') {
+                                        router.push(`/project/${project.id}/snags` as any);
+                                    } else if (checkReportLimit()) {
+                                        router.push(`/project/${project.id}/report/create?type=${cat.route}` as any);
                                     }
                                 }}
                                 activeOpacity={isOwnerOrManager ? 0.7 : 1}
