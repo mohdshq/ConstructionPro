@@ -5,7 +5,7 @@
 > Sections below this index are the detailed historical log — keep them. They
 > contain hard-won debugging context (see especially S7 and S8).
 
-**Last triage**: 2026-08-26
+**Last triage**: 2026-09-03
 
 ## RELEASE BLOCKERS — security & data loss
 
@@ -22,8 +22,11 @@
 | ~~B9~~ | **[FIXED]** Cold launch with no network signs user out | Auth | Cold launch >1h offline treated expired access token as signed out. Fixed: 3-state authMode, 30-day offline-grace window backed by AsyncStorage mirror, 4s getSession race, reconnect refresh. |
 | ~~B10~~ | **[FIXED]** Missing auth lock allows concurrent refresh | Auth | Absence of auth lock allowed concurrent `getSession()` / auto-refresh calls to exchange same refresh token, triggering Supabase reuse detection and revoking sessions. Fixed via `processLock` and AppState auto-refresh. |
 | ~~B11~~ | **[FIXED]** Fresh install loses all project navigation | Navigation/Data | Fixed in PR #22 and PR #24 (`9467819`, `dc75284`). All remaining screens (`app/project/create.tsx`, `app/ai-wizard.tsx`, `app/quick-log.tsx`, `app/saved-calculations.tsx`, `components/SaveCalculationModal.tsx`, `app/project/[id]/drawings/[drawingId].tsx`) now read from PowerSync via `usePowerSyncProjects` / `usePowerSyncProject`. Residual known risk: `powerSyncProjects.length > 0 ? powerSyncProjects : storeProjects` fallback can surface stale "phantom" projects if a user genuinely has 0 projects. |
-| B12 | **[OPEN]** Dangling attachment refs cause an infinite 404 retry loop | Attachments/Sync | `onDownloadError` in `lib/attachments/attachmentQueue.ts` correctly returns `false` for a permanent 404, but `createWatchAttachments` re-emits the full item list on every change to `profiles`, `projects`, `reports`, `drawings`, or `snags`, so the dead ref is re-enqueued and re-attempted. Known dead refs: `cd2d21bc-afcb-4467-8cd2-d9bec8fcd720.jpg`, and `project_cover_1781178598183_z5igyh.jpg` / `project_cover_1781675349790_kqir3w.jpg` under `cdbff53b-6290-45ff-8966-dcbdc0b29273/`. |
-| ~~B13~~ | **[FIXED]** Report-count paywall wrongly blocks Snagging and Quick Log | Gating/Paywall | Fixed in `app/project/[id].tsx` (branch `fix/b13-snag-paywall-gate`): restructured category card `onPress` so `quick-log` and `snags/create` navigate directly without calling `checkReportLimit()`. Only `report/create` remains report-count gated. |
+| ~~B12~~ | **[FIXED]** Dangling attachment refs cause an infinite 404 retry loop | Attachments/Sync | Resolved via data cleanup. `profiles.avatar_url` (`cd2d21bc-...jpg`) nulled (no matching object in any bucket). Malformed slash-form `photo_url` values nulled for Azizi Hotel (`00d63259-...`) and Test 2 (`ec605ff8-...`). 6 duplicate/orphaned `project_cover_*` objects deleted from `report-photos/cdbff53b-.../` via Storage dashboard (folder count 28 -> 22). 5 project-scoped covers remain; 13 legacy `daily_*.jpg` and 8 root `logo_*.jpg` files deliberately retained. |
+| ~~B13~~ | **[FIXED]** Report-count paywall wrongly blocks Snagging and Quick Log | Gating/Paywall | Fixed in `app/project/[id].tsx` (branch `fix/b13-snag-paywall-gate`): restructured category card `onPress` so `quick-log` and `snags/create` navigate directly without calling `checkReportLimit()`. Only `report/create` remains report-count gated. *(Device verification pending rebuild with `EXPO_PUBLIC_DEV_FORCE_PREMIUM` unset; covered by unit tests).* |
+| B14 | **[OPEN]** Legacy slash-form storage paths passed to local filesystem reader | PDF/Reports | Opening reports on Azizi Hotel and Reve hangs on "loading media". Console shows `readAsStringAsync` failure for `/cdbff53b-.../{projectId}/daily_*.jpg` (not readable). PDF/base64 embed path treats remote slash ref as local file URI. Severity high — blocks report viewing/PDF generation on affected projects. |
+| B15 | **[OPEN]** Attachment metaData missing projectId, activating userId storage-path fallback | Attachments/Sync | `[getSignedUrl] missing object skipped: report-photos cdbff53b-6290-45ff-8966-dcbdc0b29273/project_cover_1779449049420_vu9kbr.jpg` (Azure) and `.../project_cover_1780307021264_u6ky3c.jpg` (Reve). `resolveRemoteStoragePath` falls back to `userId`. Persisted attachment records predate `meta.projectId` or lose it, masking reliance on legacy storage paths. |
+| B16 | **[OPEN]** `photo_url` accepts both bare filenames and slash paths | Schema/Sync | `watchAttachments.ts` excludes slash-containing values (`photo_url NOT LIKE '%/%'`), silently dropping malformed rows from the download queue. Azizi Hotel and Test 2 stayed broken from June to September without surfacing. Requires check constraint / validation and data-integrity audit query. |
 
 ## HIGH — correctness
 
@@ -35,7 +38,7 @@
 | H4 | `insertCalculation(calculation: any)` — untyped parameter | Sync |
 | H5 | No Arabic / RTL despite `expo-localization` being installed | i18n |
 | H8 | **Pending local attachment loss during user switch / reset (`clearPowerSyncForNewUser`)** | Sync/Attachments | When a user signs out or switches accounts with unsynced local attachments, `clearPowerSyncForNewUser` wipes the local attachment queue and PowerSync SQLite database. If a referencing database row (e.g. `projects.photo_url` or `reports`) synced to Supabase Postgres before the binary uploaded, the row retains a reference to a nonexistent storage object (observed on project "Castle"). UI handles missing storage objects gracefully; users are prompted with an explicit warning during sign-out. |
-| H9 | **Cleanup of superseded legacy `userId/*` cover objects** | Storage/Maintenance | Five project covers were backfilled from `report-photos/{userId}/project_cover_*.jpg` to `report-photos/{projectId}/project_cover_*.jpg`. The original objects were preserved for safety. Follow-up cleanup task: delete the 5 original `cdbff53b-6290-45ff-8966-dcbdc0b29273/project_cover_*.jpg` objects from `report-photos` storage once device acceptance confirms all project-scoped covers render cleanly across devices. |
+| ~~H9~~ | **[CLOSED] Cleanup of superseded legacy `userId/*` cover objects** | Storage/Maintenance | Six duplicate/orphaned `project_cover_*` objects deleted from `report-photos/cdbff53b-6290-45ff-8966-dcbdc0b29273/` via Storage dashboard (not SQL). Five project-scoped covers remain (`report-photos/{projectId}/project_cover_*.jpg`). Folder object count reduced 28 -> 22. |
 
 
 
@@ -241,18 +244,40 @@ Detailed investigation report located at `docs/powersync_investigation_report.md
   - Added `useRef` prefill guard in `app/project/create.tsx` to prevent unstable-identity re-render loops.
 - **Residual Known Risk**: The fallback pattern `powerSyncProjects.length > 0 ? powerSyncProjects : storeProjects` means a user with genuinely zero projects can fall back to a stale Zustand array from AsyncStorage and see phantom projects (e.g. triggering false duplicate name errors in create project or showing phantom cards in AI wizard).
 
-### ⚠️ OPEN (BLOCKER) — B12: Dangling attachment refs cause an infinite 404 retry loop
+### ✅ RESOLVED (BLOCKER) — B12: Dangling attachment refs cause an infinite 404 retry loop
 - **Symptom**: Repeated `404 / 400` download failure warnings in logs on every sync/data change.
-- **Root Cause**: `onDownloadError` in `lib/attachments/attachmentQueue.ts` correctly returns `false` for a permanent 404 to avoid immediate retry. However, `createWatchAttachments` re-evaluates and re-emits the full item list on every local database change to `profiles`, `projects`, `reports`, `drawings`, or `snags`. Consequently, dead attachment references are re-enqueued into the queue and re-attempted infinitely.
-- **Known Dead References**:
-  - `cd2d21bc-afcb-4467-8cd2-d9bec8fcd720.jpg` (`profiles.avatar_url`)
-  - `project_cover_1781178598183_z5igyh.jpg` (`projects.photo_url` under `cdbff53b-6290-45ff-8966-dcbdc0b29273/`)
-  - `project_cover_1781675349790_kqir3w.jpg` (`projects.photo_url` under `cdbff53b-6290-45ff-8966-dcbdc0b29273/`)
+- **Root Cause**: `onDownloadError` in `lib/attachments/attachmentQueue.ts` correctly returns `false` for a permanent 404 to avoid immediate retry. However, `createWatchAttachments` re-evaluates and re-emits the full item list on every local database change to `profiles`, `projects`, `reports`, `drawings`, or `snags`. Consequently, dead attachment references were re-enqueued into the queue and re-attempted infinitely.
+- **Resolution & Verified Facts**:
+  - `profiles.avatar_url` for user `cdbff53b-6290-45ff-8966-dcbdc0b29273` held a bare filename `"cd2d21bc-afcb-4467-8cd2-d9bec8fcd720.jpg"`; confirmed no matching object exists in any bucket under any prefix; column nulled in database.
+  - Two projects held malformed slash-form `photo_url` values pointing at objects that never existed: Azizi Hotel (`00d63259-b1ad-4d95-ae57-9943cfa984e5`) and Test 2 (`ec605ff8-df86-4b0b-b6b5-249402e9a14b`). Both nulled.
+  - Six duplicate/orphaned `project_cover_*` objects deleted from `report-photos/cdbff53b-6290-45ff-8966-dcbdc0b29273/` via the Storage dashboard (not SQL, which orphans files per Supabase docs).
+  - Five covers remain, one per project, all project-ID-prefixed (`report-photos/{projectId}/project_cover_*.jpg`). Folder object count went `28 -> 22` as expected.
+  - **Retained deliberately**: 13 legacy `daily_*.jpg` report photos under `cdbff53b-.../{projectId}/` for Azizi Hotel, Reve, and Azure; and 8 `logo_*.jpg` files at `cdbff53b-.../` root, all still referenced by `employer_logo`, `consultant_logo`, and `contractor_logos` on Azizi Hotel and Reve.
+- **Triage Note (Project Covers)**: 6 project covers render and 5 show placeholders, but only 2 `photo_url` values were nulled (Azizi Hotel and Test 2). The other 3 placeholder projects have not been investigated — list their IDs and `photo_url` values before assuming a cause.
 
 ### ✅ RESOLVED (BLOCKER) — B13: Report-count paywall wrongly blocks Snagging and Quick Log
 - **Symptom**: On the project detail screen, a free user with 3+ reports tapped the "Snagging" card and got the alert "Premium Required — Free users can only create up to 3 reports." The same happened for "Quick Log".
 - **Root Cause**: In `app/project/[id].tsx`, the category card `onPress` handler wrapped all route branches in `if (checkReportLimit())`. `checkReportLimit()` only checks `reports.length >= 3` and is semantically correct only for the `report/create` branch.
 - **Resolution**: Restructured `app/project/[id].tsx` category card `onPress` (branch `fix/b13-snag-paywall-gate`) so `cat.route === 'quick-log'` and `cat.route === 'snags/create'` navigate without invoking `checkReportLimit()`. Only the `report/create` branch invokes `checkReportLimit()`. Verified via `app/__tests__/b13-snag-paywall-gate.test.tsx`.
+- **Verification Note**: The current device build runs with `EXPO_PUBLIC_DEV_FORCE_PREMIUM=true` (`"[DEV] Premium paywall bypassed"`), so the fix from PR #27 is covered by unit tests only and has not been confirmed on device. Requires a rebuild with that flag unset.
+
+### ⚠️ OPEN (BLOCKER) — B14: Legacy slash-form storage paths passed to the local filesystem reader
+- **Symptom**: Opening reports on Azizi Hotel and Reve hangs for a long time on "loading media". Console shows: `Error embedding photo base64 [Error: Calling the 'readAsStringAsync' function has failed -> Caused by: File '/cdbff53b-6290-45ff-8966-dcbdc0b29273/00d63259-b1ad-4d95-ae57-9943cfa984e5/daily_1782710654082_7e46j9.jpg' is not readable]`. Same for `daily_1781871370558_12o7yk.jpg`.
+- **Root Cause (suspected)**: A ref containing slashes is a remote storage path, but the report PDF/base64 embed path treats it as a local file URI (note the leading `/`). `resolveRemoteStoragePath` already short-circuits slash refs to remote; the embed path does not.
+- **Scope**: The 13 legacy `daily_*` report photos. Azure renders, so at least one code path resolves them correctly — identify the difference.
+- **Severity**: High — blocks report viewing/PDF generation on affected projects.
+
+### ⚠️ OPEN (BLOCKER) — B15: Attachment metaData missing projectId, activating the userId storage-path fallback
+- **Symptom**: `[getSignedUrl] missing object skipped: report-photos cdbff53b-6290-45ff-8966-dcbdc0b29273/project_cover_1779449049420_vu9kbr.jpg` (Azure) and `.../project_cover_1780307021264_u6ky3c.jpg` (Reve).
+- **Root Cause**: `resolveRemoteStoragePath` in `lib/attachments/remoteStorage.ts` uses `meta?.projectId || meta?.userId || 'default'`. All four `json_object` producers in `lib/attachments/watchAttachments.ts` do set `projectId`, yet the `userId` branch is observably taken — so some persisted attachment records predate that field or lose it. Determine whether stale records need migrating or regenerating.
+- **Impact**: Currently benign (misses are skipped and covers still render), but it masked the fact that the six deleted legacy cover objects were still being read.
+- **Follow-up**: Once records are confirmed clean, remove the `|| meta?.userId || 'default'` fallback so misrouting cannot recur. (`default/` has never been written to; verified empty).
+
+### ⚠️ OPEN (BLOCKER) — B16: photo_url accepts both bare filenames and slash paths
+- **Symptom**: `photo_url` accepts both bare filenames and slash paths. `watchAttachments.ts` excludes slash-containing values (`photo_url NOT LIKE '%/%'`), so malformed rows are silently never queued — this is how Azizi Hotel and Test 2 stayed broken from June to September without surfacing.
+- **Remediation**:
+  1. Propose a check constraint or write-time validation rejecting slashes in `photo_url`.
+  2. Implement a data-integrity query to audit and detect existing violations.
 
 ### expo-file-system legacy API in use
 - The drawing viewer and `uploadDrawingFile` import from `expo-file-system/legacy`
@@ -442,7 +467,7 @@ Established by querying `storage.objects` directly, not inferred:
 - A ref containing `/` is already a complete storage path — use VERBATIM.
   (13/13 prefixed report photos, 4/4 drawings, 4 logos resolve as-is.)
 - A bare ref in `report-photos` resolves under `project_id` (3/3 photos,
-  5/5 covers). Covers also exist under `user_id` as the pre-H9 duplicates.
+  5/5 covers). Pre-H9 duplicate covers under `user_id` (`cdbff53b-...`) have been deleted via Storage dashboard.
 - A bare `avatar_url` resolves under the profile id.
 - `user_id` is NEVER the correct prefix for a bare report photo.
 Implemented in `resolveRemoteStoragePath` (`19a049e`), which previously
@@ -486,16 +511,11 @@ missing object, which is why these surface as 400s.
 Prerequisite for A1. Needs a bounded attempt count or explicit
 missing-object detection before the logos branch lands.
 
-## OPEN — A3: Three dangling storage references
-Rows pointing at objects absent from every bucket under every candidate prefix:
-- `profiles.avatar_url` = `cd2d21bc-afcb-4467-8cd2-d9bec8fcd720.jpg`
-  (user `cdbff53b-6290-45ff-8966-dcbdc0b29273`) — the sole recurring
-  `Supabase download failed (400)` in the logs.
-- `projects.photo_url` for projects `00d63259-b1ad-4d95-ae57-9943cfa984e5`
-  and `ec605ff8-df86-4b0b-b6b5-249402e9a14b` (both slash-prefixed).
-Likely instances of H8 (pending local attachment loss during user switch).
-Decide per row: re-upload, or null the column and let the placeholder path
-handle it.
+## ✅ RESOLVED — A3: Three dangling storage references
+Resolved as part of B12 data cleanup:
+- `profiles.avatar_url` = `cd2d21bc-afcb-4467-8cd2-d9bec8fcd720.jpg` (user `cdbff53b-6290-45ff-8966-dcbdc0b29273`) nulled in database after verifying no matching object exists in any bucket.
+- `projects.photo_url` for projects Azizi Hotel (`00d63259-b1ad-4d95-ae57-9943cfa984e5`) and Test 2 (`ec605ff8-df86-4b0b-b6b5-249402e9a14b`) nulled (both held malformed slash paths pointing at objects that never existed).
+Placeholder path handles rendering gracefully.
 
 ## OPEN — A4: Component files inside `app/` are routable
 `app/project/[id]/report/components/ManpowerSection.tsx` and
@@ -518,6 +538,4 @@ needs LAN or `--tunnel`. See the existing "Dev environment" entry.
 - End-to-end storage policy audit not run.
 - PowerSync schema validation not run.
 - Gate screens on `hasSynced` to prevent stale-state black screens.
-- H9 cleanup (delete 5 superseded `userId/*` cover duplicates) still pending;
-  our audit confirms the project-scoped copies exist, so it is safe to proceed
-  once device acceptance is possible (blocked by A5).
+- H9 cleanup executed: 6 duplicate/orphaned `project_cover_*` objects deleted from `report-photos/cdbff53b-6290-45ff-8966-dcbdc0b29273/` via Storage dashboard (folder count 28 -> 22). 5 project-scoped covers remain.
