@@ -1,5 +1,7 @@
 # Known Issues — Triage Index
 
+> **Current repo state and priority order:** see [docs/SESSION_HANDOFF.md](docs/SESSION_HANDOFF.md).
+
 > **How to use this file**: Anything in RELEASE BLOCKERS must be closed before
 > any build reaches a real user. Do not start new features while blockers are open.
 > Sections below this index are the detailed historical log — keep them. They
