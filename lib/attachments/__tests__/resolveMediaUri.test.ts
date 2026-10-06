@@ -90,6 +90,30 @@ describe('resolveMediaUri', () => {
     expect(supabaseSync.getPublicUrl).toHaveBeenCalledWith('avatars', 'user-1/avatar.jpg');
   });
 
+  it('logs warning and returns null when getSignedUrl fails for legacy path', async () => {
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    (supabaseSync.getSignedUrl as jest.Mock).mockResolvedValue({
+      ok: false,
+      reason: 'unauthorized',
+      message: 'x',
+    });
+
+    const result = await resolveMediaUri('user-1/proj-1/daily_1.jpg', { bucket: 'report-photos' });
+
+    expect(result).toBeNull();
+    expect(warnSpy).toHaveBeenCalledWith(
+      '[resolveMediaUri] sign failed',
+      expect.objectContaining({
+        bucket: 'report-photos',
+        path: 'user-1/proj-1/daily_1.jpg',
+        reason: 'unauthorized',
+        message: 'x',
+      })
+    );
+
+    warnSpy.mockRestore();
+  });
+
   describe('Avatar Resolution with userId guard', () => {
     it('resolves avatar attachment ref when userId is provided', async () => {
       const filename = 'avatar-uuid-123.jpg';

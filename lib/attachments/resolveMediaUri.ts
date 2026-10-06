@@ -114,6 +114,7 @@ export async function resolveMediaUri(
         urlCache.set(cacheKey, { url: res.url, expiresAt: Date.now() + CACHE_TTL_MS });
         return res.url;
       }
+      console.warn('[resolveMediaUri] sign failed', { bucket, path: remotePath, reason: res.reason, message: res.message });
     }
 
     return null;
@@ -139,6 +140,7 @@ export async function resolveMediaUri(
         urlCache.set(cacheKey, { url: res.url, expiresAt: Date.now() + CACHE_TTL_MS });
         return res.url;
       }
+      console.warn('[resolveMediaUri] sign failed', { bucket, path: trimmed, reason: res.reason, message: res.message });
     }
 
     return null;
