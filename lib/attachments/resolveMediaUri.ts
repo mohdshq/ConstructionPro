@@ -39,6 +39,12 @@ export function classifyMediaSource(val: string | null | undefined): MediaSource
   return 'empty';
 }
 
+export function isLocalFileUri(uri: unknown): uri is string {
+  if (typeof uri !== 'string') return false;
+  const trimmed = uri.trim();
+  return trimmed.startsWith('file:') || trimmed.startsWith('content:');
+}
+
 interface CacheEntry {
   url: string;
   expiresAt: number;

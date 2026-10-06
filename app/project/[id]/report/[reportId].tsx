@@ -17,7 +17,7 @@ import { generateDailyReportHTML } from '../../../../lib/report/templates/DailyR
 import { generateSnaggingHTML } from '../../../../lib/report/templates/SnaggingReportHTML';
 import { generateHSEHTML } from '../../../../lib/report/templates/HSEReportHTML';
 import { generateQuickLogHTML } from '../../../../lib/report/templates/QuickLogHTML';
-import { resolveMediaUri } from '@/lib/attachments/resolveMediaUri';
+import { resolveMediaUri, isLocalFileUri } from '@/lib/attachments/resolveMediaUri';
 import { supabase } from '../../../../lib/supabase';
 export default function ReportViewerScreen() {
     const { colors } = useThemeColors();
@@ -88,69 +88,80 @@ export default function ReportViewerScreen() {
             if (!rawData) return;
             const mappedData = JSON.parse(JSON.stringify(rawData));
             
-            // Process photos concurrently for ALL report types
-            if (mappedData.photos && mappedData.photos.length > 0) {
-                mappedData.photos = await Promise.all(
-                    mappedData.photos.map(async (photo: any) => {
-                        let uri = typeof photo === 'string' ? photo : photo.uri;
-                        let caption = typeof photo === 'string' ? '' : photo.caption || '';
+            try {
+                // Process photos concurrently for ALL report types
+                if (mappedData.photos && mappedData.photos.length > 0) {
+                    mappedData.photos = await Promise.all(
+                        mappedData.photos.map(async (photo: any) => {
+                            let uri = typeof photo === 'string' ? photo : photo.uri;
+                            let caption = typeof photo === 'string' ? '' : photo.caption || '';
 
-                        if (uri) {
-                            try {
-                                const resolved = await resolveMediaUri(uri, {
-                                    bucket: 'report-photos',
-                                    projectId: report?.projectId,
-                                });
-                                if (resolved) uri = resolved;
-                            } catch (e) {
-                                console.error('Error resolving photo URI:', e);
-                            }
-                        }
-
-                        if (uri && !uri.startsWith('data:') && Platform.OS !== 'web') {
-                            try {
-                                if (uri.startsWith('http')) {
-                                    const byteRes = await fetchWithTimeout(uri, 8000);
-                                    if (byteRes.ok) {
-                                        uri = byteRes.dataUrl;
-                                    }
-                                } else {
-                                    const b64 = await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
-                                    uri = `data:image/jpeg;base64,${b64}`;
+                            if (uri) {
+                                try {
+                                    const resolved = await resolveMediaUri(uri, {
+                                        bucket: 'report-photos',
+                                        projectId: report?.projectId,
+                                    });
+                                    if (resolved) uri = resolved;
+                                } catch (e) {
+                                    console.error('Error resolving photo URI:', e);
                                 }
-                            } catch (e) { console.error("Error embedding photo base64", e); }
-                        }
-                        
-                        return typeof photo === 'string' ? uri : { ...photo, uri, caption };
-                    })
-                );
-            }
+                            }
 
-            // Process audio concurrently for ALL report types
-            const rawAudio = mappedData.audioUris || (mappedData.audioUri ? [mappedData.audioUri] : []);
-            if (rawAudio.length > 0) {
-                mappedData.audioUris = await Promise.all(
-                    rawAudio.map(async (uri: string) => {
-                        if (!uri.startsWith('data:') && Platform.OS !== 'web') {
+                            if (uri && !uri.startsWith('data:') && Platform.OS !== 'web') {
+                                try {
+                                    if (uri.startsWith('http')) {
+                                        const byteRes = await fetchWithTimeout(uri, 8000);
+                                        if (byteRes.ok) {
+                                            uri = byteRes.dataUrl;
+                                        }
+                                    } else if (isLocalFileUri(uri)) {
+                                        const b64 = await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
+                                        uri = `data:image/jpeg;base64,${b64}`;
+                                    } else {
+                                        console.warn('[report] unresolved media ref, not embedding:', uri);
+                                    }
+                                } catch (e) { console.error("Error embedding photo base64", e); }
+                            }
+                            
+                            return typeof photo === 'string' ? uri : { ...photo, uri, caption };
+                        })
+                    );
+                }
+
+                // Process audio concurrently for ALL report types
+                const rawAudio = mappedData.audioUris || (mappedData.audioUri ? [mappedData.audioUri] : []);
+                if (rawAudio.length > 0) {
+                    mappedData.audioUris = await Promise.all(
+                        rawAudio.map(async (uri: any) => {
+                            if (typeof uri !== 'string') return uri;
                             try {
-                                if (uri.startsWith('http')) {
-                                    const byteRes = await fetchWithTimeout(uri, 8000);
-                                    if (byteRes.ok) return byteRes.dataUrl;
-                                    return uri;
-                                } else {
-                                    const b64 = await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
-                                    return `data:audio/m4a;base64,${b64}`;
+                                if (!uri.startsWith('data:') && Platform.OS !== 'web') {
+                                    if (uri.startsWith('http')) {
+                                        const byteRes = await fetchWithTimeout(uri, 8000);
+                                        if (byteRes.ok) return byteRes.dataUrl;
+                                        return uri;
+                                    } else if (isLocalFileUri(uri)) {
+                                        const b64 = await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
+                                        return `data:audio/m4a;base64,${b64}`;
+                                    } else {
+                                        console.warn('[report] unresolved media ref, not embedding:', uri);
+                                        return uri;
+                                    }
                                 }
                             } catch (e) {
                                 console.error("Error embedding audio base64", e);
                                 return uri;
                             }
-                        }
-                        return uri;
-                    })
-                );
+                            return uri;
+                        })
+                    );
+                }
+            } catch (e) {
+                console.error("Error preparing report media data", e);
+            } finally {
+                if (isMounted) setData(mappedData);
             }
-            if (isMounted) setData(mappedData);
         };
         prepareData();
         return () => { isMounted = false; };

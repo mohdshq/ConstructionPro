@@ -1,4 +1,4 @@
-import { resolveMediaUri, clearMediaUrlCache } from '../resolveMediaUri';
+import { resolveMediaUri, clearMediaUrlCache, isLocalFileUri } from '../resolveMediaUri';
 import { attachmentLocalStorage } from '../localStorage';
 import * as supabaseSync from '@/lib/supabaseSync';
 
@@ -126,4 +126,43 @@ describe('resolveMediaUri', () => {
       expect(supabaseSync.getSignedUrl).toHaveBeenCalledWith('report-photos', `${projectId}/${filename}`, 3600);
     });
   });
+
+  describe('isLocalFileUri', () => {
+    it('returns true for file: and content: URIs', () => {
+      expect(isLocalFileUri('file:///data/attachments/a.jpg')).toBe(true);
+      expect(isLocalFileUri('content://media/1')).toBe(true);
+      expect(isLocalFileUri('  file:///data/attachments/a.jpg  ')).toBe(true);
+      expect(isLocalFileUri('  content://media/1  ')).toBe(true);
+    });
+
+    it('returns false for slash-form storage keys and legacy paths', () => {
+      expect(
+        isLocalFileUri(
+          'cdbff53b-6290-45ff-8966-dcbdc0b29273/00d63259-b1ad-4d95-ae57-9943cfa984e5/daily_1782710654082_7e46j9.jpg'
+        )
+      ).toBe(false);
+      expect(isLocalFileUri('/cdbff53b-6290-45ff-8966-dcbdc0b29273/x.jpg')).toBe(false);
+    });
+
+    it('returns false for bare filenames', () => {
+      expect(isLocalFileUri('abc.jpg')).toBe(false);
+    });
+
+    it('returns false for remote URLs and data URIs', () => {
+      expect(isLocalFileUri('https://x.supabase.co/a.jpg')).toBe(false);
+      expect(isLocalFileUri('http://x.supabase.co/a.jpg')).toBe(false);
+      expect(isLocalFileUri('data:image/jpeg;base64,AAA')).toBe(false);
+    });
+
+    it('returns false for empty, null, undefined, and non-strings', () => {
+      expect(isLocalFileUri('')).toBe(false);
+      expect(isLocalFileUri('   ')).toBe(false);
+      expect(isLocalFileUri(null)).toBe(false);
+      expect(isLocalFileUri(undefined)).toBe(false);
+      expect(isLocalFileUri(123)).toBe(false);
+      expect(isLocalFileUri({})).toBe(false);
+      expect(isLocalFileUri([])).toBe(false);
+    });
+  });
 });
+
