@@ -1,5 +1,7 @@
 # Known Issues — Triage Index
 
+> **Current repo state and priority order:** see [docs/SESSION_HANDOFF.md](docs/SESSION_HANDOFF.md).
+
 > **How to use this file**: Anything in RELEASE BLOCKERS must be closed before
 > any build reaches a real user. Do not start new features while blockers are open.
 > Sections below this index are the detailed historical log — keep them. They
@@ -39,6 +41,7 @@
 | H5 | No Arabic / RTL despite `expo-localization` being installed | i18n |
 | H8 | **Pending local attachment loss during user switch / reset (`clearPowerSyncForNewUser`)** | Sync/Attachments | When a user signs out or switches accounts with unsynced local attachments, `clearPowerSyncForNewUser` wipes the local attachment queue and PowerSync SQLite database. If a referencing database row (e.g. `projects.photo_url` or `reports`) synced to Supabase Postgres before the binary uploaded, the row retains a reference to a nonexistent storage object (observed on project "Castle"). UI handles missing storage objects gracefully; users are prompted with an explicit warning during sign-out. |
 | ~~H9~~ | **[CLOSED] Cleanup of superseded legacy `userId/*` cover objects** | Storage/Maintenance | Six duplicate/orphaned `project_cover_*` objects deleted from `report-photos/cdbff53b-6290-45ff-8966-dcbdc0b29273/` via Storage dashboard (not SQL). Five project-scoped covers remain (`report-photos/{projectId}/project_cover_*.jpg`). Folder object count reduced 28 -> 22. |
+| H10 | **[OPEN]** Team Members screen shows "Unknown User" for co-members | Sync/Team | In PowerSync sync rules, `profiles` table is synced under user-scoped rule (`WHERE id = request.user_id()`), so foreign profile rows for co-members are not replicated in local SQLite, causing `profileFullName` to be `NULL`. |
 
 
 
@@ -278,6 +281,28 @@ Detailed investigation report located at `docs/powersync_investigation_report.md
 - **Remediation**:
   1. Propose a check constraint or write-time validation rejecting slashes in `photo_url`.
   2. Implement a data-integrity query to audit and detect existing violations.
+
+### H10 — Team Members 'Unknown User'
+- **Status**: Pre-existing / Backlog (PowerSync Cloud Sync Rules)
+- **Component**: `lib/powersync/useMembers.ts` -> `app/project/[id]/members.tsx`
+- **Symptom**: On the Team Members screen, co-members and the project Owner render with the name "Unknown User" when viewed by another user (e.g. Viewer or Manager).
+- **Root Cause**: 
+  - `usePowerSyncMembers` performs a local SQLite `LEFT JOIN profiles p ON p.id = m.user_id`.
+  - In the PowerSync dashboard sync rules, the `profiles` table is synced under a user-scoped rule (`SELECT * FROM profiles WHERE id = request.user_id()`).
+  - As a result, only the authenticated user's profile row exists in local SQLite. Foreign profile rows for co-members are not replicated locally, causing `profileFullName` to be `NULL`.
+- **Resolution Path**:
+  - Update PowerSync Dashboard sync rules to replicate profiles for project co-members:
+    ```yaml
+    # PowerSync Sync Rules (Dashboard)
+    bucket_definitions:
+      project_member_profiles:
+        parameters: select project_id from project_members where user_id = request.user_id()
+        data:
+          - select p.* from profiles p
+            join project_members pm on pm.user_id = p.id
+            where pm.project_id in (select project_id from project_members where user_id = request.user_id())
+    ```
+  - Or add a fallback profile fetch in the UI via Supabase RPC/REST if offline cache for co-member names is not required.
 
 ### expo-file-system legacy API in use
 - The drawing viewer and `uploadDrawingFile` import from `expo-file-system/legacy`

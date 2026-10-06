@@ -1,5 +1,7 @@
 # ConstructionPro — Project Handoff
 
+> **Current repo state and priority order:** see [SESSION_HANDOFF.md](SESSION_HANDOFF.md). This file holds stack and convention background; its baseline test counts are historical.
+
 Read this first before making any changes.
 
 ## Stack
