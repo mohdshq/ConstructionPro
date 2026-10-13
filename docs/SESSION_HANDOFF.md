@@ -1,13 +1,13 @@
 # Session handoff
 
-Last updated: 2026-10-06. main = 31b5328.
+Last updated: 2026-10-06. main = a2bf6ba.
 
 ## Repo state
 - PR #27 (B13 paywall fix), #28 (PR #1 salvage), #29 (B12 close + B14/B15/B16
   logging) all merged. PR #1 closed as superseded.
+- PR #30 (docs: SESSION_HANDOFF + KNOWN_ISSUES pointer) merged. PR #31 (B14) open.
 - Branches deleted: fix/b13-snag-paywall-gate, chore/salvage-pr1-db-docs,
   chore/untrack-build-artifacts, pr1, docs/b12-close-b14-b15.
-- No open PRs.
 - Last verification: npx tsc --noEmit clean; npx jest 41 suites / 282 tests pass.
 
 ## Data changes already applied — DO NOT REPEAT
@@ -38,7 +38,7 @@ loss. Tracked as B15. Optional quick quiet-down: re-upload those 5 filenames int
 cdbff53b-.../ by downloading each from its project folder first.
 
 ## Priority order
-1. B14 (high) — slash-form remote storage path passed to readAsStringAsync as a
+1. B14 (high) — DONE (PR #31) — slash-form remote storage path passed to readAsStringAsync as a
    local file URI (note leading "/"). Causes long "loading media" hang when
    opening reports on Azizi Hotel and Reve. Azure works, so another path resolves
    correctly — find the difference.
@@ -69,6 +69,15 @@ cdbff53b-.../ by downloading each from its project folder first.
    from June to September unnoticed.
 6. B6 backfill — 64 snags and 13 reports still hold base64 (issue #21). Forward
    path verified on physical device; this is a pure data migration.
+7. B17 (low) — PGRST303 "JWT issued at future" when saving push token
+   (lib/usePushNotifications.ts:67). Seen 2026-10-06 on device. Possible causes:
+   device clock skew, or server-side skew between Supabase Auth and PostgREST.
+   Candidate fix: on PGRST303, call supabase.auth.refreshSession() once and
+   retry the request. Only push-token save observed affected so far.
+8. B18 (low) — Report viewer media prep takes ~6s for a 3-photo report (sign +
+   download per photo, 8s timeouts). Not a hang. Investigate caching
+   downloaded bytes or rendering signed https URLs directly instead of
+   base64-embedding for on-screen view.
 
 ## Open unknowns
 - report-photos contains a folder 0ddf3676-de1d-4d96-a8e... that appeared in the

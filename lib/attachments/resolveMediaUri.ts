@@ -39,6 +39,12 @@ export function classifyMediaSource(val: string | null | undefined): MediaSource
   return 'empty';
 }
 
+export function isLocalFileUri(uri: unknown): uri is string {
+  if (typeof uri !== 'string') return false;
+  const trimmed = uri.trim();
+  return trimmed.startsWith('file:') || trimmed.startsWith('content:');
+}
+
 interface CacheEntry {
   url: string;
   expiresAt: number;
@@ -108,6 +114,7 @@ export async function resolveMediaUri(
         urlCache.set(cacheKey, { url: res.url, expiresAt: Date.now() + CACHE_TTL_MS });
         return res.url;
       }
+      console.warn('[resolveMediaUri] sign failed', { bucket, path: remotePath, reason: res.reason, message: res.message });
     }
 
     return null;
@@ -133,6 +140,7 @@ export async function resolveMediaUri(
         urlCache.set(cacheKey, { url: res.url, expiresAt: Date.now() + CACHE_TTL_MS });
         return res.url;
       }
+      console.warn('[resolveMediaUri] sign failed', { bucket, path: trimmed, reason: res.reason, message: res.message });
     }
 
     return null;
