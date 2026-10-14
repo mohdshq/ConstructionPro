@@ -8,7 +8,7 @@ Last updated: 2026-10-14. main = 398fd0e.
 - PR #30 (docs: SESSION_HANDOFF + KNOWN_ISSUES pointer) merged. PR #31 (B14) open.
 - Branches deleted: fix/b13-snag-paywall-gate, chore/salvage-pr1-db-docs,
   chore/untrack-build-artifacts, pr1, docs/b12-close-b14-b15.
-- Last verification: npx tsc --noEmit clean; npx jest 41 suites / 282 tests pass.
+- Last verification: npx tsc --noEmit clean; npx jest 42 suites / 291 tests pass.
 
 ## Data changes already applied — DO NOT REPEAT
 - profiles.avatar_url nulled for cdbff53b-6290-45ff-8966-dcbdc0b29273 (held bare
@@ -87,7 +87,7 @@ covers still render — so no data loss. Tracked as B15, fixed in this PR
 ## Open unknowns
 - report-photos folder 0ddf3676-de1d-4d96-a8e7-f7f55b13cb7c closed: it is
   Castle; its cover 51dcf0e2-981d-4011-a8f6-d54dcc32dc04.jpg exists.
-- The 3 extra cover placeholders have no diagnosis.
+- The 3 extra cover placeholders were caused by the stale persisted Zustand store (B15, PR #33).
 
 ## IDs
 user: cdbff53b-6290-45ff-8966-dcbdc0b29273
