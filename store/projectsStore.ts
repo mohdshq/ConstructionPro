@@ -556,6 +556,23 @@ function mapCalculationRow(row: any): Calculation {
     };
 }
 
+// Persisted projects go stale: they're a point-in-time snapshot that is never
+// refreshed, so pre-cleanup photoUri values linger forever in AsyncStorage and
+// get rehydrated on every launch (B15). Exclude projects from persistence and
+// drop any already-persisted copy via migration.
+export function partializeProjectsState(state: ProjectsState): Omit<ProjectsState, 'projects'> {
+    const { projects, ...rest } = state;
+    return rest;
+}
+
+export function migrateProjectsState(persisted: unknown, _version: number): unknown {
+    if (!persisted || typeof persisted !== 'object') {
+        return persisted;
+    }
+    const { projects, ...rest } = persisted as Partial<ProjectsState>;
+    return rest;
+}
+
 export const useProjectsStore = create<ProjectsState>()(
     persist(
         (set, get) => ({
@@ -1289,6 +1306,9 @@ export const useProjectsStore = create<ProjectsState>()(
         {
             name: 'construction-pro-projects-storage',
             storage: createJSONStorage(() => AsyncStorage),
+            partialize: partializeProjectsState,
+            version: 1,
+            migrate: migrateProjectsState,
         }
     )
 );

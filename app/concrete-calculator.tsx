@@ -7,6 +7,7 @@ import { router } from 'expo-router';
 import { useStore } from '../store/useStore';
 import { useThemeColors } from '../store/useThemeColors';
 import { useProjectsStore } from '../store/projectsStore';
+import { usePowerSyncProjects } from '../lib/powersync/useProjects';
 import { useAuthStore } from '../store/useAuthStore';
 import SaveCalculationModal from '../components/SaveCalculationModal';
 import { useLocalSearchParams } from 'expo-router';
@@ -16,7 +17,8 @@ export default function ConcreteCalculatorScreen() {
     const { calcId } = useLocalSearchParams<{ calcId: string }>();
     const { units } = useStore();
     const { colors } = useThemeColors();
-    const { projects, calculations, addCalculation } = useProjectsStore();
+    const { calculations, addCalculation } = useProjectsStore();
+    const { data: projects = [] } = usePowerSyncProjects();
     const { user } = useAuthStore();
     
     const [length, setLength] = useState('10');
