@@ -1,6 +1,6 @@
 # Session handoff
 
-Last updated: 2026-10-06. main = a2bf6ba.
+Last updated: 2026-10-14. main = 398fd0e.
 
 ## Repo state
 - PR #27 (B13 paywall fix), #28 (PR #1 salvage), #29 (B12 close + B14/B15/B16
@@ -28,14 +28,16 @@ Last updated: 2026-10-06. main = a2bf6ba.
 ## Known bad call from the previous session
 The 6 cover objects were deleted on the reasoning that the
 `meta?.projectId || meta?.userId || 'default'` fallback in
-resolveRemoteStoragePath was unreachable. Device logs afterwards proved it IS
-reachable:
+resolveRemoteStoragePath was unreachable. Device logs afterwards showed:
   [getSignedUrl] missing object skipped: report-photos
   cdbff53b-.../project_cover_1779449049420_vu9kbr.jpg   (Azure)
   cdbff53b-.../project_cover_1780307021264_u6ky3c.jpg   (Reve)
-Degrades gracefully — misses are skipped and 6 covers still render — so no data
-loss. Tracked as B15. Optional quick quiet-down: re-upload those 5 filenames into
-cdbff53b-.../ by downloading each from its project folder first.
+Correction (2026-10-13): these logs came from the stale persisted Zustand
+`projectsStore` (no partialize/version on the persist config), not from the
+userId fallback in resolveRemoteStoragePath — that fallback's reachability
+remains unproven. Degraded gracefully either way — misses are skipped and 6
+covers still render — so no data loss. Tracked as B15, fixed in this PR
+(projects excluded from persistence, migration drops the stale array).
 
 ## Priority order
 1. B14 (high) — DONE (PR #31) — slash-form remote storage path passed to readAsStringAsync as a
@@ -51,18 +53,21 @@ cdbff53b-.../ by downloading each from its project folder first.
    Compare that function's URI construction against the slash short-circuit at
    the top of resolveRemoteStoragePath in lib/attachments/remoteStorage.ts and
    against classifyMediaSource in lib/attachments/resolveMediaUri.ts.
-2. B15 — find why persisted attachment records lack projectId even though all
-   four json_object producers in lib/attachments/watchAttachments.ts set it
-   (lines 46, 69, 101, 118). Migrate or regenerate stale records, then remove the
-   `|| meta?.userId || 'default'` fallback. 'default/' verified never written to.
+2. B15 — fixed in PR (this), pending device check. Root cause was the
+   persisted Zustand `projectsStore` serving stale pre-cleanup `photoUri`
+   values on first render, not the `|| meta?.userId || 'default'` fallback.
+   Fix: `partialize` drops `projects` from persistence, `version` 1 migration
+   removes any already-persisted copy. Follow-up: decide whether to remove
+   the userId fallback in resolveRemoteStoragePath; needs its own evidence.
 3. B13 device verification — current device build runs with
    EXPO_PUBLIC_DEV_FORCE_PREMIUM=true ("[DEV] Premium paywall bypassed"), so the
    PR #27 fix is unit-tested only. Rebuild with the flag unset and confirm a
    non-premium user can open Snagging and Quick Log but is still gated on report
    creation.
-4. Triage 3 unexplained cover placeholders — 6 covers render, 5 show
-   placeholders, but only 2 photo_url values were nulled. Run:
-   select id, name, photo_url from projects order by created_at;
+4. Triage 3 unexplained cover placeholders — DONE. 11 projects: 6 have bare
+   photo_url with existing objects and render; 5 have photo_url null (Azizi
+   Hotel, Test 1, Test 2, Project 3 ce8d0885, Snags Project 1). Only 2 nulls
+   came from the September cleanup; the other 3 were already null. Not a bug.
 5. B16 — constrain projects.photo_url to bare filenames. watchAttachments.ts
    excludes slash-containing values (photo_url NOT LIKE '%/%'), so malformed rows
    are silently never queued; that is how Azizi Hotel and Test 2 stayed broken
@@ -80,8 +85,8 @@ cdbff53b-.../ by downloading each from its project folder first.
    base64-embedding for on-screen view.
 
 ## Open unknowns
-- report-photos contains a folder 0ddf3676-de1d-4d96-a8e... that appeared in the
-  dashboard but never in any query. Contents never inventoried.
+- report-photos folder 0ddf3676-de1d-4d96-a8e7-f7f55b13cb7c closed: it is
+  Castle; its cover 51dcf0e2-981d-4011-a8f6-d54dcc32dc04.jpg exists.
 - The 3 extra cover placeholders have no diagnosis.
 
 ## IDs
