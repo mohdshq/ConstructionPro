@@ -1,13 +1,15 @@
 # Session handoff
 
-Last updated: 2026-10-14. main = 398fd0e.
+Last updated: 2026-10-15. main = 98194d8.
 
 ## Repo state
 - PR #27 (B13 paywall fix), #28 (PR #1 salvage), #29 (B12 close + B14/B15/B16
   logging) all merged. PR #1 closed as superseded.
-- PR #30 (docs: SESSION_HANDOFF + KNOWN_ISSUES pointer) merged. PR #31 (B14) open.
+- PR #30 (docs: SESSION_HANDOFF + KNOWN_ISSUES pointer) merged. PRs #31 (B14), #32 (Cline rules), #33 (B15) merged. No open PRs.
 - Branches deleted: fix/b13-snag-paywall-gate, chore/salvage-pr1-db-docs,
-  chore/untrack-build-artifacts, pr1, docs/b12-close-b14-b15.
+  chore/untrack-build-artifacts, pr1, docs/b12-close-b14-b15,
+  docs/known-issues-handoff-pointer, fix/b14-report-embed-guard, docs/cline-rules,
+  fix/b15-stale-persisted-projects.
 - Last verification: npx tsc --noEmit clean; npx jest 42 suites / 291 tests pass.
 
 ## Data changes already applied — DO NOT REPEAT
