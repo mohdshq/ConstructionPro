@@ -8,3 +8,4 @@ Workflow
 - Code changes and data changes are separate steps. Data changes need approval.
 - Device testing is on the owner's iPhone via Expo QR. Give exact steps and the log lines to look for.
 - Fix only the requested issue. Log anything else as a new KNOWN_ISSUES entry.
+- Never run `git commit`, `git push`, or `gh pr create` until the user has reviewed the diff and replied "commit". If the user asks to review something first, stop and wait.
