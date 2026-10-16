@@ -38,7 +38,7 @@ Correction (2026-10-13): these logs came from the stale persisted Zustand
 `projectsStore` (no partialize/version on the persist config), not from the
 userId fallback in resolveRemoteStoragePath — that fallback's reachability
 remains unproven. Degraded gracefully either way — misses are skipped and 6
-covers still render — so no data loss. Tracked as B15, fixed in this PR
+covers still render — so no data loss. Tracked as B15, fixed in PR #33 (device verified 2026-10-15)
 (projects excluded from persistence, migration drops the stale array).
 
 ## Priority order
@@ -55,13 +55,13 @@ covers still render — so no data loss. Tracked as B15, fixed in this PR
    Compare that function's URI construction against the slash short-circuit at
    the top of resolveRemoteStoragePath in lib/attachments/remoteStorage.ts and
    against classifyMediaSource in lib/attachments/resolveMediaUri.ts.
-2. B15 — fixed in PR (this), pending device check. Root cause was the
+2. B15 — DONE. PR #33 merged, device verified 2026-10-15. Root cause was the
    persisted Zustand `projectsStore` serving stale pre-cleanup `photoUri`
    values on first render, not the `|| meta?.userId || 'default'` fallback.
    Fix: `partialize` drops `projects` from persistence, `version` 1 migration
    removes any already-persisted copy. Follow-up: decide whether to remove
    the userId fallback in resolveRemoteStoragePath; needs its own evidence.
-3. B13 device verification — current device build runs with
+3. B13 device verification — DONE 2026-10-15 (bypass off: Snagging and Quick Logs open; Daily, HSE and duplicate gated at 3+ reports). History: current device build runs with
    EXPO_PUBLIC_DEV_FORCE_PREMIUM=true ("[DEV] Premium paywall bypassed"), so the
    PR #27 fix is unit-tested only. Rebuild with the flag unset and confirm a
    non-premium user can open Snagging and Quick Log but is still gated on report
